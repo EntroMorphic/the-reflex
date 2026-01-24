@@ -14,7 +14,9 @@ Complete API documentation for all Reflex OS headers.
 6. [reflex_spi.h - SPI Channels](#reflex_spih---spi-channels)
 7. [reflex_wifi.h - WiFi Channels](#reflex_wifih---wifi-channels)
 8. [reflex_void.h - Entropy Field](#reflex_voidh---entropy-field)
-9. [reflex_c6.h - Master Header](#reflex_c6h---master-header)
+9. [reflex_echip.h - Self-Reconfiguring Processor](#reflex_echiph---self-reconfiguring-processor)
+10. [reflex_c6.h - Master Header](#reflex_c6h---master-header)
+11. [reflex_obsbot.h - OBSBOT PTZ Camera Control](#reflex_obsboth---obsbot-ptz-camera-control) *(Linux only)*
 
 ---
 
@@ -962,6 +964,281 @@ void reflex_c6_init(void);      // Initialize hardware
 void reflex_led_init(void);     // Setup LED pin
 void reflex_led_toggle(void);   // Toggle LED
 void reflex_led_set(bool on);   // Set LED
+```
+
+---
+
+## reflex_obsbot.h - OBSBOT PTZ Camera Control
+
+Control OBSBOT Tiny cameras via V4L2 on Linux hosts (Pi 4, Thor).
+
+**Platform:** Linux only (not ESP32)
+
+### Constants
+
+```c
+#define OBSBOT_VID              0x6e30
+#define OBSBOT_PID              0xfef0
+
+// UVC uses arc-seconds: 1 arc-second = 1/3600 degree
+#define OBSBOT_PAN_MIN          (-180 * 3600)   // -648000
+#define OBSBOT_PAN_MAX          (180 * 3600)    // +648000
+#define OBSBOT_TILT_MIN         (-180 * 3600)
+#define OBSBOT_TILT_MAX         (180 * 3600)
+#define OBSBOT_ZOOM_MIN         100             // 1x
+#define OBSBOT_ZOOM_MAX         500             // 5x
+
+// Practical limits for OBSBOT Tiny
+#define OBSBOT_TINY_PAN_RANGE   (120 * 3600)    // ±120°
+#define OBSBOT_TINY_TILT_RANGE  (90 * 3600)     // ±90°
+```
+
+### Types
+
+#### `reflex_obsbot_t`
+```c
+typedef struct {
+    int fd;                      // V4L2 device
+    char device_path[64];        // /dev/videoN
+    bool initialized;
+
+    // Capabilities
+    bool has_pan, has_tilt, has_zoom;
+    bool has_pan_speed, has_tilt_speed;
+
+    // Current state
+    int32_t pan, tilt, zoom;
+
+    // Limits
+    int32_t pan_min, pan_max;
+    int32_t tilt_min, tilt_max;
+    int32_t zoom_min, zoom_max;
+
+    // Reflex channels
+    reflex_channel_t ch_pan, ch_tilt, ch_zoom;
+
+    // Stats
+    uint64_t last_command_ns;
+    uint64_t total_commands;
+    uint64_t total_latency_ns;
+} reflex_obsbot_t;
+```
+
+#### `obsbot_stereo_t`
+```c
+typedef struct {
+    reflex_obsbot_t* left;
+    reflex_obsbot_t* right;
+    int32_t vergence_offset;    // Stereo convergence
+    int32_t baseline_mm;        // Physical separation
+} obsbot_stereo_t;
+```
+
+### Initialization
+
+#### `obsbot_init()`
+```c
+obsbot_error_t obsbot_init(reflex_obsbot_t* cam, const char* device);
+```
+Initialize camera from V4L2 device path.
+
+**Returns:** `OBSBOT_OK`, `OBSBOT_ERR_OPEN`, `OBSBOT_ERR_NO_PTZ`
+
+---
+
+#### `obsbot_close()`
+```c
+void obsbot_close(reflex_obsbot_t* cam);
+```
+
+---
+
+#### `obsbot_auto_detect()`
+```c
+int obsbot_auto_detect(reflex_obsbot_t* cameras, int max_cameras);
+```
+Scan /dev/video0-9 for PTZ cameras.
+
+**Returns:** Number found.
+
+### PTZ Control
+
+#### `obsbot_pan()` / `obsbot_tilt()` / `obsbot_zoom()`
+```c
+obsbot_error_t obsbot_pan(reflex_obsbot_t* cam, int32_t pan);
+obsbot_error_t obsbot_tilt(reflex_obsbot_t* cam, int32_t tilt);
+obsbot_error_t obsbot_zoom(reflex_obsbot_t* cam, int32_t zoom);
+```
+Set absolute position. Pan/tilt in arc-seconds.
+
+---
+
+#### `obsbot_pan_tilt()`
+```c
+obsbot_error_t obsbot_pan_tilt(reflex_obsbot_t* cam, int32_t pan, int32_t tilt);
+```
+
+---
+
+#### `obsbot_set_ptz()`
+```c
+obsbot_error_t obsbot_set_ptz(reflex_obsbot_t* cam,
+                               int32_t pan, int32_t tilt, int32_t zoom);
+```
+
+---
+
+#### `obsbot_home()`
+```c
+obsbot_error_t obsbot_home(reflex_obsbot_t* cam);
+```
+Return to center position.
+
+---
+
+#### `obsbot_look_deg()`
+```c
+obsbot_error_t obsbot_look_deg(reflex_obsbot_t* cam,
+                                float pan_deg, float tilt_deg);
+```
+Set position in degrees (convenience).
+
+---
+
+### Speed Control
+
+#### `obsbot_pan_speed()` / `obsbot_tilt_speed()`
+```c
+obsbot_error_t obsbot_pan_speed(reflex_obsbot_t* cam, int32_t speed);
+obsbot_error_t obsbot_tilt_speed(reflex_obsbot_t* cam, int32_t speed);
+```
+Continuous movement. Negative = left/down, positive = right/up, 0 = stop.
+
+---
+
+#### `obsbot_stop()`
+```c
+obsbot_error_t obsbot_stop(reflex_obsbot_t* cam);
+```
+Stop all movement.
+
+### Stereo Vision
+
+#### `obsbot_stereo_init()`
+```c
+obsbot_error_t obsbot_stereo_init(obsbot_stereo_t* stereo,
+                                   reflex_obsbot_t* left,
+                                   reflex_obsbot_t* right,
+                                   int32_t baseline_mm);
+```
+
+---
+
+#### `obsbot_stereo_look()`
+```c
+obsbot_error_t obsbot_stereo_look(obsbot_stereo_t* stereo,
+                                   int32_t pan, int32_t tilt,
+                                   int32_t distance_mm);
+```
+Point both cameras with automatic vergence based on target distance.
+
+---
+
+#### `obsbot_stereo_parallel()`
+```c
+obsbot_error_t obsbot_stereo_parallel(obsbot_stereo_t* stereo,
+                                       int32_t pan, int32_t tilt);
+```
+Both cameras same angle (infinite distance).
+
+### Entropy Field Integration
+
+#### `obsbot_track_entropy()`
+```c
+void obsbot_track_entropy(obsbot_stereo_t* stereo,
+                          reflex_entropy_field_t* field);
+```
+**Attention-driven gaze:** Cameras track the point of lowest entropy in the field.
+
+- Low entropy = high certainty = LOOK AT THIS
+- Zoom increases with focus (lower entropy)
+- Vergence adjusts with distance estimate
+
+---
+
+#### `obsbot_track_entropy_mono()`
+```c
+void obsbot_track_entropy_mono(reflex_obsbot_t* cam,
+                                reflex_entropy_field_t* field);
+```
+Single-camera version.
+
+### Statistics
+
+#### `obsbot_avg_latency_ns()`
+```c
+uint64_t obsbot_avg_latency_ns(reflex_obsbot_t* cam);
+```
+
+---
+
+#### `obsbot_print_stats()`
+```c
+void obsbot_print_stats(reflex_obsbot_t* cam);
+```
+
+### Diagnostics
+
+#### `obsbot_list_controls()`
+```c
+void obsbot_list_controls(reflex_obsbot_t* cam);
+```
+Print all V4L2 controls on device.
+
+---
+
+### Helper Macros
+
+```c
+#define DEG_TO_ARCSEC(deg)  ((int32_t)((deg) * 3600))
+#define ARCSEC_TO_DEG(as)   ((float)(as) / 3600.0f)
+```
+
+---
+
+### Example Usage
+
+```c
+#include "reflex_obsbot.h"
+
+// Initialize stereo cameras
+reflex_obsbot_t left, right;
+obsbot_init(&left, "/dev/video0");
+obsbot_init(&right, "/dev/video2");
+
+obsbot_stereo_t eyes;
+obsbot_stereo_init(&eyes, &left, &right, 150);  // 150mm baseline
+
+// Direct control
+obsbot_look_deg(&left, 30.0f, -10.0f);  // Look right and down
+
+// Entropy-driven attention
+reflex_entropy_field_t field;
+entropy_field_init(&field, 32, 32, 1000);
+// ... deposit entropy based on activity ...
+obsbot_track_entropy(&eyes, &field);  // Eyes follow attention
+```
+
+---
+
+### Test Tool
+
+```bash
+cd reflex-os/tools
+make
+./obsbot_test --scan      # Find cameras
+./obsbot_test --demo      # Interactive control
+./obsbot_test --latency   # Measure command latency
 ```
 
 ---
