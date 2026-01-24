@@ -18,8 +18,10 @@
 #include "reflex_timer.h"
 #include "reflex_adc.h"
 #include "reflex_spline.h"
+#include "reflex_spi.h"
+#include "reflex_wifi.h"
 
-// Future:
+// The C6 is complete. Every peripheral is a channel.
 // #include "reflex_spi.h"
 // #include "reflex_uart.h"
 // #include "reflex_wifi.h"

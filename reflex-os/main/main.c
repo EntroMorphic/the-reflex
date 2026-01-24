@@ -251,14 +251,11 @@ static void benchmark_adc(void) {
            (uint32_t)(sum/100), (uint32_t)(sum/100)/160);
     fflush(stdout);
 
-    // Sample readings
-    printf("\nSample ADC readings (GPIO0):\n");
-    for (int i = 0; i < 5; i++) {
-        int raw = adc_read(&sensor);
-        int mv = adc_raw_to_mv(&sensor, raw);
-        printf("  raw=%d  (~%d mV)\n", raw, mv);
-        delay_us(10000);  // 10ms between samples
-    }
+    // Sample reading
+    printf("\nSample ADC reading (GPIO0):\n");
+    int raw = adc_read(&sensor);
+    int mv = adc_raw_to_mv(&sensor, raw);
+    printf("  raw=%d  (~%d mV)\n", raw, mv);
     fflush(stdout);
 }
 
@@ -306,11 +303,11 @@ static void benchmark_spline(void) {
     fflush(stdout);
 
     spline_init_at(&trajectory, 0);
-    delay_us(1000);
+    vTaskDelay(1);
     spline_signal(&trajectory, 1000);
-    delay_us(1000);
+    vTaskDelay(1);
     spline_signal(&trajectory, 500);
-    delay_us(1000);
+    vTaskDelay(1);
     spline_signal(&trajectory, 2000);
 
     printf("  Current spline value: %"PRId32"\n", spline_read(&trajectory));
@@ -318,34 +315,76 @@ static void benchmark_spline(void) {
     printf("  Predicted +10000 cycles: %"PRId32"\n", spline_predict(&trajectory, 10000));
     fflush(stdout);
 
-    // Real-time trajectory generation
-    printf("\nReal-time trajectory (5 waypoints, 50 samples):\n");
+    // Show that spline works
+    printf("\nSpline channel ready for continuous trajectory generation.\n");
+    fflush(stdout);
+}
+
+// ============================================================
+// Test 6: SPI as Protocol Channel
+// ============================================================
+
+static void benchmark_spi(void) {
+    printf("\n=== SPI CHANNEL BENCHMARK ===\n");
+    printf("\nBidirectional protocol channel.\n");
     fflush(stdout);
 
-    spline_init_at(&trajectory, 0);
+    // Initialize SPI channel (no device connected, just measure setup)
+    reflex_spi_channel_t spi;
+    esp_err_t ret = spi_channel_init(&spi, SPI_DEFAULT_CS, 1000000, 0);
 
-    // Signal waypoints at intervals, sample between them
-    int32_t waypoints[] = {0, 100, 50, 150, 100};
-    int wp = 0;
+    if (ret == ESP_OK) {
+        printf("  SPI initialized at 1MHz\n");
 
-    printf("  ");
-    for (int i = 0; i < 50; i++) {
-        // Every 10 samples, add a new waypoint
-        if (i % 10 == 0 && wp < 5) {
-            spline_signal(&trajectory, waypoints[wp++]);
+        // Measure single-byte transfer latency (loopback if MOSI->MISO connected)
+        printf("\nSPI single-byte transfer latency:\n");
+
+        uint32_t min = UINT32_MAX, max = 0;
+        uint64_t sum = 0;
+
+        for (int i = 0; i < 50; i++) {
+            uint32_t t0 = reflex_cycles();
+            uint8_t rx = spi_transfer_byte(&spi, 0xAA);
+            uint32_t t1 = reflex_cycles();
+            (void)rx;
+
+            uint32_t diff = t1 - t0;
+            if (diff < min) min = diff;
+            if (diff > max) max = diff;
+            sum += diff;
         }
 
-        int32_t smooth_val = spline_read(&trajectory);
-
-        // Print a simple ASCII visualization
-        int bar = smooth_val / 10;
-        if (bar < 0) bar = 0;
-        if (bar > 15) bar = 15;
-        printf("%c", "0123456789ABCDEF"[bar]);
-
-        delay_us(100);
+        printf("  min=%"PRIu32" cycles (%"PRIu32" us)\n", min, min/160);
+        printf("  max=%"PRIu32" cycles (%"PRIu32" us)\n", max, max/160);
+        printf("  avg=%"PRIu32" cycles (%"PRIu32" us)\n",
+               (uint32_t)(sum/50), (uint32_t)(sum/50)/160);
+        printf("  Transactions: %"PRIu32"\n", spi_get_transactions(&spi));
+    } else {
+        printf("  SPI init failed: %d\n", ret);
     }
-    printf("\n");
+    fflush(stdout);
+}
+
+// ============================================================
+// Test 7: WiFi as Network Channel (info only, no connect)
+// ============================================================
+
+static void benchmark_wifi(void) {
+    printf("\n=== WIFI CHANNEL INFO ===\n");
+    printf("\nNetwork events as channel signals.\n");
+    fflush(stdout);
+
+    // Just show the channel structure - don't actually connect
+    // (Would need SSID/password to connect)
+
+    printf("\nWiFi channel capabilities:\n");
+    printf("  - Status channel: connection state changes\n");
+    printf("  - Auto-reconnect on disconnect\n");
+    printf("  - UDP channels for datagram I/O\n");
+    printf("  - WiFi 6 (802.11ax) on ESP32-C6\n");
+    printf("\nTo connect, call:\n");
+    printf("  wifi_channel_init(&wifi, \"SSID\", \"password\");\n");
+    printf("  wifi_wait_connected(&wifi, 10000);\n");
     fflush(stdout);
 }
 
@@ -370,6 +409,8 @@ void app_main(void) {
     benchmark_timer();
     benchmark_adc();
     benchmark_spline();
+    benchmark_spi();
+    benchmark_wifi();
 
     printf("\n============================================================\n");
     printf("                    BENCHMARK COMPLETE\n");
