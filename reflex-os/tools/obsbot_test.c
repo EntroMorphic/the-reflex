@@ -290,11 +290,11 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    // Initialize camera
+    // Initialize camera (with wake from USB suspend)
     reflex_obsbot_t cam;
 
     if (device) {
-        if (obsbot_init(&cam, device) != OBSBOT_OK) {
+        if (obsbot_init_wake(&cam, device) != OBSBOT_OK) {
             fprintf(stderr, "Failed to initialize %s\n", device);
             return 1;
         }
@@ -311,6 +311,9 @@ int main(int argc, char* argv[]) {
 
         cam = cameras[0];
         printf("Using: %s\n", cam.device_path);
+
+        // Wake camera from USB suspend
+        obsbot_wake(&cam);
 
         // Close others
         for (int i = 1; i < found; i++) {

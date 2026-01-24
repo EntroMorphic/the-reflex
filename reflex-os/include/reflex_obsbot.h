@@ -4,7 +4,7 @@
  * Sub-microsecond camera control integrated with entropy field attention.
  * The eyes of the Dreaming Swarm Cathedral.
  *
- * Hardware: OBSBOT Tiny (VID: 0x6e30, PID: 0xfef0)
+ * Hardware: OBSBOT Tiny (VID: 0x3564 or 0x6e30, PID: 0xfef0)
  * Interface: V4L2 UVC PTZ controls + USB fallback
  * Platform: Linux (Pi 4, Jetson Thor)
  *
@@ -231,6 +231,47 @@ static inline void obsbot_close(reflex_obsbot_t* cam) {
         cam->fd = -1;
     }
     cam->initialized = false;
+}
+
+/**
+ * Wake camera from USB suspend
+ *
+ * OBSBOT cameras enter low-power mode when not streaming.
+ * PTZ commands are accepted but not executed until camera wakes.
+ * This function requests a frame to wake the camera.
+ *
+ * @param cam   Camera to wake
+ * @return      OBSBOT_OK on success
+ */
+static inline obsbot_error_t obsbot_wake(reflex_obsbot_t* cam) {
+    if (!cam->initialized || cam->fd < 0) return OBSBOT_ERR_OPEN;
+
+    // Request streaming capability check - this wakes the camera
+    struct v4l2_capability cap;
+    if (ioctl(cam->fd, VIDIOC_QUERYCAP, &cap) < 0) {
+        return OBSBOT_ERR_IOCTL;
+    }
+
+    // Request a format query - further ensures camera is active
+    struct v4l2_format fmt;
+    memset(&fmt, 0, sizeof(fmt));
+    fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    ioctl(cam->fd, VIDIOC_G_FMT, &fmt);
+
+    // Small delay for camera to fully wake
+    usleep(100000);  // 100ms
+
+    printf("obsbot: camera woken from suspend\n");
+    return OBSBOT_OK;
+}
+
+/**
+ * Initialize and wake camera (convenience)
+ */
+static inline obsbot_error_t obsbot_init_wake(reflex_obsbot_t* cam, const char* device) {
+    obsbot_error_t err = obsbot_init(cam, device);
+    if (err != OBSBOT_OK) return err;
+    return obsbot_wake(cam);
 }
 
 // =============================================================================
