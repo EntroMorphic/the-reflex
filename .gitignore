@@ -1,0 +1,17 @@
+# Compiled binaries
+e3_latency
+e1_causality
+e1
+e2b
+e3
+*.o
+
+# Generated results
+*.csv
+
+# Editor
+*.swp
+*~
+
+# Jupyter
+.ipynb_checkpoints/
