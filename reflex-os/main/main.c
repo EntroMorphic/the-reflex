@@ -216,6 +216,140 @@ static void benchmark_timer(void) {
 }
 
 // ============================================================
+// Test 4: ADC as Channel
+// ============================================================
+
+static void benchmark_adc(void) {
+    printf("\n=== ADC CHANNEL BENCHMARK ===\n");
+    fflush(stdout);
+
+    // Initialize ADC channel on GPIO0 (ADC1_CH0)
+    reflex_adc_channel_t sensor;
+    adc_channel_init(&sensor, ADC_CHANNEL_0, ADC_ATTEN_DB_12);
+
+    printf("\nADC read latency (12-bit, full range):\n");
+    fflush(stdout);
+
+    uint32_t min = UINT32_MAX, max = 0;
+    uint64_t sum = 0;
+
+    for (int i = 0; i < 100; i++) {
+        uint32_t t0 = reflex_cycles();
+        int raw = adc_read(&sensor);
+        uint32_t t1 = reflex_cycles();
+        (void)raw;
+
+        uint32_t diff = t1 - t0;
+        if (diff < min) min = diff;
+        if (diff > max) max = diff;
+        sum += diff;
+    }
+
+    printf("  min=%"PRIu32" cycles (%"PRIu32" us)\n", min, min/160);
+    printf("  max=%"PRIu32" cycles (%"PRIu32" us)\n", max, max/160);
+    printf("  avg=%"PRIu32" cycles (%"PRIu32" us)\n",
+           (uint32_t)(sum/100), (uint32_t)(sum/100)/160);
+    fflush(stdout);
+
+    // Sample readings
+    printf("\nSample ADC readings (GPIO0):\n");
+    for (int i = 0; i < 5; i++) {
+        int raw = adc_read(&sensor);
+        int mv = adc_raw_to_mv(&sensor, raw);
+        printf("  raw=%d  (~%d mV)\n", raw, mv);
+        delay_us(10000);  // 10ms between samples
+    }
+    fflush(stdout);
+}
+
+// ============================================================
+// Test 5: Spline Channel (discrete to continuous)
+// ============================================================
+
+static void benchmark_spline(void) {
+    printf("\n=== SPLINE CHANNEL BENCHMARK ===\n");
+    printf("\nBridging discrete signals to continuous reality.\n");
+    fflush(stdout);
+
+    // Initialize spline channel
+    reflex_spline_channel_t trajectory;
+    spline_init_at(&trajectory, 0);
+
+    // Measure spline_read latency
+    printf("\nspline_read() latency:\n");
+    fflush(stdout);
+
+    uint32_t min = UINT32_MAX, max = 0;
+    uint64_t sum = 0;
+
+    for (int i = 0; i < 100; i++) {
+        uint32_t t0 = reflex_cycles();
+        volatile int32_t val = spline_read(&trajectory);
+        uint32_t t1 = reflex_cycles();
+        (void)val;
+
+        uint32_t diff = t1 - t0;
+        if (diff < min) min = diff;
+        if (diff > max) max = diff;
+        sum += diff;
+    }
+
+    printf("  min=%"PRIu32" cycles (%"PRIu32" ns)\n", min, reflex_cycles_to_ns(min));
+    printf("  max=%"PRIu32" cycles (%"PRIu32" ns)\n", max, reflex_cycles_to_ns(max));
+    printf("  avg=%"PRIu32" cycles (%"PRIu32" ns)\n",
+           (uint32_t)(sum/100), reflex_cycles_to_ns((uint32_t)(sum/100)));
+    fflush(stdout);
+
+    // Demonstrate interpolation
+    printf("\nSpline interpolation demo:\n");
+    printf("  Signaling control points: 0 -> 1000 -> 500 -> 2000\n");
+    fflush(stdout);
+
+    spline_init_at(&trajectory, 0);
+    delay_us(1000);
+    spline_signal(&trajectory, 1000);
+    delay_us(1000);
+    spline_signal(&trajectory, 500);
+    delay_us(1000);
+    spline_signal(&trajectory, 2000);
+
+    printf("  Current spline value: %"PRId32"\n", spline_read(&trajectory));
+    printf("  Velocity: %"PRId32" per 1000 cycles\n", spline_velocity(&trajectory));
+    printf("  Predicted +10000 cycles: %"PRId32"\n", spline_predict(&trajectory, 10000));
+    fflush(stdout);
+
+    // Real-time trajectory generation
+    printf("\nReal-time trajectory (5 waypoints, 50 samples):\n");
+    fflush(stdout);
+
+    spline_init_at(&trajectory, 0);
+
+    // Signal waypoints at intervals, sample between them
+    int32_t waypoints[] = {0, 100, 50, 150, 100};
+    int wp = 0;
+
+    printf("  ");
+    for (int i = 0; i < 50; i++) {
+        // Every 10 samples, add a new waypoint
+        if (i % 10 == 0 && wp < 5) {
+            spline_signal(&trajectory, waypoints[wp++]);
+        }
+
+        int32_t smooth_val = spline_read(&trajectory);
+
+        // Print a simple ASCII visualization
+        int bar = smooth_val / 10;
+        if (bar < 0) bar = 0;
+        if (bar > 15) bar = 15;
+        printf("%c", "0123456789ABCDEF"[bar]);
+
+        delay_us(100);
+    }
+    printf("\n");
+    fflush(stdout);
+}
+
+// ============================================================
 // Main Entry
 // ============================================================
 
@@ -234,6 +368,8 @@ void app_main(void) {
     benchmark_primitives();
     benchmark_gpio();
     benchmark_timer();
+    benchmark_adc();
+    benchmark_spline();
 
     printf("\n============================================================\n");
     printf("                    BENCHMARK COMPLETE\n");

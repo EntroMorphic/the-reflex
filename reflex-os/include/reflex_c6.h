@@ -16,9 +16,10 @@
 // Hardware channels
 #include "reflex_gpio.h"
 #include "reflex_timer.h"
+#include "reflex_adc.h"
+#include "reflex_spline.h"
 
 // Future:
-// #include "reflex_adc.h"
 // #include "reflex_spi.h"
 // #include "reflex_uart.h"
 // #include "reflex_wifi.h"
