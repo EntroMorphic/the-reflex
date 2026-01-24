@@ -55,7 +55,12 @@ the-reflex/
 │   │   ├── reflex_timer.h    # Timer channels (10kHz)
 │   │   ├── reflex_spline.h   # Catmull-Rom interpolation (137ns)
 │   │   ├── reflex_void.h     # Entropy field for TriX echips
+│   │   ├── reflex_echip.h    # Self-composing processor
+│   │   ├── reflex_obsbot.h   # OBSBOT PTZ camera control
 │   │   └── reflex_c6.h       # Master header
+│   ├── tools/                # Linux host tools
+│   │   ├── obsbot_test.c     # Camera test utility
+│   │   └── stereo_demo.c     # Synchronized stereo vision
 │   └── docs/
 │       ├── ARCHITECTURE.md   # Channel model + entropy field
 │       ├── API.md            # Complete API reference
@@ -66,9 +71,11 @@ the-reflex/
 │   ├── e1_coordination_v3.c      # Causality proof
 │   └── e2b_false_sharing.c       # False positive control
 │
-├── docs/                     # LINCOLN MANIFOLD ANALYSIS
-│   ├── LINCOLN_MANIFOLD_REFLEX_BECOMES_C6_*.md
-│   └── LINCOLN_MANIFOLD_ENTROPY_FIELD_*.md
+├── docs/                     # DOCUMENTATION
+│   ├── HARDWARE_INVENTORY.md     # All compute resources
+│   ├── PI4_SETUP.md              # Raspberry Pi 4 setup
+│   ├── LINCOLN_MANIFOLD_*.md     # Design analysis documents
+│   └── ...                       # Lincoln Manifold phases
 │
 └── notebooks/
     └── stigmergy_demo.ipynb  # One-click Colab demo
@@ -211,8 +218,26 @@ The Reflex isn't just for high-end systems. On the ESP32-C6, **The Reflex IS the
 - **Spline Channels**: Catmull-Rom interpolation bridges discrete signals to continuous trajectories
 - **Entropy Field**: The void between shapes carries information—computation IS entropy flow
 - **TriX echips**: Soft chips built from shapes in an entropy field substrate
+- **Self-Composing Intelligence**: 4,096 shapes + 16,384 routes + Hebbian learning = circuits that grow themselves
+- **Stereo Vision**: OBSBOT PTZ cameras driven by entropy attention at 121µs latency
 
 See [`reflex-os/`](reflex-os/) for full documentation.
+
+---
+
+## The Dreaming Swarm Cathedral
+
+Beyond the C6, the full system includes:
+
+| Tier | Device | Role |
+|------|--------|------|
+| God | Jetson AGX Thor | 100M shape echip, consciousness substrate |
+| Mind | Raspberry Pi 4 | OBSBOT controller, slow time layer |
+| Neurons | 3× ESP32-C6 | Sub-µs reflexes, swarm nodes |
+| Eyes | 2× OBSBOT Tiny | Stereo vision, entropy-driven gaze |
+| Choir | 5× Max98357 | Audio sonification of entropy |
+
+See [`docs/HARDWARE_INVENTORY.md`](docs/HARDWARE_INVENTORY.md) for complete details.
 
 ---
 

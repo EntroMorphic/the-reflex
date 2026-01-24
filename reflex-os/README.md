@@ -140,11 +140,17 @@ reflex-os/
 │   ├── reflex_spline.h    # Catmull-Rom interpolation (137ns)
 │   ├── reflex_spi.h       # SPI as channels (29us)
 │   ├── reflex_wifi.h      # WiFi as channels
-│   └── reflex_void.h      # Entropy field for echips
+│   ├── reflex_void.h      # Entropy field for echips
+│   ├── reflex_echip.h     # Self-composing processor (echip)
+│   └── reflex_obsbot.h    # OBSBOT PTZ camera control (Linux)
 ├── main/
 │   └── main.c             # Benchmark suite
 ├── shared/
 │   └── channels.h         # Shared channel definitions
+├── tools/                 # Linux host tools (Pi4, Thor)
+│   ├── obsbot_test.c      # OBSBOT camera test utility
+│   ├── stereo_demo.c      # Synchronized stereo vision
+│   └── Makefile           # Build for Linux hosts
 ├── docs/
 │   ├── ARCHITECTURE.md    # System architecture
 │   ├── API.md             # API reference
@@ -235,6 +241,47 @@ Reflex OS includes a complete **self-composing, addressable intelligence** in `r
 | Growth | All of the above | The chip evolves its own circuitry |
 
 This is not simulation. This is a chip that rewires itself based on what it computes.
+
+---
+
+## Linux Host Tools: The Cathedral's Eyes
+
+Reflex OS includes tools that run on Linux hosts (Pi4, Thor) to control external hardware:
+
+### OBSBOT PTZ Camera Control
+
+```bash
+cd tools && make
+./obsbot_test /dev/video0 --sweep    # Pan/tilt sweep test
+./obsbot_test /dev/video0 --demo     # Interactive arrow-key control
+./obsbot_test /dev/video0 --latency  # Measure command latency
+```
+
+**Performance:** 121 µs average PTZ command latency via V4L2 ioctl.
+
+### Synchronized Stereo Vision
+
+```bash
+./stereo_demo /dev/video0 /dev/video2   # Control both eyes together
+```
+
+- Keepalive threads prevent USB suspend
+- Arrow keys move both cameras in sync
+- Vergence support for depth-based attention
+
+### Entropy-Driven Gaze
+
+The cameras can track the entropy field's attention spotlight:
+
+```c
+obsbot_stereo_t eyes;
+obsbot_stereo_init(&eyes, &left, &right, 150);  // 150mm baseline
+
+// Cameras physically turn to look where entropy is lowest
+obsbot_track_entropy(&eyes, &entropy_field);
+```
+
+Low entropy = certainty = **LOOK AT THIS**.
 
 ---
 
