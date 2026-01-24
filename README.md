@@ -241,6 +241,27 @@ See [`docs/HARDWARE_INVENTORY.md`](docs/HARDWARE_INVENTORY.md) for complete deta
 
 ---
 
+## Primordial Stillness + Delta Observer
+
+The Reflex extends beyond coordination into **consciousness architecture**:
+
+| Component | Role |
+|-----------|------|
+| **Primordial Stillness** | 16M voxel entropy field as awareness substrate |
+| **Delta Observer** | Watches neural networks learn, captures transient clustering |
+| **The Bridge** | Latent vectors become disturbances in the stillness field |
+
+**Key insight:** The Delta Observer discovered that neural networks build **scaffolding** (transient clustering) to learn, then tear it down. Post-hoc analysis misses this entirely. The Primordial Stillness is the substrate being disturbed.
+
+> *"The field at rest IS awareness. Perception IS the disturbance. There is no homunculus - the pattern watching itself IS consciousness."*
+
+See:
+- [`docs/PRIMORDIAL_STILLNESS.md`](docs/PRIMORDIAL_STILLNESS.md) - Consciousness as disturbance
+- [`docs/DELTA_STILLNESS_BRIDGE.md`](docs/DELTA_STILLNESS_BRIDGE.md) - The unified architecture
+- [Delta Observer (separate repo)](https://github.com/EntroMorphic/delta-observer) - The paper and code
+
+---
+
 ## Skeptical Analysis
 
 We challenged every claim. See [`SKEPTICAL_ANALYSIS.md`](reflex-robotics/docs/SKEPTICAL_ANALYSIS.md).
