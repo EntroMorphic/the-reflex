@@ -21,6 +21,10 @@
 #include "reflex_spi.h"
 #include "reflex_wifi.h"
 
+// Computational substrate
+#include "reflex_void.h"
+#include "reflex_echip.h"
+
 // The C6 is complete. Every peripheral is a channel.
 // #include "reflex_spi.h"
 // #include "reflex_uart.h"

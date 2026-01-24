@@ -321,7 +321,166 @@ static void benchmark_spline(void) {
 }
 
 // ============================================================
-// Test 6: SPI as Protocol Channel
+// Test 6: Entropy Field (The Void Between Shapes)
+// ============================================================
+
+static uint32_t crystallization_count = 0;
+
+static void on_crystallize(reflex_entropy_field_t* field,
+                            uint16_t x, uint16_t y,
+                            uint32_t entropy) {
+    (void)field;
+    crystallization_count++;
+    printf("  CRYSTALLIZE at (%d,%d) with entropy %"PRIu32"\n", x, y, entropy);
+}
+
+static void benchmark_entropy_field(void) {
+    printf("\n=== ENTROPY FIELD (THE VOID) ===\n");
+    printf("\nEntropy as structure. The space between shapes IS information.\n");
+    fflush(stdout);
+
+    // Create a small entropy field (8x8 = 64 cells, fits in cache)
+    reflex_entropy_field_t field;
+    uint32_t capacity = 10000;  // Crystallization threshold
+    bool ok = entropy_field_init(&field, 8, 8, capacity);
+
+    if (!ok) {
+        printf("  ERROR: Failed to allocate entropy field\n");
+        return;
+    }
+
+    printf("\nEntropy field initialized: 8x8 cells, capacity=%"PRIu32"\n", capacity);
+    fflush(stdout);
+
+    // Measure entropy_deposit latency
+    printf("\nentropy_deposit() latency:\n");
+    uint32_t min = UINT32_MAX, max = 0;
+    uint64_t sum = 0;
+
+    for (int i = 0; i < 100; i++) {
+        uint32_t t0 = reflex_cycles();
+        entropy_deposit(&field, 4, 4, 100);  // Deposit at center
+        uint32_t t1 = reflex_cycles();
+
+        uint32_t diff = t1 - t0;
+        if (diff < min) min = diff;
+        if (diff > max) max = diff;
+        sum += diff;
+    }
+
+    printf("  min=%"PRIu32" cycles (%"PRIu32" ns)\n", min, reflex_cycles_to_ns(min));
+    printf("  max=%"PRIu32" cycles (%"PRIu32" ns)\n", max, reflex_cycles_to_ns(max));
+    printf("  avg=%"PRIu32" cycles (%"PRIu32" ns)\n",
+           (uint32_t)(sum/100), reflex_cycles_to_ns((uint32_t)(sum/100)));
+    fflush(stdout);
+
+    // Reset field for demo
+    entropy_field_free(&field);
+    entropy_field_init(&field, 8, 8, capacity);
+
+    // Measure field tick latency
+    printf("\nentropy_field_tick() latency (8x8 = 64 cells):\n");
+    min = UINT32_MAX; max = 0; sum = 0;
+
+    for (int i = 0; i < 50; i++) {
+        uint32_t t0 = reflex_cycles();
+        entropy_field_tick(&field);
+        uint32_t t1 = reflex_cycles();
+
+        uint32_t diff = t1 - t0;
+        if (diff < min) min = diff;
+        if (diff > max) max = diff;
+        sum += diff;
+    }
+
+    printf("  min=%"PRIu32" cycles (%"PRIu32" us)\n", min, min/160);
+    printf("  max=%"PRIu32" cycles (%"PRIu32" us)\n", max, max/160);
+    printf("  avg=%"PRIu32" cycles (%"PRIu32" us)\n",
+           (uint32_t)(sum/50), (uint32_t)(sum/50)/160);
+    printf("  per-cell avg=%"PRIu32" cycles (%"PRIu32" ns)\n",
+           (uint32_t)(sum/50/64), reflex_cycles_to_ns((uint32_t)(sum/50/64)));
+    fflush(stdout);
+
+    // Demonstrate stigmergy: deposit entropy, let it diffuse, watch crystallization
+    printf("\nStigmergy demonstration:\n");
+    printf("  Depositing high entropy at corners, letting field evolve...\n");
+    fflush(stdout);
+
+    // Reset field
+    entropy_field_free(&field);
+    entropy_field_init(&field, 8, 8, capacity);
+    field.diffusion_rate = 256;  // 25% diffusion for faster demo
+
+    // Deposit entropy at corners (like pheromone trails)
+    stigmergy_write(&field, 0, 0, capacity / 2);
+    stigmergy_write(&field, 7, 0, capacity / 2);
+    stigmergy_write(&field, 0, 7, capacity / 2);
+    stigmergy_write(&field, 7, 7, capacity / 2);
+
+    printf("  Initial total entropy: %"PRIu32"\n", field.total_entropy);
+
+    // Evolve field and visualize
+    printf("\n  Field evolution (10 ticks):\n");
+    for (int tick = 0; tick < 10; tick++) {
+        entropy_field_tick(&field);
+
+        // Print field state
+        printf("  Tick %d: total=%"PRIu32"  ", tick + 1, field.total_entropy);
+        for (int y = 0; y < 8; y++) {
+            for (int x = 0; x < 8; x++) {
+                reflex_void_cell_t* cell = field_cell(&field, x, y);
+                printf("%c", entropy_level_char(cell->entropy, capacity));
+            }
+        }
+        printf("\n");
+    }
+    fflush(stdout);
+
+    // Sense gradient at center
+    printf("\n  Gradient at center (4,4):\n");
+    stigmergy_sense_t sense = stigmergy_read(&field, 4, 4);
+    printf("    entropy: %"PRIu32"\n", sense.entropy);
+    printf("    gradient: (%d, %d)\n", sense.gradient_x, sense.gradient_y);
+    int8_t dir = stigmergy_follow(&field, 4, 4, true);
+    const char* dir_names[] = {"North", "East", "South", "West"};
+    printf("    toward high entropy: %s\n", dir >= 0 ? dir_names[dir] : "flat");
+    fflush(stdout);
+
+    // Demonstrate crystallization
+    printf("\n  Crystallization test:\n");
+    printf("  Depositing critical entropy at (3,3)...\n");
+    entropy_deposit(&field, 3, 3, capacity * 2);  // Exceed capacity
+
+    crystallization_count = 0;
+    uint32_t crystals = entropy_field_crystallize(&field, on_crystallize);
+    printf("  Crystallizations triggered: %"PRIu32"\n", crystals);
+    fflush(stdout);
+
+    // Entropic channel test
+    printf("\n  Entropic channel (silence = entropy):\n");
+    reflex_entropic_channel_t ech;
+    entropic_init(&ech, 100000);  // Crystallizes after ~100k cycles of silence
+
+    printf("    Initial entropy: %"PRIu32"\n", ech.entropy);
+    printf("    Waiting...\n");
+    vTaskDelay(1);  // ~1ms of silence
+    entropic_update(&ech);
+    printf("    After 1ms silence: entropy=%"PRIu32" level=%"PRIu32"/1024\n",
+           ech.entropy, entropic_level(&ech));
+
+    entropic_signal(&ech, 42);  // Signal collapses the void
+    printf("    After signal: entropy=%"PRIu32" (collapsed)\n", ech.entropy);
+    fflush(stdout);
+
+    // Cleanup
+    entropy_field_free(&field);
+
+    printf("\nThe void is ready. Entropy IS the computation.\n");
+    fflush(stdout);
+}
+
+// ============================================================
+// Test 7: SPI as Protocol Channel
 // ============================================================
 
 static void benchmark_spi(void) {
@@ -366,7 +525,181 @@ static void benchmark_spi(void) {
 }
 
 // ============================================================
-// Test 7: WiFi as Network Channel (info only, no connect)
+// Test 8: Self-Reconfiguring Soft Processor (echip)
+// ============================================================
+
+static void demo_echip(void) {
+    printf("\n=== SELF-RECONFIGURING SOFT PROCESSOR ===\n");
+    printf("\nThe chip that watches itself think and rewires accordingly.\n");
+    fflush(stdout);
+
+    // Create a small echip
+    echip_t chip;
+    if (!echip_init(&chip, 64, 128, 8)) {
+        printf("  ERROR: Failed to initialize echip\n");
+        return;
+    }
+
+    // Allocate I/O
+    echip_alloc_io(&chip, 2, 1);
+
+    printf("\nCreating initial shapes...\n");
+    fflush(stdout);
+
+    // Create a simple circuit: 2 inputs → NAND → LATCH → output
+    //
+    //   INPUT[0] ──┐
+    //              ├──► NAND ──► LATCH ──► OUTPUT
+    //   INPUT[1] ──┘       ↑
+    //                      │
+    //                   (enable from oscillator)
+
+    uint16_t in0 = echip_create_shape(&chip, SHAPE_INPUT, 0, 4);
+    uint16_t in1 = echip_create_shape(&chip, SHAPE_INPUT, 0, 6);
+    uint16_t nand = echip_create_shape(&chip, SHAPE_NAND, 2, 5);
+    uint16_t latch = echip_create_shape(&chip, SHAPE_LATCH, 4, 5);
+    uint16_t osc = echip_create_shape(&chip, SHAPE_OSCILLATOR, 3, 7);
+    uint16_t out = echip_create_shape(&chip, SHAPE_OUTPUT, 6, 5);
+
+    // Set oscillator period
+    frozen_shape_t* osc_shape = echip_find_shape(&chip, osc);
+    if (osc_shape) osc_shape->threshold = 5;  // Toggle every 5 ticks
+
+    printf("  Created %d shapes: IN0(%d) IN1(%d) NAND(%d) LATCH(%d) OSC(%d) OUT(%d)\n",
+           chip.num_shapes, in0, in1, nand, latch, osc, out);
+    fflush(stdout);
+
+    printf("\nCreating routes...\n");
+    fflush(stdout);
+
+    // Route: in0 → nand.a
+    int r1 = echip_create_route(&chip, in0, 0, nand, 0, WEIGHT_SCALE);
+    // Route: in1 → nand.b
+    int r2 = echip_create_route(&chip, in1, 0, nand, 1, WEIGHT_SCALE);
+    // Route: nand → latch.data
+    int r3 = echip_create_route(&chip, nand, 0, latch, 0, WEIGHT_SCALE);
+    // Route: osc → latch.enable
+    int r4 = echip_create_route(&chip, osc, 0, latch, 1, WEIGHT_SCALE);
+    // Route: latch → output
+    int r5 = echip_create_route(&chip, latch, 0, out, 0, WEIGHT_SCALE);
+
+    printf("  Created %d routes: r1(%d) r2(%d) r3(%d) r4(%d) r5(%d)\n",
+           chip.num_routes, r1, r2, r3, r4, r5);
+    fflush(stdout);
+
+    // Measure tick latency
+    printf("\nechip_tick() latency:\n");
+    uint32_t min = UINT32_MAX, max = 0;
+    uint64_t sum = 0;
+
+    for (int i = 0; i < 50; i++) {
+        uint32_t t0 = reflex_cycles();
+        echip_tick(&chip);
+        uint32_t t1 = reflex_cycles();
+
+        uint32_t diff = t1 - t0;
+        if (diff < min) min = diff;
+        if (diff > max) max = diff;
+        sum += diff;
+    }
+
+    printf("  min=%"PRIu32" cycles (%"PRIu32" us)\n", min, min/160);
+    printf("  max=%"PRIu32" cycles (%"PRIu32" us)\n", max, max/160);
+    printf("  avg=%"PRIu32" cycles (%"PRIu32" us)\n",
+           (uint32_t)(sum/50), (uint32_t)(sum/50)/160);
+    fflush(stdout);
+
+    // Run the circuit with different inputs
+    printf("\nRunning circuit simulation...\n");
+    printf("  Truth table test (NAND):\n");
+    fflush(stdout);
+
+    int16_t test_inputs[4][2] = {
+        {0, 0},
+        {0, WEIGHT_SCALE},
+        {WEIGHT_SCALE, 0},
+        {WEIGHT_SCALE, WEIGHT_SCALE}
+    };
+
+    for (int t = 0; t < 4; t++) {
+        chip.ext_inputs[0] = test_inputs[t][0];
+        chip.ext_inputs[1] = test_inputs[t][1];
+
+        // Run enough ticks for signal to propagate and latch to update
+        for (int i = 0; i < 20; i++) {
+            echip_tick(&chip);
+        }
+
+        int in_a = test_inputs[t][0] > 0 ? 1 : 0;
+        int in_b = test_inputs[t][1] > 0 ? 1 : 0;
+        int out_val = chip.ext_outputs[0] > 0 ? 1 : 0;
+        printf("    NAND(%d, %d) → %d\n", in_a, in_b, out_val);
+    }
+    fflush(stdout);
+
+    // Show Hebbian learning in action
+    printf("\nHebbian learning demonstration:\n");
+    fflush(stdout);
+
+    // Record initial weights
+    printf("  Initial route weights:\n");
+    for (int i = 0; i < 5; i++) {
+        printf("    Route %d: weight=%d activity=%d\n",
+               i, chip.routes[i].weight, chip.routes[i].activity);
+    }
+
+    // Run with consistent input pattern to strengthen certain routes
+    chip.ext_inputs[0] = WEIGHT_SCALE;
+    chip.ext_inputs[1] = WEIGHT_SCALE;
+
+    for (int i = 0; i < 100; i++) {
+        echip_tick(&chip);
+    }
+
+    printf("  After 100 ticks with inputs (1,1):\n");
+    for (int i = 0; i < 5; i++) {
+        printf("    Route %d: weight=%d activity=%d state=%d\n",
+               i, chip.routes[i].weight, chip.routes[i].activity,
+               chip.routes[i].state);
+    }
+    fflush(stdout);
+
+    // Get stats
+    echip_stats_t stats = echip_get_stats(&chip);
+    printf("\nChip statistics:\n");
+    printf("  Shapes: %d (created: %"PRIu32", dissolved: %"PRIu32")\n",
+           stats.num_shapes, stats.shapes_created, stats.shapes_dissolved);
+    printf("  Routes: %d (created: %"PRIu32", dissolved: %"PRIu32")\n",
+           stats.num_routes, stats.routes_created, stats.routes_dissolved);
+    printf("  Signals propagated: %"PRIu32"\n", stats.signals_propagated);
+    printf("  Total entropy: %"PRIu32"\n", stats.total_entropy);
+    printf("  Ticks: %"PRIu64"\n", stats.tick);
+    fflush(stdout);
+
+    // Demonstrate crystallization potential
+    printf("\nEntropy field state:\n");
+    for (int y = 0; y < 8; y++) {
+        printf("  ");
+        for (int x = 0; x < 8; x++) {
+            reflex_void_cell_t* cell = field_cell(&chip.field, x, y);
+            printf("%c", entropy_cell_char(cell));
+        }
+        printf("\n");
+    }
+    fflush(stdout);
+
+    // Cleanup
+    free(chip.ext_inputs);
+    free(chip.ext_outputs);
+    echip_free(&chip);
+
+    printf("\nThe self-reconfiguring processor is alive.\n");
+    printf("It watches. It learns. It grows.\n");
+    fflush(stdout);
+}
+
+// ============================================================
+// Test 9: WiFi as Network Channel
 // ============================================================
 
 static void benchmark_wifi(void) {
@@ -375,9 +708,8 @@ static void benchmark_wifi(void) {
     fflush(stdout);
 
     reflex_wifi_channel_t wifi;
-    // Set your WiFi credentials here
-    const char* ssid = "YOUR_SSID";
-    const char* pass = "YOUR_PASSWORD";
+    const char* ssid = "NETGEAR90";
+    const char* pass = "unusualsocks3840";
     esp_err_t ret = wifi_channel_init(&wifi, ssid, pass);
 
     if (ret != ESP_OK) {
@@ -431,7 +763,9 @@ void app_main(void) {
     benchmark_timer();
     benchmark_adc();
     benchmark_spline();
+    benchmark_entropy_field();
     benchmark_spi();
+    demo_echip();
     benchmark_wifi();
 
     printf("\n============================================================\n");

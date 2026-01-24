@@ -38,7 +38,7 @@ Sensor (Core 0) ──→ Controller (Core 1) ──→ Actuator (Core 2)
 
 ```
 the-reflex/
-├── reflex-robotics/          # 10kHz CONTROL LOOP (the application)
+├── reflex-robotics/          # 10kHz CONTROL LOOP (Jetson Thor)
 │   ├── src/
 │   │   ├── reflex.h          # Core coordination primitive
 │   │   └── control_loop.c    # Sensor→Controller→Actuator demo
@@ -48,10 +48,27 @@ the-reflex/
 │   └── scripts/
 │       └── setup_rt_host.sh  # RT configuration
 │
+├── reflex-os/                # THE REFLEX BECOMES THE ESP32-C6
+│   ├── include/
+│   │   ├── reflex.h          # Core primitive (50 lines)
+│   │   ├── reflex_gpio.h     # GPIO channels (12ns)
+│   │   ├── reflex_timer.h    # Timer channels (10kHz)
+│   │   ├── reflex_spline.h   # Catmull-Rom interpolation (137ns)
+│   │   ├── reflex_void.h     # Entropy field for TriX echips
+│   │   └── reflex_c6.h       # Master header
+│   └── docs/
+│       ├── ARCHITECTURE.md   # Channel model + entropy field
+│       ├── API.md            # Complete API reference
+│       └── BENCHMARKS.md     # Performance measurements
+│
 ├── src/                      # RESEARCH EXPERIMENTS (the science)
 │   ├── e3_latency_comparison.c   # Stigmergy vs Futex benchmark
 │   ├── e1_coordination_v3.c      # Causality proof
 │   └── e2b_false_sharing.c       # False positive control
+│
+├── docs/                     # LINCOLN MANIFOLD ANALYSIS
+│   ├── LINCOLN_MANIFOLD_REFLEX_BECOMES_C6_*.md
+│   └── LINCOLN_MANIFOLD_ENTROPY_FIELD_*.md
 │
 └── notebooks/
     └── stigmergy_demo.ipynb  # One-click Colab demo
@@ -172,8 +189,30 @@ The hardware already maintains cache coherency. We're just using it.
 | Platform | Architecture | E3 Latency | 10kHz Control |
 |----------|--------------|------------|---------------|
 | **Jetson AGX Thor** | 14-core ARM | 297 ns | ✅ 926ns P99 |
+| **ESP32-C6** | RISC-V | 118 ns | ✅ 10kHz verified |
 | Raspberry Pi 4 | 4-core ARM | 167 ns | ✅ (untested) |
 | x86_64 Linux | Intel/AMD | ✅ works | ⚠️ (no isolcpus test) |
+
+---
+
+## The Reflex Becomes the ESP32-C6
+
+The Reflex isn't just for high-end systems. On the ESP32-C6, **The Reflex IS the operating system**:
+
+| Primitive | Latency | Notes |
+|-----------|---------|-------|
+| `gpio_write()` | **12 ns** | Direct register, 2 cycles |
+| `reflex_signal()` | **118 ns** | Core primitive |
+| `spline_read()` | **137 ns** | Catmull-Rom interpolation |
+| `entropy_deposit()` | **~125 ns** | Stigmergy write |
+
+### Key Innovations
+
+- **Spline Channels**: Catmull-Rom interpolation bridges discrete signals to continuous trajectories
+- **Entropy Field**: The void between shapes carries information—computation IS entropy flow
+- **TriX echips**: Soft chips built from shapes in an entropy field substrate
+
+See [`reflex-os/`](reflex-os/) for full documentation.
 
 ---
 
