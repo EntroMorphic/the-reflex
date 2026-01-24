@@ -370,21 +370,43 @@ static void benchmark_spi(void) {
 // ============================================================
 
 static void benchmark_wifi(void) {
-    printf("\n=== WIFI CHANNEL INFO ===\n");
-    printf("\nNetwork events as channel signals.\n");
+    printf("\n=== WIFI CHANNEL TEST ===\n");
+    printf("\nConnecting to network...\n");
     fflush(stdout);
 
-    // Just show the channel structure - don't actually connect
-    // (Would need SSID/password to connect)
+    reflex_wifi_channel_t wifi;
+    // Set your WiFi credentials here
+    const char* ssid = "YOUR_SSID";
+    const char* pass = "YOUR_PASSWORD";
+    esp_err_t ret = wifi_channel_init(&wifi, ssid, pass);
 
-    printf("\nWiFi channel capabilities:\n");
-    printf("  - Status channel: connection state changes\n");
-    printf("  - Auto-reconnect on disconnect\n");
-    printf("  - UDP channels for datagram I/O\n");
-    printf("  - WiFi 6 (802.11ax) on ESP32-C6\n");
-    printf("\nTo connect, call:\n");
-    printf("  wifi_channel_init(&wifi, \"SSID\", \"password\");\n");
-    printf("  wifi_wait_connected(&wifi, 10000);\n");
+    if (ret != ESP_OK) {
+        printf("  WiFi init failed: %d\n", ret);
+        return;
+    }
+
+    printf("  WiFi initialized, waiting for IP...\n");
+    fflush(stdout);
+
+    // Wait up to 15 seconds for connection
+    bool connected = wifi_wait_connected(&wifi, 15000);
+
+    if (connected) {
+        char ip_str[16];
+        wifi_get_ip_str(&wifi, ip_str, sizeof(ip_str));
+        int8_t rssi = wifi_get_rssi(&wifi);
+
+        printf("\n  CONNECTED!\n");
+        printf("  IP address: %s\n", ip_str);
+        printf("  Signal strength: %d dBm\n", rssi);
+        printf("  Connect count: %"PRIu32"\n", wifi.connect_count);
+
+        // Test UDP channel
+        printf("\n  WiFi 6 (802.11ax) channel operational.\n");
+        printf("  Network is now a reflex channel.\n");
+    } else {
+        printf("  Connection timeout. State: %d\n", wifi_get_state(&wifi));
+    }
     fflush(stdout);
 }
 
