@@ -61,12 +61,12 @@ def log_packet(pkt):
     rr.log("layers/fast", rr.BarChart(pkt['fast_scores']))
 
     # Chosen output as scalar
-    rr.log("decision/output", rr.Scalar(pkt['chosen_output']))
-    rr.log("decision/state", rr.Scalar(pkt['chosen_state']))
+    rr.log("decision/output", rr.Scalars(pkt['chosen_output']))
+    rr.log("decision/state", rr.Scalars(pkt['chosen_state']))
 
     # Agreement/disagreement
-    rr.log("consensus/agreement", rr.Scalar(pkt['agreement']))
-    rr.log("consensus/disagreement", rr.Scalar(pkt['disagreement']))
+    rr.log("consensus/agreement", rr.Scalars(pkt['agreement']))
+    rr.log("consensus/disagreement", rr.Scalars(pkt['disagreement']))
 
     # ADC deltas as bar chart
     rr.log("observation/adc_deltas", rr.BarChart(pkt['adc_deltas']))
@@ -144,7 +144,7 @@ def main():
                 pkt = parse_packet(pkt_data)
 
                 if pkt:
-                    rr.set_time_sequence("tick", pkt['tick'])
+                    rr.set_time("tick", sequence=pkt['tick'])
                     log_packet(pkt)
                     packet_count += 1
 
