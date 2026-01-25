@@ -15,6 +15,7 @@
 #include "reflex_timer.h"
 #include "reflex_layers.h"
 #include "reflex_stream.h"
+#include "reflex_crystal.h"
 
 // Tick timer - bare metal
 static reflex_timer_channel_t tick_timer;
@@ -46,6 +47,9 @@ void layers_init(void) {
 
     // Initialize memory
     lmem_init(&state.memory);
+
+    // Initialize crystals (loads from NVS)
+    crystal_init();
 
     // Initialize temperature
     temp_init();
@@ -236,11 +240,25 @@ void layers_tick(void) {
         layer_update(&state.layers[l], state.chosen_output, deltas);
     }
 
-    // 12. Push to memory
+    // 12. Try to crystallize strong correlations (use slow layer stats)
+    layer_t* slow = &state.layers[0];
+    for (int i = 0; i < NUM_INPUTS; i++) {
+        crystal_try(state.chosen_output, i,
+                    slow->ema[state.chosen_output][i],
+                    slow->var[state.chosen_output][i],
+                    state.output_counts[state.chosen_output]);
+    }
+
+    // 13. Save crystals periodically (every 100 ticks)
+    if (state.tick % 100 == 0) {
+        crystal_save();
+    }
+
+    // 14. Push to memory
     lmem_push(&state.memory, state.chosen_output, state.chosen_state,
              deltas, state.tick);
 
-    // 13. Blink LED
+    // 15. Blink LED
     if (state.tick % 5 == 0) {
         gpio_toggle(PIN_LED);
     }
@@ -270,7 +288,9 @@ void print_stats(void) {
         }
         printf("\n");
     }
-    printf("\n");
+
+    // Print crystallized knowledge
+    crystal_print_all();
 }
 
 // ============================================================
