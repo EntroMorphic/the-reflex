@@ -22,7 +22,7 @@
 static reflex_timer_channel_t tick_timer;
 
 // Stream mode: 0=text trace, 1=binary stream
-#define STREAM_MODE 0
+#define STREAM_MODE 1
 
 static const char* TAG = "LAYERS";
 
@@ -265,9 +265,9 @@ void layers_tick(void) {
     }
 #endif
 
-    // 13. Update all layers
+    // 13. Update all layers (pass direction for correlation normalization)
     for (int l = 0; l < NUM_LAYERS; l++) {
-        layer_update(&state.layers[l], state.chosen_output, deltas);
+        layer_update(&state.layers[l], state.chosen_output, deltas, state.chosen_state);
     }
 
     // 14. Try to crystallize strong correlations (use slow layer stats)

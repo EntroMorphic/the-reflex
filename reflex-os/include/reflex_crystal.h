@@ -12,6 +12,8 @@
 #include <stdbool.h>
 #include <string.h>
 #include <math.h>
+#include <inttypes.h>
+#include <stdio.h>
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "esp_log.h"
@@ -25,7 +27,7 @@ extern "C" {
 // ============================================================
 
 #define MAX_CRYSTALS        32
-#define CRYSTAL_THRESHOLD   0.8f    // Confidence threshold
+#define CRYSTAL_THRESHOLD   0.5f    // Confidence threshold (was 0.8, too strict)
 #define CRYSTAL_NVS_NS      "reflex"
 #define CRYSTAL_NVS_KEY     "crystals"
 
@@ -158,6 +160,7 @@ static inline bool crystal_try(uint8_t output, uint8_t input,
 
     // Check confidence
     float conf = crystal_confidence(mean, var, count);
+
     if (conf < CRYSTAL_THRESHOLD) {
         return false;  // Not confident enough
     }

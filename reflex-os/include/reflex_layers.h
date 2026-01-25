@@ -197,9 +197,13 @@ static inline void layer_analyze(layer_t* l, layered_state_t* state) {
     }
 }
 
-static inline void layer_update(layer_t* l, uint8_t output, int16_t* deltas) {
+static inline void layer_update(layer_t* l, uint8_t output, int16_t* deltas, uint8_t went_high) {
+    // Normalize deltas by direction: if we went LOW, negate deltas
+    // This way consistent correlations always have the same sign
+    float direction = went_high ? 1.0f : -1.0f;
+
     for (int i = 0; i < NUM_INPUTS; i++) {
-        float delta = (float)deltas[i];
+        float delta = (float)deltas[i] * direction;  // Normalized delta
         float old_ema = l->ema[output][i];
 
         // Update EMA

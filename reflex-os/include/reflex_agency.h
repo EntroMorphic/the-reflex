@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <inttypes.h>
 #include "reflex_crystal.h"
 
 #ifdef __cplusplus
@@ -57,7 +58,7 @@ static inline void agency_set_goal(uint8_t input, int16_t delta, uint8_t priorit
 }
 
 static inline void agency_clear_goal(void) {
-    ESP_LOGI(AGENCY_TAG, "GOAL CLEARED: %d/%d successes",
+    ESP_LOGI(AGENCY_TAG, "GOAL CLEARED: %"PRIu32"/%"PRIu32" successes",
              g_current_goal.successes, g_current_goal.attempts);
     g_current_goal.active = false;
     g_current_goal.priority = 0;
@@ -191,7 +192,7 @@ static inline void agency_print_status(void) {
            g_current_goal.target_delta > 0 ? "increase" : "decrease",
            g_current_goal.input_idx,
            abs(g_current_goal.target_delta));
-    printf("        Priority: %d, Attempts: %d, Successes: %d\n",
+    printf("        Priority: %d, Attempts: %"PRIu32", Successes: %"PRIu32"\n",
            g_current_goal.priority,
            g_current_goal.attempts,
            g_current_goal.successes);
