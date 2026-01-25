@@ -23,11 +23,13 @@ Code claims "no RTOS on hot path" but includes `freertos/FreeRTOS.h` and calls `
 
 **Acceptance Criteria:**
 - [ ] Option A: Pure bare-metal implementation with zero FreeRTOS dependency
-- [ ] Option B: Explicit acknowledgment: "Uses FreeRTOS for WiFi stack and task scheduling; hot path primitives are bare-metal"
-- [ ] Documentation clearly states which path was chosen and why
-- [ ] No mixed messaging in comments, docs, or claims
+- [x] Option B: Explicit acknowledgment: "Uses FreeRTOS for WiFi stack and task scheduling; hot path primitives are bare-metal"
+- [x] Documentation clearly states which path was chosen and why
+- [x] No mixed messaging in comments, docs, or claims
 
 **Metric:** Code grep for `freertos` returns zero hits OR docs explicitly explain the dependency.
+
+**STATUS: COMPLETE** — Added "RTOS Relationship" section to ARCHITECTURE.md. Updated main.c header to clarify demo vs. hot path. Hot path primitives verified to have zero RTOS calls.
 
 ---
 

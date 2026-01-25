@@ -519,7 +519,68 @@ Plenty of margin for complex reflexors and entropy field computation.
 3. **Time is first-class** - Timestamps on everything
 4. **Silence carries information** - Entropy from absence
 5. **Computation is flow** - Gradients, not gates
-6. **No RTOS on hot path** - Bare metal determinism
+6. **No RTOS on hot path** - Bare metal determinism (see below)
+
+---
+
+## RTOS Relationship
+
+**Claim:** "No RTOS on hot path."
+
+**Reality:** The Reflex uses ESP-IDF which includes FreeRTOS. Here's what that means:
+
+### What IS Bare Metal (Hot Path)
+
+These primitives have **zero RTOS dependency**:
+
+| Primitive | File | RTOS Calls |
+|-----------|------|------------|
+| `reflex_signal()` | reflex.h | None |
+| `reflex_wait()` | reflex.h | None |
+| `reflex_read()` | reflex.h | None |
+| `gpio_write()` | reflex_c6.h | None |
+| `gpio_read()` | reflex_c6.h | None |
+| `reflex_cycles()` | reflex_c6.h | None |
+| `spline_read()` | reflex_spline.h | None |
+| `entropy_deposit()` | reflex_void.h | None |
+| `echip_tick()` | reflex_echip.h | None |
+
+A control loop using only these primitives runs on bare metal with deterministic timing.
+
+### What Uses FreeRTOS (Support Path)
+
+| Component | Why | Impact |
+|-----------|-----|--------|
+| WiFi stack | ESP-IDF WiFi requires FreeRTOS | Don't call from hot path |
+| `vTaskDelay()` in demos | Convenient for non-critical delays | Not used in production hot path |
+| ADC driver | ESP-IDF ADC uses task blocking | ~21us latency, acceptable |
+| SPI driver | ESP-IDF SPI transaction API | ~29us latency, acceptable |
+
+### The Rule
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        HOT PATH                                  │
+│  for (;;) {                                                     │
+│      timer_wait(&loop);        // Bare metal spin               │
+│      val = reflex_read(&in);   // Bare metal read               │
+│      out = compute(val);       // Your code                     │
+│      reflex_signal(&out, val); // Bare metal write              │
+│      gpio_write(PIN, bit);     // Bare metal GPIO               │
+│  }                                                               │
+│                                                                  │
+│  DO NOT CALL: vTaskDelay, xQueueSend, WiFi APIs, printf         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Why Not Pure Bare Metal?
+
+We could eliminate FreeRTOS entirely, but:
+- WiFi would require reimplementing the 802.11 stack (~100k lines)
+- USB-Serial debug output uses FreeRTOS internally
+- The benefit (slightly smaller binary) doesn't justify the cost
+
+The hot path is bare metal. The support infrastructure uses FreeRTOS. This is the pragmatic choice.
 
 ---
 

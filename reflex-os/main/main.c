@@ -1,16 +1,23 @@
 /**
  * main.c - The Reflex Becomes the C6
  *
- * Demo showing hardware as channels:
- * - GPIO as output channels (LED toggle)
- * - Timers as periodic signal channels
- * - Full benchmark of channel primitives
+ * BENCHMARK AND DEMO - not a production hot path example.
+ *
+ * This file uses FreeRTOS for:
+ * - vTaskDelay() in demo sections (spline timing, entropy testing)
+ * - Idle loop LED blink
+ * - WiFi connection
+ *
+ * The HOT PATH PRIMITIVES being benchmarked (reflex_signal, gpio_write,
+ * spline_read, etc.) are pure bare metal with zero RTOS calls.
+ *
+ * For a production control loop, see docs/ARCHITECTURE.md "RTOS Relationship".
  */
 
 #include <stdio.h>
 #include <inttypes.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include "freertos/FreeRTOS.h"  // Used for demos only, not hot path
+#include "freertos/task.h"      // vTaskDelay for non-critical delays
 
 #include "reflex_c6.h"
 #include "channels.h"
