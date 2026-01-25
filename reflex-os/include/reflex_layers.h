@@ -171,15 +171,18 @@ static inline void layer_analyze(layer_t* l, layered_state_t* state) {
     for (int o = 0; o < NUM_OUTPUTS; o++) {
         float interest = 0.0f;
 
-        // 1. Entropy: unexplored is interesting
+        // 1. Entropy: unexplored is interesting (PRIMARY driver)
         interest += l->entropy[o];
 
-        // 2. Variance: unpredictable is interesting
+        // 2. Variance: interesting only when novel
+        //    Discount by observation count - known variance isn't interesting
         float total_var = 0.0f;
         for (int i = 0; i < NUM_INPUTS; i++) {
             total_var += l->var[o][i];
         }
-        interest += sqrtf(total_var) * 0.5f;
+        uint32_t obs = state->output_counts[o];
+        float novelty = 1.0f / (1.0f + (float)obs * 0.1f);  // Decays with observations
+        interest += sqrtf(total_var) * 0.5f * novelty;
 
         // 3. Recency penalty: just explored is less interesting
         for (int ago = 0; ago < l->window && ago < state->memory.count; ago++) {
