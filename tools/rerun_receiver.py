@@ -89,15 +89,27 @@ def log_packet(pkt):
                    rr.TextLog(f"GPIO{pkt['chosen_output']} → ADC{i}: {delta}"))
 
 def main():
+    import datetime
+
     if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <serial_port>")
+        print(f"Usage: {sys.argv[0]} <serial_port> [output.rrd]")
         print(f"Example: {sys.argv[0]} /dev/ttyACM0")
+        print(f"Example: {sys.argv[0]} /dev/ttyACM0 session.rrd")
         sys.exit(1)
 
     port = sys.argv[1]
 
-    # Initialize Rerun
+    # Generate timestamped RRD filename if not provided
+    if len(sys.argv) >= 3:
+        rrd_file = sys.argv[2]
+    else:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        rrd_file = f"reflex_{timestamp}.rrd"
+
+    # Initialize Rerun with save
     rr.init("reflex_explorer", spawn=True)
+    rr.save(rrd_file)
+    print(f"Recording to: {rrd_file}")
     rr.log("info", rr.TextLog("Reflex Layered Exploration Viewer"))
 
     print(f"Opening {port}...")
