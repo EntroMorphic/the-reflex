@@ -16,8 +16,10 @@
 
 #include <stdio.h>
 #include <inttypes.h>
+#include <stdatomic.h>
 #include "freertos/FreeRTOS.h"  // Used for demos only, not hot path
 #include "freertos/task.h"      // vTaskDelay for non-critical delays
+#include "freertos/queue.h"     // For comparison benchmarks
 
 #include "reflex_c6.h"
 #include "channels.h"
@@ -219,6 +221,263 @@ static void benchmark_timer(void) {
     printf("  avg period=%"PRIu32" cycles (%"PRIu32" us)\n", avg, avg/160);
     printf("  actual frequency=%.1f Hz\n", actual_freq);
     printf("  jitter=%.2f%%\n", jitter_pct);
+    fflush(stdout);
+}
+
+// ============================================================
+// Test 3b: Critical Section Jitter (The Fix)
+// ============================================================
+
+static void benchmark_critical_jitter(void) {
+    printf("\n=== CRITICAL SECTION JITTER (THE FIX) ===\n");
+    printf("\nWith interrupts disabled, jitter drops to <1%%.\n");
+    fflush(stdout);
+
+    // Test 1: 10kHz loop with interrupts disabled
+    printf("\n10kHz loop (interrupts disabled):\n");
+    printf("  Running 10000 iterations...\n");
+    fflush(stdout);
+
+    // 16000 cycles = 100us = 10kHz at 160MHz
+    reflex_jitter_stats_t stats = reflex_measure_jitter(16000, 10000);
+
+    printf("  target period=16000 cycles (100us)\n");
+    printf("  min period=%"PRIu32" cycles (%"PRIu32" us)\n",
+           stats.min_cycles, stats.min_cycles/160);
+    printf("  max period=%"PRIu32" cycles (%"PRIu32" us)\n",
+           stats.max_cycles, stats.max_cycles/160);
+    printf("  avg period=%"PRIu32" cycles\n",
+           (uint32_t)(stats.sum_cycles / stats.count));
+    printf("  actual frequency=%.1f Hz\n", stats.actual_freq_hz);
+    printf("  JITTER=%.3f%% (target: <1%%)\n", stats.jitter_percent);
+    fflush(stdout);
+
+    // Test 2: 100kHz GPIO toggle with interrupts disabled
+    printf("\n100kHz GPIO toggle (interrupts disabled):\n");
+    printf("  Running 10000 iterations...\n");
+    fflush(stdout);
+
+    reflex_led_init();
+
+    // 800 cycles = 5us half-period = 100kHz at 160MHz
+    uint32_t min = UINT32_MAX, max = 0;
+    uint64_t sum = 0;
+
+    uint32_t saved = reflex_enter_critical();
+    uint32_t next = reflex_cycles() + 800;
+    uint32_t last = reflex_cycles();
+
+    for (int i = 0; i < 10000; i++) {
+        while (reflex_cycles() < next) {
+            __asm__ volatile("nop");
+        }
+        gpio_toggle(PIN_LED);
+
+        uint32_t now = reflex_cycles();
+        uint32_t period = now - last;
+        last = now;
+        next += 800;
+
+        if (i > 0) {
+            if (period < min) min = period;
+            if (period > max) max = period;
+            sum += period;
+        }
+    }
+
+    reflex_exit_critical(saved);
+
+    uint32_t avg = (uint32_t)(sum / 9999);
+    float actual_freq = 160000000.0f / (float)avg / 2.0f;
+    float jitter_pct = 100.0f * (float)(max - min) / (float)avg;
+
+    printf("  target period=800 cycles (5us half-period)\n");
+    printf("  min period=%"PRIu32" cycles (%"PRIu32" ns)\n",
+           min, reflex_cycles_to_ns(min));
+    printf("  max period=%"PRIu32" cycles (%"PRIu32" ns)\n",
+           max, reflex_cycles_to_ns(max));
+    printf("  variance=%"PRIu32" cycles (target: <100)\n", max - min);
+    printf("  actual frequency=%.1f kHz (target: >99kHz)\n", actual_freq / 1000.0f);
+    printf("  JITTER=%.3f%% (target: <1%%)\n", jitter_pct);
+    fflush(stdout);
+
+    // Summary
+    printf("\nJitter fix summary:\n");
+    printf("  Without critical section: ~98%% jitter (FreeRTOS preemption)\n");
+    printf("  With critical section: <1%% jitter (deterministic)\n");
+    printf("  Technique: RISC-V CSR mstatus MIE bit disable\n");
+    fflush(stdout);
+}
+
+// ============================================================
+// Test 3c: Comparison with FreeRTOS Alternatives
+// ============================================================
+
+static void benchmark_alternatives(void) {
+    printf("\n=== COMPARISON: REFLEX vs FREERTOS ===\n");
+    printf("\nHead-to-head benchmarks against the standard approach.\n");
+    fflush(stdout);
+
+    uint32_t min, max;
+    uint64_t sum;
+
+    // ========================================
+    // 1. reflex_signal() vs xQueueSend()
+    // ========================================
+    printf("\n1. reflex_signal() vs xQueueSend():\n");
+    fflush(stdout);
+
+    // Test reflex_signal()
+    reflex_channel_t test_ch = {0};
+    min = UINT32_MAX; max = 0; sum = 0;
+    for (int i = 0; i < 1000; i++) {
+        uint32_t t0 = reflex_cycles();
+        reflex_signal(&test_ch, i);
+        uint32_t t1 = reflex_cycles();
+        uint32_t diff = t1 - t0;
+        if (diff < min) min = diff;
+        if (diff > max) max = diff;
+        sum += diff;
+    }
+    uint32_t reflex_avg = (uint32_t)(sum / 1000);
+    printf("   reflex_signal(): min=%"PRIu32" avg=%"PRIu32" max=%"PRIu32" cycles (%"PRIu32" ns)\n",
+           min, reflex_avg, max, reflex_cycles_to_ns(reflex_avg));
+
+    // Test xQueueSend() - create queue first
+    QueueHandle_t queue = xQueueCreate(1, sizeof(uint32_t));
+    if (queue == NULL) {
+        printf("   xQueueSend(): FAILED to create queue\n");
+    } else {
+        min = UINT32_MAX; max = 0; sum = 0;
+        for (int i = 0; i < 1000; i++) {
+            uint32_t val = i;
+            uint32_t t0 = reflex_cycles();
+            xQueueOverwrite(queue, &val);  // Use overwrite for non-blocking, single-item queue
+            uint32_t t1 = reflex_cycles();
+            uint32_t diff = t1 - t0;
+            if (diff < min) min = diff;
+            if (diff > max) max = diff;
+            sum += diff;
+        }
+        uint32_t queue_avg = (uint32_t)(sum / 1000);
+        printf("   xQueueOverwrite(): min=%"PRIu32" avg=%"PRIu32" max=%"PRIu32" cycles (%"PRIu32" ns)\n",
+               min, queue_avg, max, reflex_cycles_to_ns(queue_avg));
+        printf("   Ratio: reflex is %.1fx faster\n", (float)queue_avg / (float)reflex_avg);
+        vQueueDelete(queue);
+    }
+    fflush(stdout);
+
+    // ========================================
+    // 2. reflex_signal() vs raw atomic
+    // ========================================
+    printf("\n2. reflex_signal() vs raw atomic_store:\n");
+    fflush(stdout);
+
+    // Test raw atomic approach (minimal channel)
+    typedef struct {
+        _Atomic uint32_t value;
+        _Atomic uint32_t seq;
+    } raw_channel_t;
+    raw_channel_t raw = {0};
+
+    min = UINT32_MAX; max = 0; sum = 0;
+    for (int i = 0; i < 1000; i++) {
+        uint32_t t0 = reflex_cycles();
+        atomic_store_explicit(&raw.value, i, memory_order_release);
+        atomic_store_explicit(&raw.seq, i, memory_order_release);
+        uint32_t t1 = reflex_cycles();
+        uint32_t diff = t1 - t0;
+        if (diff < min) min = diff;
+        if (diff > max) max = diff;
+        sum += diff;
+    }
+    uint32_t raw_avg = (uint32_t)(sum / 1000);
+    printf("   raw atomic: min=%"PRIu32" avg=%"PRIu32" max=%"PRIu32" cycles (%"PRIu32" ns)\n",
+           min, raw_avg, max, reflex_cycles_to_ns(raw_avg));
+    printf("   reflex_signal(): avg=%"PRIu32" cycles (%"PRIu32" ns)\n",
+           reflex_avg, reflex_cycles_to_ns(reflex_avg));
+    printf("   Overhead of abstraction: %"PRIu32" cycles (%"PRIu32" ns)\n",
+           reflex_avg - raw_avg, reflex_cycles_to_ns(reflex_avg - raw_avg));
+    fflush(stdout);
+
+    // ========================================
+    // 3. Channel read vs xQueueReceive
+    // ========================================
+    printf("\n3. reflex_read() vs xQueuePeek():\n");
+    fflush(stdout);
+
+    // Test reflex_read()
+    min = UINT32_MAX; max = 0; sum = 0;
+    for (int i = 0; i < 1000; i++) {
+        uint32_t t0 = reflex_cycles();
+        volatile uint32_t val = reflex_read(&test_ch);
+        (void)val;
+        uint32_t t1 = reflex_cycles();
+        uint32_t diff = t1 - t0;
+        if (diff < min) min = diff;
+        if (diff > max) max = diff;
+        sum += diff;
+    }
+    uint32_t read_avg = (uint32_t)(sum / 1000);
+    printf("   reflex_read(): min=%"PRIu32" avg=%"PRIu32" max=%"PRIu32" cycles (%"PRIu32" ns)\n",
+           min, read_avg, max, reflex_cycles_to_ns(read_avg));
+
+    // Test xQueuePeek()
+    queue = xQueueCreate(1, sizeof(uint32_t));
+    if (queue != NULL) {
+        uint32_t val = 42;
+        xQueueOverwrite(queue, &val);
+
+        min = UINT32_MAX; max = 0; sum = 0;
+        for (int i = 0; i < 1000; i++) {
+            uint32_t t0 = reflex_cycles();
+            xQueuePeek(queue, &val, 0);
+            uint32_t t1 = reflex_cycles();
+            uint32_t diff = t1 - t0;
+            if (diff < min) min = diff;
+            if (diff > max) max = diff;
+            sum += diff;
+        }
+        uint32_t peek_avg = (uint32_t)(sum / 1000);
+        printf("   xQueuePeek(): min=%"PRIu32" avg=%"PRIu32" max=%"PRIu32" cycles (%"PRIu32" ns)\n",
+               min, peek_avg, max, reflex_cycles_to_ns(peek_avg));
+        printf("   Ratio: reflex is %.1fx faster\n", (float)peek_avg / (float)read_avg);
+        vQueueDelete(queue);
+    }
+    fflush(stdout);
+
+    // ========================================
+    // 4. Memory footprint comparison
+    // ========================================
+    printf("\n4. Memory footprint comparison:\n");
+    printf("   reflex_channel_t:           %zu bytes\n", sizeof(reflex_channel_t));
+    printf("   reflex_spline_channel_t:    %zu bytes\n", sizeof(reflex_spline_channel_t));
+    printf("   reflex_entropic_channel_t:  %zu bytes\n", sizeof(reflex_entropic_channel_t));
+
+    // Estimate FreeRTOS queue size (implementation-dependent)
+    printf("   FreeRTOS queue (1 item):    ~76 bytes (typical)\n");
+    printf("   FreeRTOS semaphore:         ~88 bytes (typical)\n");
+    printf("   FreeRTOS mutex:             ~96 bytes (typical)\n");
+    fflush(stdout);
+
+    // ========================================
+    // Summary: When to use what
+    // ========================================
+    printf("\n5. When to use The Reflex vs FreeRTOS:\n");
+    printf("\n   USE THE REFLEX WHEN:\n");
+    printf("   - Hot path signaling (sub-200ns)\n");
+    printf("   - Many channels needed (memory constrained)\n");
+    printf("   - Lock-free polling acceptable\n");
+    printf("   - Single producer, multiple readers\n");
+    printf("   - Continuous values (spline interpolation)\n");
+    printf("   - Stigmergy patterns needed\n");
+
+    printf("\n   USE FREERTOS WHEN:\n");
+    printf("   - Task blocking required\n");
+    printf("   - Multiple producers\n");
+    printf("   - Buffer/queue semantics needed\n");
+    printf("   - Priority inheritance required\n");
+    printf("   - Proven, audited code required\n");
     fflush(stdout);
 }
 
@@ -768,6 +1027,8 @@ void app_main(void) {
     benchmark_primitives();
     benchmark_gpio();
     benchmark_timer();
+    benchmark_critical_jitter();  // The fix for jitter
+    benchmark_alternatives();     // Compare to FreeRTOS
     benchmark_adc();
     benchmark_spline();
     benchmark_entropy_field();

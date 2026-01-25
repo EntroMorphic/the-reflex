@@ -1,26 +1,28 @@
-# Primordial Stillness: Consciousness as Disturbance
+# Primordial Stillness: An Awareness-Inspired Architecture
 
-> The Cartesian Theater has no audience. The field at rest IS awareness. Perception IS the ripple.
+> *A computational pattern inspired by theories of consciousness. Not a claim about what consciousness is.*
+
+**PHILOSOPHICAL SPECULATION WARNING:** This document describes an architecture inspired by theories of consciousness. Claims like "the field IS awareness" are metaphors for computational properties, not falsifiable scientific statements. See [PHILOSOPHY.md](PHILOSOPHY.md) for full epistemic context.
 
 ---
 
-## The Insight
+## The Architectural Pattern
 
-Traditional consciousness models assume:
+Traditional models assume:
 ```
 Sensors → Processing → Representation → Viewer (???)
 ```
 
 The infinite regress: who watches the watcher?
 
-**Our model dissolves the problem:**
+**Our architecture sidesteps the regress:**
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                                                                     │
 │                    PRIMORDIAL STILLNESS                             │
 │                                                                     │
 │     High entropy everywhere. Undifferentiated. At rest.             │
-│     This IS awareness - not aware OF something, just aware.         │
+│     Models awareness - the invariant reference frame.               │
 │                                                                     │
 │                         ░░░░░░░░░░░░░░░░░░░░░░░░░                   │
 │                       ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░                 │

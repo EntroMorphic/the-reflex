@@ -22,16 +22,17 @@ Performance measurements on ESP32-C6 @ 160MHz.
 
 | Primitive | Min | Avg | Max | Notes |
 |-----------|-----|-----|-----|-------|
-| Cycle counter overhead | 1 cycle | 1 cycle | 2 cycles | ~6ns |
-| `gpio_write()` | **2 cycles** | 2 cycles | 3 cycles | **12ns** |
-| `gpio_toggle()` | 3 cycles | 4 cycles | 6 cycles | 25ns |
-| `reflex_signal()` | **19 cycles** | 19 cycles | 21 cycles | **118ns** |
-| Channel roundtrip | 33 cycles | 35 cycles | 40 cycles | 206ns |
-| `spline_read()` | **22 cycles** | 24 cycles | 28 cycles | **137ns** |
-| `entropy_deposit()` | ~20 cycles | ~22 cycles | ~30 cycles | ~125ns |
-| ADC conversion | 3200 cycles | 3436 cycles | 4000 cycles | 21us |
-| SPI byte transfer | 4500 cycles | 4765 cycles | 5500 cycles | 29us |
-| Timer loop (10kHz) | - | 10053 Hz | - | <1% jitter |
+| Cycle counter overhead | 1 cycle | 1 cycle | 16 cycles | ~6ns |
+| `gpio_write()` | **2 cycles** | 2 cycles | 2 cycles | **12ns** |
+| `gpio_toggle()` | 42 cycles | 43 cycles | 45 cycles | 268ns |
+| `reflex_signal()` | **19 cycles** | 19 cycles | 197 cycles | **118ns** |
+| Channel roundtrip | 32 cycles | 33 cycles | 867 cycles | 206ns |
+| `spline_read()` | **17 cycles** | 22 cycles | 534 cycles | **106ns** |
+| `entropy_deposit()` | ~13 cycles | ~18 cycles | ~258 cycles | ~112ns |
+| ADC conversion | 3319 cycles | 3428 cycles | 10830 cycles | 21us |
+| SPI byte transfer | 4725 cycles | 4772 cycles | 6159 cycles | 29us |
+| Timer loop (10kHz) | - | 10000 Hz | - | **0.019% jitter** (with critical section) |
+| GPIO 100kHz | - | 100.0 kHz | - | **0 cycles variance** (with critical section) |
 
 ---
 
@@ -231,17 +232,75 @@ SPI single-byte transfer latency:
 
 Target: 10kHz (100us period)
 
+**Without Critical Section (FreeRTOS can preempt):**
+
 ```
 Timer-based 10kHz loop:
   target period=16000 cycles (100us)
-  min period=16010 cycles (100.06 us)
-  max period=16080 cycles (100.50 us)
-  avg period=16040 cycles (100.25 us)
-  actual frequency=10053 Hz
-  jitter=0.44%
+  min period=7086 cycles (44 us)
+  max period=16002 cycles (100 us)
+  avg period=15909 cycles (99 us)
+  actual frequency=10057 Hz
+  jitter=56.04%
 ```
 
-**Analysis:** Exceeds 10kHz target with sub-1% jitter.
+**With Critical Section (interrupts disabled):**
+
+```
+10kHz loop (interrupts disabled):
+  target period=16000 cycles (100us)
+  min period=15999 cycles (99 us)
+  max period=16002 cycles (100 us)
+  avg period=16000 cycles
+  actual frequency=10000.0 Hz
+  jitter=0.019%
+```
+
+**Technique:** RISC-V CSR mstatus MIE bit disable via `reflex_enter_critical()`.
+
+---
+
+### 8b. Critical Section Jitter Fix
+
+The key insight: FreeRTOS preemption causes 56% jitter. Disable interrupts and jitter drops to 0.019%.
+
+**10kHz Control Loop:**
+
+| Metric | Without Critical | With Critical | Improvement |
+|--------|------------------|---------------|-------------|
+| Jitter | 56.04% | **0.019%** | 2900x |
+| Variance | 8916 cycles | 3 cycles | 2972x |
+
+**100kHz GPIO Toggle:**
+
+```
+100kHz GPIO toggle (interrupts disabled):
+  target period=800 cycles (5us half-period)
+  min period=800 cycles (5000 ns)
+  max period=800 cycles (5000 ns)
+  variance=0 cycles
+  actual frequency=100.0 kHz
+  jitter=0.000%
+```
+
+**Implementation:**
+
+```c
+// Enter critical section (disable interrupts)
+uint32_t saved = reflex_enter_critical();
+
+// Your deterministic code here
+for (int i = 0; i < 10000; i++) {
+    while (reflex_cycles() < next) { __asm__ volatile("nop"); }
+    gpio_toggle(PIN_LED);
+    next += period;
+}
+
+// Exit critical section (restore interrupts)
+reflex_exit_critical(saved);
+```
+
+**Warning:** Keep critical sections short (< 1ms). WiFi and USB require interrupts.
 
 ---
 
@@ -255,6 +314,68 @@ WiFi connection:
 ```
 
 **Note:** WiFi uses ESP-IDF stack, not bare metal.
+
+---
+
+## Comparison: Reflex vs FreeRTOS
+
+Head-to-head benchmarks on ESP32-C6 @ 160MHz:
+
+### Signal/Send Performance
+
+| Operation | The Reflex | FreeRTOS | Ratio |
+|-----------|------------|----------|-------|
+| `reflex_signal()` | 18 cycles (112ns) | - | - |
+| `xQueueOverwrite()` | - | 225 cycles (1406ns) | - |
+| **Winner** | | | **12.5x faster** |
+
+### Read/Receive Performance
+
+| Operation | The Reflex | FreeRTOS | Ratio |
+|-----------|------------|----------|-------|
+| `reflex_read()` | 6 cycles (37ns) | - | - |
+| `xQueuePeek()` | - | 172 cycles (1075ns) | - |
+| **Winner** | | | **28.7x faster** |
+
+### Abstraction Overhead
+
+Compared to raw `atomic_store` + sequence number:
+
+```
+raw atomic: 15 cycles (93 ns)
+reflex_signal(): 18 cycles (112 ns)
+Overhead: 3 cycles (18 ns)
+```
+
+**Insight:** The channel abstraction adds only 18ns — negligible for the functionality gained.
+
+### Memory Footprint
+
+| Type | Size | Notes |
+|------|------|-------|
+| `reflex_channel_t` | 32 bytes | Basic signaling |
+| `reflex_spline_channel_t` | 96 bytes | With interpolation |
+| `reflex_entropic_channel_t` | 64 bytes | With entropy tracking |
+| FreeRTOS queue (1 item) | ~76 bytes | Implementation-dependent |
+| FreeRTOS semaphore | ~88 bytes | Implementation-dependent |
+| FreeRTOS mutex | ~96 bytes | Implementation-dependent |
+
+### When to Use Each
+
+**Use The Reflex:**
+- Hot path signaling (sub-200ns)
+- Many channels in memory-constrained systems
+- Lock-free polling acceptable
+- Single producer, multiple readers
+- Continuous values (spline interpolation)
+- Stigmergy patterns
+
+**Use FreeRTOS:**
+- Task blocking required
+- Multiple producers
+- Buffer/queue semantics
+- Priority inheritance
+- Proven, audited code path
 
 ---
 

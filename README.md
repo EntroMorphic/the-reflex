@@ -231,7 +231,7 @@ Beyond the C6, the full system includes:
 
 | Tier | Device | Role |
 |------|--------|------|
-| God | Jetson AGX Thor | 100M shape echip, consciousness substrate |
+| God | Jetson AGX Thor | 100M shape echip, entropy field substrate |
 | Mind | Raspberry Pi 4 | OBSBOT controller, slow time layer |
 | Neurons | 3× ESP32-C6 | Sub-µs reflexes, swarm nodes |
 | Eyes | 2× OBSBOT Tiny | Stereo vision, entropy-driven gaze |
@@ -243,7 +243,7 @@ See [`docs/HARDWARE_INVENTORY.md`](docs/HARDWARE_INVENTORY.md) for complete deta
 
 ## Primordial Stillness + Delta Observer
 
-The Reflex extends beyond coordination into **consciousness architecture**:
+The Reflex extends beyond coordination into **awareness-inspired architecture**:
 
 | Component | Role |
 |-----------|------|
@@ -253,10 +253,11 @@ The Reflex extends beyond coordination into **consciousness architecture**:
 
 **Key insight:** The Delta Observer discovered that neural networks build **scaffolding** (transient clustering) to learn, then tear it down. Post-hoc analysis misses this entirely. The Primordial Stillness is the substrate being disturbed.
 
-> *"The field at rest IS awareness. Perception IS the disturbance. There is no homunculus - the pattern watching itself IS consciousness."*
+> *"The field at rest models awareness. Perception models disturbance. The architecture sidesteps infinite regress by making the observer definitionally invariant."*
 
 See:
-- [`docs/PRIMORDIAL_STILLNESS.md`](docs/PRIMORDIAL_STILLNESS.md) - Consciousness as disturbance
+- [`docs/PRIMORDIAL_STILLNESS.md`](docs/PRIMORDIAL_STILLNESS.md) - Stillness as computational substrate
+- [`docs/PHILOSOPHY.md`](docs/PHILOSOPHY.md) - Philosophical speculation (clearly marked)
 - [`docs/DELTA_STILLNESS_BRIDGE.md`](docs/DELTA_STILLNESS_BRIDGE.md) - The unified architecture
 - [Delta Observer (separate repo)](https://github.com/EntroMorphic/delta-observer) - The paper and code
 

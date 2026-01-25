@@ -90,6 +90,140 @@ static inline void reflex_led_set(bool on) {
     gpio_write(PIN_LED, on);
 }
 
+// ============================================================
+// Critical Sections - Interrupt-Free Execution
+// ============================================================
+
+/**
+ * Disable interrupts for deterministic timing.
+ * Returns previous interrupt state for restoration.
+ *
+ * USE SPARINGLY: WiFi, USB, and other subsystems need interrupts.
+ * Only disable for short, time-critical sections.
+ */
+static inline uint32_t reflex_enter_critical(void) {
+    uint32_t mstatus;
+    __asm__ volatile (
+        "csrrci %0, mstatus, 0x8"  // Clear MIE bit, return old value
+        : "=r"(mstatus)
+        :
+        : "memory"
+    );
+    return mstatus;
+}
+
+/**
+ * Restore interrupts after critical section.
+ * Pass the value returned by reflex_enter_critical().
+ */
+static inline void reflex_exit_critical(uint32_t saved_state) {
+    __asm__ volatile (
+        "csrw mstatus, %0"
+        :
+        : "r"(saved_state)
+        : "memory"
+    );
+}
+
+/**
+ * Run a tight timing loop with interrupts disabled.
+ * For precise periodic execution without jitter.
+ *
+ * @param period_cycles  Cycles per iteration
+ * @param iterations     Number of iterations
+ * @param callback       Function to call each iteration
+ * @param ctx            Context passed to callback
+ *
+ * WARNING: Interrupts are disabled for the entire duration.
+ * Keep iterations * period_cycles short (< 1ms recommended).
+ */
+typedef void (*reflex_loop_fn)(void* ctx, uint32_t iteration);
+
+static inline void reflex_tight_loop(uint32_t period_cycles,
+                                      uint32_t iterations,
+                                      reflex_loop_fn callback,
+                                      void* ctx) {
+    uint32_t saved = reflex_enter_critical();
+    uint32_t next = reflex_cycles() + period_cycles;
+
+    for (uint32_t i = 0; i < iterations; i++) {
+        // Wait for next period
+        while (reflex_cycles() < next) {
+            __asm__ volatile("nop");
+        }
+        next += period_cycles;
+
+        // Execute callback
+        callback(ctx, i);
+    }
+
+    reflex_exit_critical(saved);
+}
+
+// ============================================================
+// Jitter Measurement
+// ============================================================
+
+typedef struct {
+    uint32_t min_cycles;
+    uint32_t max_cycles;
+    uint64_t sum_cycles;
+    uint32_t count;
+    float jitter_percent;
+    float actual_freq_hz;
+} reflex_jitter_stats_t;
+
+/**
+ * Measure jitter of a tight loop.
+ * Runs with interrupts disabled for accurate measurement.
+ */
+static inline reflex_jitter_stats_t reflex_measure_jitter(
+    uint32_t period_cycles,
+    uint32_t iterations) {
+
+    reflex_jitter_stats_t stats = {
+        .min_cycles = UINT32_MAX,
+        .max_cycles = 0,
+        .sum_cycles = 0,
+        .count = 0
+    };
+
+    uint32_t saved = reflex_enter_critical();
+    uint32_t next = reflex_cycles() + period_cycles;
+    uint32_t last = reflex_cycles();
+
+    for (uint32_t i = 0; i < iterations; i++) {
+        // Wait for next period
+        while (reflex_cycles() < next) {
+            __asm__ volatile("nop");
+        }
+
+        uint32_t now = reflex_cycles();
+        uint32_t actual = now - last;
+        last = now;
+        next += period_cycles;
+
+        // Skip first iteration (warmup)
+        if (i > 0) {
+            if (actual < stats.min_cycles) stats.min_cycles = actual;
+            if (actual > stats.max_cycles) stats.max_cycles = actual;
+            stats.sum_cycles += actual;
+            stats.count++;
+        }
+    }
+
+    reflex_exit_critical(saved);
+
+    // Calculate stats
+    if (stats.count > 0) {
+        uint32_t avg = (uint32_t)(stats.sum_cycles / stats.count);
+        stats.jitter_percent = 100.0f * (float)(stats.max_cycles - stats.min_cycles) / (float)avg;
+        stats.actual_freq_hz = (float)REFLEX_CHIP_FREQ / (float)avg;
+    }
+
+    return stats;
+}
+
 #ifdef __cplusplus
 }
 #endif

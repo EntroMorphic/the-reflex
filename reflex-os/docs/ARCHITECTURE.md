@@ -584,4 +584,70 @@ The hot path is bare metal. The support infrastructure uses FreeRTOS. This is th
 
 ---
 
+## Prior Art
+
+The Reflex builds on decades of research in concurrent systems, neural computation, and cellular automata. This section acknowledges the intellectual lineage and explains how The Reflex relates to these foundations.
+
+### Communicating Sequential Processes (Hoare, 1978)
+
+**Citation:** C.A.R. Hoare. "Communicating Sequential Processes." *Communications of the ACM*, 21(8):666-677, 1978.
+
+**Relationship:** The Reflex channels are similar to CSP channels in that they provide a primitive for inter-process communication. *Differs because:* CSP channels are synchronous (sender blocks until receiver is ready); Reflex channels are asynchronous with sequence numbers for non-blocking coordination. CSP is a formal algebra; The Reflex is an implementation-first primitive optimized for sub-microsecond latency.
+
+### Lamport's Work on Concurrent Systems
+
+**Citations:**
+- L. Lamport. "Time, Clocks, and the Ordering of Events in a Distributed System." *Communications of the ACM*, 21(7):558-565, 1978.
+- L. Lamport. "The Part-Time Parliament." *ACM TOCS*, 16(2):133-169, 1998. (Paxos)
+
+**Relationship:** The Reflex uses Lamport-style sequence numbers for ordering events without global clocks. The timestamp + sequence number pair in `reflex_channel_t` echoes Lamport's logical clock approach. *Differs because:* We operate on a single chip (or tightly coupled multi-core) where cache coherency provides strong ordering guarantees. We don't need consensus protocols—hardware memory fences suffice.
+
+### Actor Model (Hewitt, 1973)
+
+**Citation:** C. Hewitt, P. Bishop, and R. Steiger. "A Universal Modular ACTOR Formalism for Artificial Intelligence." *IJCAI*, 1973.
+
+**Relationship:** The Reflex shapes (especially in echip) resemble actors: autonomous computational entities that receive messages and can create new actors. *Differs because:* Actor mailboxes are queues; Reflex channels hold only the latest value. Actor semantics are message-passing; Reflex semantics are signal/read with no message queuing. The Reflex emphasizes spatial embedding (entropy fields) which actors do not.
+
+### Lock-Free Data Structures
+
+**Citations:**
+- M. Herlihy. "Wait-Free Synchronization." *ACM TOPLAS*, 13(1):124-149, 1991.
+- M. Michael and M. Scott. "Simple, Fast, and Practical Non-Blocking and Blocking Concurrent Queue Algorithms." *PODC*, 1996.
+
+**Relationship:** `reflex_channel_t` is a lock-free single-writer multi-reader structure. The sequence number provides linearizability without CAS loops. *Builds on:* The insight that single-writer structures can be made wait-free with careful memory ordering. *Differs because:* We trade off generality (no multi-writer support) for extreme simplicity (50 lines) and speed (118ns).
+
+### Hebbian Learning (Hebb, 1949)
+
+**Citation:** D.O. Hebb. *The Organization of Behavior*. Wiley, 1949.
+
+**Relationship:** The echip's route strengthening implements Hebbian learning: "Neurons that fire together, wire together." Routes that carry correlated signals have their weights increased. *Builds on:* The foundational insight that learning is connection modification. *Differs because:* Traditional Hebbian learning operates on neural networks; The Reflex applies it to arbitrary computational graphs with mutable topology.
+
+### Cellular Automata (von Neumann, Conway)
+
+**Citations:**
+- J. von Neumann. *Theory of Self-Reproducing Automata*. University of Illinois Press, 1966.
+- M. Gardner. "Mathematical Games: The fantastic combinations of John Conway's new solitaire game 'Life'." *Scientific American*, 223:120-123, 1970.
+
+**Relationship:** The entropy field is a cellular automaton: cells update based on neighbor states according to local rules (diffusion, decay, crystallization). *Builds on:* The demonstration that local rules can produce global computation. *Differs because:* Cellular automata have uniform rules everywhere; The entropy field hosts heterogeneous "shapes" (frozen structures) that break symmetry. The field is a substrate for computation, not the computation itself.
+
+### Stigmergy (Grassé, 1959)
+
+**Citation:** P.-P. Grassé. "La reconstruction du nid et les coordinations interindividuelles chez Bellicositermes natalensis et Cubitermes sp." *Insectes Sociaux*, 6:41-80, 1959.
+
+**Relationship:** The entropy field enables stigmergic communication: indirect coordination through environmental modification. Agents "write" entropy deposits and "read" gradients, coordinating without direct communication. *Builds on:* Observations of termite mound construction. *Differs because:* We formalize stigmergy as a computational primitive with explicit APIs (`stigmergy_write`, `stigmergy_read`, `stigmergy_follow`).
+
+### What's New in The Reflex
+
+The Reflex's contribution is **not** in any single primitive, but in their **composition**:
+
+1. **Channel-centric hardware abstraction**: Treating every peripheral as a signal source/sink
+2. **Spline interpolation as a channel operation**: Bridging discrete signals to continuous trajectories
+3. **Entropy as first-class data**: Silence accumulates; information flows uphill
+4. **Mutable topology over entropy substrate**: Shapes freeze, routes dissolve, the field crystallizes
+5. **Sub-microsecond latency without RTOS**: 118ns signals, 12ns GPIO, bare metal hot path
+
+The novelty is not in the parts. The novelty is in treating them as a unified computational model that runs on a $5 microcontroller at 118ns per signal.
+
+---
+
 *The Reflex doesn't run on the C6. The Reflex IS how the C6 knows itself.*
