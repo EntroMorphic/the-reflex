@@ -15,3 +15,8 @@ e3
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Python
+venv/
+__pycache__/
+*.pyc
