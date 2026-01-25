@@ -16,6 +16,7 @@
 #include "reflex_layers.h"
 #include "reflex_stream.h"
 #include "reflex_crystal.h"
+#include "reflex_agency.h"
 
 // Tick timer - bare metal
 static reflex_timer_channel_t tick_timer;
@@ -136,8 +137,10 @@ void layers_tick(void) {
     // 4. Track consensus
     track_consensus(&state);
 
-    // 5. Choose output
-    state.chosen_output = choose_output(&state);
+    // 5. Choose output (exploration vs agency)
+    uint8_t explore_choice = choose_output(&state);
+    int agency_choice = agency_choose();
+    state.chosen_output = agency_blend(agency_choice, explore_choice);
     state.chosen_state = !state.output_states[state.chosen_output];
 
     // 6. Check for stuck behavior
@@ -201,6 +204,12 @@ void layers_tick(void) {
                 crystal_confirm(c, deltas[i]);
             }
         }
+    }
+
+    // 12b. Check if agency goal was achieved
+    goal_t* goal = agency_current_goal();
+    if (goal) {
+        agency_check_achieved(deltas[goal->input_idx]);
     }
 
     // TRACE: Significant deltas + predictions
@@ -312,6 +321,9 @@ void print_stats(void) {
 
     // Print crystallized knowledge
     crystal_print_all();
+
+    // Print agency status
+    agency_print_status();
 }
 
 // ============================================================
@@ -332,7 +344,8 @@ void app_main(void) {
     layers_init();
 
     printf("\nStarting exploration at 10 Hz (bare metal timer)...\n");
-    printf("Press BOOT button to see stats.\n\n");
+    printf("Press BOOT button to see stats.\n");
+    printf("After 200 ticks, will set goal: increase ADC0\n\n");
     fflush(stdout);
 
     // Initialize bare metal tick timer: 100ms = 100000us
@@ -347,6 +360,18 @@ void app_main(void) {
 
         // Run one tick
         layers_tick();
+
+        // After 200 ticks of exploration, set a test goal
+        if (state.tick == 200) {
+            // Goal: increase ADC0 (input index 8 = NUM_GPIO_IN + 0)
+            agency_set_goal(NUM_GPIO_IN + 0, 1000, 200, state.tick);
+        }
+
+        // Clear goal after 50 attempts
+        goal_t* g = agency_current_goal();
+        if (g && g->attempts >= 50) {
+            agency_clear_goal();
+        }
 
         // Print stats every 100 ticks or on button press
         bool button = gpio_read(PIN_BUTTON);

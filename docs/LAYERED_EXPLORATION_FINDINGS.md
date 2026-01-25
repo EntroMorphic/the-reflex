@@ -188,8 +188,8 @@ The exploration runs at 10Hz using cycle-counter timing, no FreeRTOS. The Reflex
 
 1. ~~**Streaming**~~ — ✓ Send decisions to Pi4 for external observation (`reflex_stream.h`)
 2. ~~**Crystallization**~~ — ✓ Convert strong correlations to permanent knowledge (`reflex_crystal.h`)
-3. **Prediction** — Use discovered relationships to predict outcomes
-4. **Agency** — Given a goal, use model to achieve it
+3. ~~**Prediction**~~ — ✓ Use discovered relationships to predict outcomes (integrated in tick loop)
+4. ~~**Agency**~~ — ✓ Given a goal, use model to achieve it (`reflex_agency.h`)
 
 ---
 
