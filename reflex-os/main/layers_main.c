@@ -14,9 +14,13 @@
 #include "reflex_c6.h"
 #include "reflex_timer.h"
 #include "reflex_layers.h"
+#include "reflex_stream.h"
 
 // Tick timer - bare metal
 static reflex_timer_channel_t tick_timer;
+
+// Stream mode: 0=text trace, 1=binary stream
+#define STREAM_MODE 0
 
 static const char* TAG = "LAYERS";
 
@@ -199,6 +203,33 @@ void layers_tick(void) {
         }
         if (any_delta) printf("\n");
     }
+
+#if STREAM_MODE
+    // Stream binary packet every tick
+    {
+        stream_packet_t pkt;
+        int16_t adc_deltas[4] = {
+            deltas[NUM_GPIO_IN + 0],
+            deltas[NUM_GPIO_IN + 1],
+            deltas[NUM_GPIO_IN + 2],
+            deltas[NUM_GPIO_IN + 3]
+        };
+        float agree_pct = (float)state.agreements / (state.tick * 8 + 1);
+        float disagree_pct = (float)state.disagreements / (state.tick * 8 + 1);
+
+        stream_pack(&pkt, state.tick,
+                    state.layers[0].scores,
+                    state.layers[1].scores,
+                    state.layers[2].scores,
+                    state.chosen_output,
+                    state.chosen_state,
+                    agree_pct,
+                    disagree_pct,
+                    adc_deltas,
+                    state.output_counts);
+        stream_send(&pkt);
+    }
+#endif
 
     // 11. Update all layers
     for (int l = 0; l < NUM_LAYERS; l++) {
