@@ -2,7 +2,7 @@
 
 idf_component_register(
     SRCS
-        "main.c"
+        "embody_main.c"
         "../shared/channels.c"
     INCLUDE_DIRS
         "../include"
