@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3 -u
 """
 rerun_receiver.py - Receive Reflex event stream and visualize in Rerun
 
@@ -53,40 +53,43 @@ def parse_packet(data):
 
 def log_packet(pkt):
     """Log packet data to Rerun."""
-    tick = pkt['tick']
+    # Validate packet - chosen_output must be 0-7
+    if pkt['chosen_output'] >= 8:
+        return False  # Invalid packet, skip
+
+    # Convert to floats for Rerun
+    slow = [float(x) for x in pkt['slow_scores']]
+    med = [float(x) for x in pkt['med_scores']]
+    fast = [float(x) for x in pkt['fast_scores']]
+    counts = [float(x) for x in pkt['output_counts']]
+    deltas = [float(x) for x in pkt['adc_deltas']]
 
     # Layer scores as bar charts
-    rr.log("layers/slow", rr.BarChart(pkt['slow_scores']))
-    rr.log("layers/medium", rr.BarChart(pkt['med_scores']))
-    rr.log("layers/fast", rr.BarChart(pkt['fast_scores']))
+    rr.log("layers/slow", rr.BarChart(slow))
+    rr.log("layers/medium", rr.BarChart(med))
+    rr.log("layers/fast", rr.BarChart(fast))
 
-    # Chosen output as scalar
-    rr.log("decision/output", rr.Scalars(pkt['chosen_output']))
-    rr.log("decision/state", rr.Scalars(pkt['chosen_state']))
+    # Chosen output as scalar time series
+    rr.log("decision/output", rr.Scalars([float(pkt['chosen_output'])]))
+    rr.log("decision/state", rr.Scalars([float(pkt['chosen_state'])]))
 
     # Agreement/disagreement
-    rr.log("consensus/agreement", rr.Scalars(pkt['agreement']))
-    rr.log("consensus/disagreement", rr.Scalars(pkt['disagreement']))
+    rr.log("consensus/agreement", rr.Scalars([pkt['agreement']]))
+    rr.log("consensus/disagreement", rr.Scalars([pkt['disagreement']]))
 
     # ADC deltas as bar chart
-    rr.log("observation/adc_deltas", rr.BarChart(pkt['adc_deltas']))
+    rr.log("observation/adc_deltas", rr.BarChart(deltas))
 
     # Output counts as bar chart (exploration distribution)
-    rr.log("exploration/counts", rr.BarChart(pkt['output_counts']))
-
-    # Layer scores as heatmap (3 layers × 8 outputs)
-    scores_matrix = np.array([
-        pkt['slow_scores'],
-        pkt['med_scores'],
-        pkt['fast_scores']
-    ], dtype=np.float32)
-    rr.log("layers/heatmap", rr.Image(scores_matrix / 255.0))
+    rr.log("exploration/counts", rr.BarChart(counts))
 
     # Log significant ADC discoveries
     for i, delta in enumerate(pkt['adc_deltas']):
         if abs(delta) > 1000:
             rr.log(f"discovery/adc{i}",
                    rr.TextLog(f"GPIO{pkt['chosen_output']} → ADC{i}: {delta}"))
+
+    return True
 
 def main():
     import datetime
@@ -106,21 +109,31 @@ def main():
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         rrd_file = f"reflex_{timestamp}.rrd"
 
-    # Initialize Rerun with save
-    rr.init("reflex_explorer", spawn=True)
-    rr.save(rrd_file)
-    print(f"Recording to: {rrd_file}")
+    # Initialize Rerun with both viewer AND file recording
+    # Must use set_sinks() - calling save() after spawn() replaces the sink
+    rr.init("reflex_explorer")
+    rr.spawn()  # Start viewer first
+
+    import time
+    time.sleep(1)  # Give viewer time to start
+
+    # Now set BOTH sinks together
+    file_sink = rr.FileSink(rrd_file)
+    grpc_sink = rr.GrpcSink("rerun+http://127.0.0.1:9876/proxy")
+    rr.set_sinks(file_sink, grpc_sink)
+    print(f"Recording to: {rrd_file} + viewer", flush=True)
     rr.log("info", rr.TextLog("Reflex Layered Exploration Viewer"))
 
     print(f"Opening {port}...")
 
     try:
         ser = serial.Serial(port, 115200, timeout=1)
+        ser.reset_input_buffer()  # Clear any garbage from previous sessions
     except serial.SerialException as e:
         print(f"ERROR: Could not open {port}: {e}")
         sys.exit(1)
 
-    print("Listening for packets...")
+    print("Listening for packets...", flush=True)
     print("Press Ctrl+C to stop")
 
     buffer = bytearray()
@@ -157,12 +170,12 @@ def main():
 
                 if pkt:
                     rr.set_time("tick", sequence=pkt['tick'])
-                    log_packet(pkt)
-                    packet_count += 1
+                    if log_packet(pkt):
+                        packet_count += 1
 
-                    if packet_count % 10 == 0:
-                        print(f"Tick {pkt['tick']}: chose GPIO{pkt['chosen_output']}, "
-                              f"agreement={pkt['agreement']:.0%}")
+                        if packet_count % 10 == 0:
+                            print(f"Tick {pkt['tick']}: chose GPIO{pkt['chosen_output']}, "
+                                  f"agreement={pkt['agreement']:.0%}", flush=True)
 
                     buffer = buffer[PACKET_SIZE:]
                 else:
