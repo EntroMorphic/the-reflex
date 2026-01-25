@@ -167,39 +167,60 @@ void layers_tick(void) {
                state.chosen_state ? "HIGH" : "LOW");
     }
 
-    // 7. Execute action
+    // 7. PREDICT: What will happen?
+    int16_t predictions[NUM_INPUTS];
+    for (int i = 0; i < NUM_INPUTS; i++) {
+        predictions[i] = crystal_predict(state.chosen_output, i);
+    }
+
+    // 8. Execute action
     uint8_t pin = OUTPUT_PINS[state.chosen_output];
     gpio_write(pin, state.chosen_state);
     state.output_states[state.chosen_output] = state.chosen_state;
     state.output_counts[state.chosen_output]++;
 
-    // 8. Wait for physical effect
+    // 9. Wait for physical effect
     delay_us(1000);
 
-    // 9. Read inputs (after)
+    // 10. Read inputs (after)
     int16_t after[NUM_INPUTS];
     read_inputs(&state);
     pack_inputs(&state, after);
 
-    // 10. Compute deltas
+    // 11. Compute deltas
     int16_t deltas[NUM_INPUTS];
     for (int i = 0; i < NUM_INPUTS; i++) {
         deltas[i] = after[i] - before[i];
     }
 
-    // TRACE: Significant deltas
+    // 12. Compare predictions to reality
+    for (int i = 0; i < NUM_INPUTS; i++) {
+        if (predictions[i] != 0) {
+            crystal_t* c = crystal_lookup(state.chosen_output, i);
+            if (c) {
+                crystal_confirm(c, deltas[i]);
+            }
+        }
+    }
+
+    // TRACE: Significant deltas + predictions
     if (trace) {
         bool any_delta = false;
         for (int i = 0; i < NUM_INPUTS; i++) {
-            if (abs(deltas[i]) > 10) {
+            if (abs(deltas[i]) > 10 || predictions[i] != 0) {
                 if (!any_delta) {
-                    printf("[%"PRIu32"] DELTAS: ", state.tick);
+                    printf("[%"PRIu32"] OBSERVE: ", state.tick);
                     any_delta = true;
                 }
                 if (i < NUM_GPIO_IN) {
                     printf("GPIO%d=%d ", INPUT_PINS[i], deltas[i]);
                 } else if (i < NUM_GPIO_IN + NUM_ADC_IN) {
-                    printf("ADC%d=%d ", i - NUM_GPIO_IN, deltas[i]);
+                    int adc_idx = i - NUM_GPIO_IN;
+                    if (predictions[i] != 0) {
+                        printf("ADC%d=%d(pred:%d) ", adc_idx, deltas[i], predictions[i]);
+                    } else {
+                        printf("ADC%d=%d ", adc_idx, deltas[i]);
+                    }
                 } else {
                     printf("TEMP=%d ", deltas[i]);
                 }
@@ -235,12 +256,12 @@ void layers_tick(void) {
     }
 #endif
 
-    // 11. Update all layers
+    // 13. Update all layers
     for (int l = 0; l < NUM_LAYERS; l++) {
         layer_update(&state.layers[l], state.chosen_output, deltas);
     }
 
-    // 12. Try to crystallize strong correlations (use slow layer stats)
+    // 14. Try to crystallize strong correlations (use slow layer stats)
     layer_t* slow = &state.layers[0];
     for (int i = 0; i < NUM_INPUTS; i++) {
         crystal_try(state.chosen_output, i,
@@ -249,16 +270,16 @@ void layers_tick(void) {
                     state.output_counts[state.chosen_output]);
     }
 
-    // 13. Save crystals periodically (every 100 ticks)
+    // 15. Save crystals periodically (every 100 ticks)
     if (state.tick % 100 == 0) {
         crystal_save();
     }
 
-    // 14. Push to memory
+    // 16. Push to memory
     lmem_push(&state.memory, state.chosen_output, state.chosen_state,
              deltas, state.tick);
 
-    // 15. Blink LED
+    // 17. Blink LED
     if (state.tick % 5 == 0) {
         gpio_toggle(PIN_LED);
     }
