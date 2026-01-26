@@ -1,6 +1,6 @@
 # Product Requirements Document: Reflex Substrate Discovery
 
-> **Version:** 1.1
+> **Version:** 1.2
 > **Date:** 2026-01-26
 > **Status:** Draft (Reviewed)
 > **Author:** Claude (via LMM synthesis)
@@ -128,6 +128,9 @@ The existing Reflex implementation (`reflex_layers.h`, `layers_main.c`) has:
 | FR4.3 | Map SHALL support at least 64 distinct regions | P1 |
 | FR4.4 | Adjacent same-type regions SHALL coalesce | P2 |
 | FR4.5 | Map SHALL include discovery timestamp | P2 |
+| FR4.6 | Discovery trajectory SHALL be captured (not just final state) | P1 |
+
+**Rationale for FR4.6:** Research on online observation (Delta Observer) demonstrates that transient structure during learning contains information unavailable in final states. The discovery *process* — how regions are classified over time — may reveal patterns (timing anomalies, classification changes) that the final map obscures. Capture intermediate snapshots.
 
 #### FR5: Self-Protection
 | ID | Requirement | Priority |
@@ -252,6 +255,28 @@ typedef struct {
     uint32_t version;         // Map format version
 } memory_map_t;
 ```
+
+#### Discovery Trajectory (FR4.6)
+```c
+#define MAX_SNAPSHOTS 16
+
+typedef struct {
+    uint32_t probe_count;     // Probes completed at snapshot
+    uint32_t tick;            // When snapshot taken
+    uint8_t num_regions;      // Regions discovered so far
+    uint8_t num_ram;          // Count by type
+    uint8_t num_rom;
+    uint8_t num_register;
+    uint8_t num_fault;
+} trajectory_snapshot_t;
+
+typedef struct {
+    trajectory_snapshot_t snapshots[MAX_SNAPSHOTS];
+    uint8_t num_snapshots;
+} discovery_trajectory_t;
+```
+
+**Rationale:** Capturing the trajectory enables analysis of discovery dynamics — where the map changed, how confidence evolved, whether classifications were stable or oscillated. The transient states during discovery ARE the learning process, not just intermediate noise (see Delta Observer research).
 
 ### 5.3 Key Algorithms
 
@@ -441,6 +466,15 @@ mem_region_t* reflex_map_find(memory_map_t* map, uint32_t addr);
 
 // Print map for debugging
 void reflex_map_print(memory_map_t* map);
+
+// Trajectory capture (FR4.6)
+void reflex_map_snapshot(memory_map_t* map, discovery_trajectory_t* traj);
+
+// Save trajectory to NVS
+void reflex_trajectory_save(discovery_trajectory_t* traj);
+
+// Load trajectory from NVS
+bool reflex_trajectory_load(discovery_trajectory_t* traj);
 ```
 
 ---
@@ -632,6 +666,7 @@ the-reflex/
 7. RISC-V Privileged Architecture Specification (CSRs)
 8. Lincoln Manifold Method documentation (`/the-reflex/notes/LMM.md`)
 9. LMM Synthesis: `/tmp/reflex_substrate_synth.md`
+10. [Delta Observer](https://github.com/EntroMorphic/delta-observer) - Empirical validation that online observation captures transient structure invisible to post-hoc analysis (4% R² improvement)
 
 ---
 
@@ -706,4 +741,5 @@ csrr t0, 0x7E2   ; Read current cycle count into t0
 |---------|------|--------|---------|
 | 1.0 | 2026-01-26 | Claude | Initial draft from LMM synthesis |
 | 1.1 | 2026-01-26 | Claude | Corrected cycle counter (ESP32-C6 uses 0x7E0-0x7E2, not mcycle); Updated exception handler API to `esp_panic_handler_register()`; Added LP SRAM terminology; Added Appendix C for performance counters; Expanded risk assessment; Added Q6 to open questions |
+| 1.2 | 2026-01-26 | Claude | Added FR4.6 (trajectory capture) based on Delta Observer research; Added discovery_trajectory_t data structure; Added trajectory API; Added reference to Delta Observer |
 

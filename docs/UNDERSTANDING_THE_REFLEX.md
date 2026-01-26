@@ -126,6 +126,35 @@ At every layer, The Reflex observes itself:
 
 ---
 
+## Empirical Validation: Delta Observer
+
+The architectural commitment to online self-observation has empirical support from related research.
+
+**Delta Observer** ([github.com/EntroMorphic/delta-observer](https://github.com/EntroMorphic/delta-observer)) demonstrates that watching neural networks *during* training captures information unavailable to post-hoc analysis:
+
+| Observation Method | R² | Silhouette | What It Sees |
+|--------------------|-----|-----------|--------------|
+| **Online** (during training) | 0.9879 | -0.02 | Full trajectory |
+| Post-hoc (final state) | 0.9505 | 0.03 | Final state only |
+| PCA baseline | 0.9482 | 0.05 | Final state only |
+
+**The key finding:** Clustering emerges during learning (Silhouette 0.33 at epoch 20) then dissolves (Silhouette -0.02 at epoch 200). The scaffolding is transient. Post-hoc analysis misses it entirely.
+
+**Why this matters for The Reflex:**
+
+| Delta Observer | The Reflex |
+|----------------|------------|
+| Watches networks *during* training | Observes itself *during* operation |
+| Transient clustering = scaffolding | Entropy accumulation → crystallization |
+| Semantics persist after scaffolding dissolves | Knowledge persists in crystals |
+| Online beats post-hoc by 4% | Timestamps embedded in every channel |
+
+**The parallel insight:** The process of learning IS the structure, not just the result. Both projects embed observation into architecture rather than bolting it on afterward.
+
+This validates The Reflex's core design: timestamps, layer agreement metrics, and entropy tracking aren't debugging tools — they're first-class architectural components that capture dynamics invisible to static analysis.
+
+---
+
 ## The Vision: Embodied Self-Discovery
 
 The original intent:
@@ -205,6 +234,7 @@ Most systems only care about signals. The Reflex also cares about silence.
 | echip learns circuits | ⏳ Unverified | Task performance |
 | Crystals enable agency | ⏳ Blocked | Need valid sensing first |
 | Layers improve exploration | ⏳ Blocked | Need valid sensing first |
+| Online observation beats post-hoc | ✅ Validated | Delta Observer: 4% R² improvement |
 
 ### Speculative (Philosophy)
 
@@ -282,6 +312,12 @@ The philosophy is explicitly speculative (Level 4 out of scope).
 | `docs/PRD_SUBSTRATE_DISCOVERY.md` | The fix for exploration |
 | `notes/crystals-and-agency.md` | Crystal concept explanation |
 | `notes/LMM.md` | Lincoln Manifold Method |
+
+### External References
+
+| Resource | Relevance |
+|----------|-----------|
+| [Delta Observer](https://github.com/EntroMorphic/delta-observer) | Empirical validation of online self-observation |
 
 ---
 
