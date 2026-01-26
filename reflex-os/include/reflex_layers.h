@@ -171,10 +171,23 @@ static inline void layer_analyze(layer_t* l, layered_state_t* state) {
     for (int o = 0; o < NUM_OUTPUTS; o++) {
         float interest = 0.0f;
 
-        // 1. Entropy: unexplored is interesting (PRIMARY driver)
+        // 1. Discovery reward: strong correlations are interesting!
+        //    This is what was MISSING - EMA captures learned correlations
+        //    but wasn't being used to drive exploration
+        float max_ema = 0.0f;
+        for (int i = 0; i < NUM_INPUTS; i++) {
+            float abs_ema = fabsf(l->ema[o][i]);
+            if (abs_ema > max_ema) max_ema = abs_ema;
+        }
+        // Scale: ADC deltas are ~3000, use sqrt to compress range
+        // sqrt(3000) ≈ 55, gives moderate boost without dominating
+        interest += sqrtf(max_ema) * 0.5f;
+
+        // 2. Entropy: unexplored outputs are interesting
+        //    Keep full weight - entropy ensures we don't get stuck
         interest += l->entropy[o];
 
-        // 2. Variance: interesting only when novel
+        // 3. Variance: interesting only when novel
         //    Discount by observation count - known variance isn't interesting
         float total_var = 0.0f;
         for (int i = 0; i < NUM_INPUTS; i++) {
@@ -184,7 +197,7 @@ static inline void layer_analyze(layer_t* l, layered_state_t* state) {
         float novelty = 1.0f / (1.0f + (float)obs * 0.1f);  // Decays with observations
         interest += sqrtf(total_var) * 0.5f * novelty;
 
-        // 3. Recency penalty: just explored is less interesting
+        // 4. Recency penalty: just explored is less interesting
         for (int ago = 0; ago < l->window && ago < state->memory.count; ago++) {
             mem_entry_t* e = lmem_get(&state->memory, ago);
             if (e && e->output_idx == o) {
