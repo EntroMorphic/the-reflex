@@ -71,14 +71,14 @@ This is the most important finding of M1:
 
 ---
 
-## Working Regions
+## Discovery Regions
 
 | Region | Address Range | Status | Notes |
 |--------|---------------|--------|-------|
-| HP SRAM (heap) | 0x40820000-0x40850000 | WORKING | Full read/write probing |
-| LP SRAM | 0x50000000-0x50004000 | WORKING | 16KB, full probing |
-| Peripherals | 0x60000000-0x60010000 | WORKING | Read-only probing |
-| Flash | 0x42000000-0x42200000 | DISABLED | Cache errors on unprogrammed |
+| HP SRAM (heap) | 0x40820000-0x40850000 | ACTIVE | Full read/write probing |
+| LP SRAM | 0x50000000-0x50004000 | ACTIVE | 16KB, full probing |
+| Peripherals | 0x60000000-0x60010000 | ACTIVE | Read-only probing |
+| Flash | 0x42000000-0x42200000 | OUT OF SCOPE | Layout known at compile time |
 
 ---
 
@@ -121,14 +121,17 @@ Connect substrate discovery to the broader Reflex architecture:
    - Memory regions become "organs"
    - Access timing becomes "sensation"
 
-### Flash Workaround Investigation
-**Status: RESEARCH NEEDED**
+### Flash Probing
+**Status: OUT OF SCOPE**
 
-Options to explore:
-1. **Pre-touch cache lines** - Access known-good address first
-2. **Disable cache for probing** - Performance cost but might work
-3. **Use DMA for probing** - Bypass CPU cache entirely
-4. **Query partition table** - Only probe documented regions
+Flash is ROM. Its layout is known at compile time. The interesting question isn't "what's in Flash" but "what can I *do*".
+
+Substrate discovery focuses on:
+- **RAM** - where we can allocate, what's fast/slow
+- **Registers** - what peripherals exist
+- **Self** - where our code lives
+
+Flash layout comes from the partition table, not runtime probing.
 
 ---
 

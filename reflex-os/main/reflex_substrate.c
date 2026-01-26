@@ -505,20 +505,16 @@ typedef struct {
 // We start probing from 0x40820000 (128KB in) to avoid firmware regions.
 // A smarter approach would use heap_caps APIs to find actual free regions.
 //
-// CRITICAL: ESP32-C6 cache error discovery (2026-01-26):
-// - Reading unprogrammed Flash causes unrecoverable cache errors (mcause=0x19)
-// - The cache error happens during instruction fetch AFTER the data load
-// - Our MTVEC exception handler cannot catch this because the exception
-//   occurs during instruction prefetch, not during the load instruction
-// - We must ONLY probe Flash addresses that contain programmed data
-// - Firmware is ~160KB, so limit Flash probing to 0x42030000 (192KB)
+// Substrate discovery focuses on what The Reflex can DO, not what it can READ.
+// Flash is ROM - its layout is known at compile time from the partition table.
+// RAM and registers are discovered at runtime because they represent capability.
+//
+// NOTE: Flash probing is OUT OF SCOPE. Reading unprogrammed Flash causes
+// unrecoverable cache errors on ESP32-C6 (mcause=0x19 during instruction prefetch).
 static const known_region_t KNOWN_SAFE_REGIONS[] = {
     {0x40820000, 0x40850000, "HP SRAM (heap)", false},  // Skip first 128KB where firmware lives
-    // DISABLED: Flash probing causes unrecoverable cache errors even with fault handler
-    // The cache error occurs after the read completes, during instruction prefetch
-    // {0x42000000, 0x42020000, "Flash (bootloader+app)", true},
-    {0x50000000, 0x50004000, "LP SRAM", false},         // 16KB
-    {0x60000000, 0x60010000, "Peripherals", true},      // 64KB only, read-only for safety
+    {0x50000000, 0x50004000, "LP SRAM", false},         // 16KB low-power SRAM
+    {0x60000000, 0x60010000, "Peripherals", true},      // 64KB peripheral registers (read-only)
 };
 #define NUM_KNOWN_REGIONS (sizeof(KNOWN_SAFE_REGIONS) / sizeof(KNOWN_SAFE_REGIONS[0]))
 
