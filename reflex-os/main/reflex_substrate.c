@@ -122,7 +122,7 @@ bool substrate_is_self(uint32_t addr) {
 }
 
 // ============================================================
-// Probing (Safe Version - No Fault Handling Yet)
+// Probing (Fault-Protected Version)
 // ============================================================
 
 probe_result_t substrate_probe_readonly(uint32_t addr) {
@@ -135,16 +135,35 @@ probe_result_t substrate_probe_readonly(uint32_t addr) {
         return result;
     }
 
-    // Attempt read with timing
+    // Use fault-protected read if available
+    if (s_fault_recovery_enabled) {
+        uint32_t val;
+        uint32_t t0 = substrate_cycles();
+        bool ok = fault_try_read32(addr, &val);
+        uint32_t t1 = substrate_cycles();
+
+        if (!ok) {
+            result.type = MEM_FAULT;
+            result.read_cycles = t1 - t0;
+            return result;
+        }
+
+        result.read_cycles = t1 - t0;
+        result.original = val;
+        result.type = MEM_UNKNOWN;  // Read-only can't distinguish RAM/ROM
+        return result;
+    }
+
+    // Fallback: raw read (may crash on unmapped memory!)
     volatile uint32_t* ptr = (volatile uint32_t*)addr;
 
     uint32_t t0 = substrate_cycles();
-    uint32_t val = *ptr;  // This may fault on unmapped memory!
+    uint32_t val = *ptr;
     uint32_t t1 = substrate_cycles();
 
     result.read_cycles = t1 - t0;
     result.original = val;
-    result.type = MEM_UNKNOWN;  // Read-only can't distinguish RAM/ROM
+    result.type = MEM_UNKNOWN;
 
     return result;
 }
@@ -176,6 +195,57 @@ probe_result_t substrate_probe(uint32_t addr) {
         return result;
     }
 
+    // Use fault-protected probing if available
+    if (s_fault_recovery_enabled) {
+        uint32_t original, readback;
+
+        // Phase 1: Read original value
+        uint32_t t0 = substrate_cycles();
+        bool read_ok = fault_try_read32(addr, &original);
+        uint32_t t1 = substrate_cycles();
+        result.read_cycles = t1 - t0;
+
+        if (!read_ok) {
+            result.type = MEM_FAULT;
+            return result;
+        }
+        result.original = original;
+
+        // Phase 2: Write test pattern
+        uint32_t t2 = substrate_cycles();
+        bool write_ok = fault_try_write32(addr, TEST_PATTERN_1);
+        uint32_t t3 = substrate_cycles();
+        result.write_cycles = t3 - t2;
+
+        if (!write_ok) {
+            // Write faulted - this is ROM or unmapped
+            result.type = MEM_ROM;
+            return result;
+        }
+
+        // Phase 3: Read back
+        if (!fault_try_read32(addr, &readback)) {
+            result.type = MEM_FAULT;
+            return result;
+        }
+        result.readback = readback;
+
+        // Phase 4: Restore original
+        fault_try_write32(addr, original);
+
+        // Classify based on behavior
+        if (readback == TEST_PATTERN_1) {
+            result.type = MEM_RAM;
+        } else if (readback == original) {
+            result.type = MEM_ROM;
+        } else {
+            result.type = MEM_REGISTER;
+        }
+
+        return result;
+    }
+
+    // Fallback: raw probing (may crash!)
     volatile uint32_t* ptr = (volatile uint32_t*)addr;
 
     // Phase 1: Read original value
@@ -191,7 +261,6 @@ probe_result_t substrate_probe(uint32_t addr) {
     uint32_t t3 = substrate_cycles();
     result.write_cycles = t3 - t2;
 
-    // Memory fence to ensure write completes
     REFLEX_FENCE();
 
     // Phase 3: Read back
@@ -204,14 +273,10 @@ probe_result_t substrate_probe(uint32_t addr) {
 
     // Classify based on behavior
     if (readback == TEST_PATTERN_1) {
-        // Write succeeded, value persisted
         result.type = MEM_RAM;
     } else if (readback == original) {
-        // Write ignored, value unchanged
         result.type = MEM_ROM;
     } else {
-        // Value changed but not to what we wrote
-        // This is a volatile register
         result.type = MEM_REGISTER;
     }
 
@@ -440,11 +505,18 @@ typedef struct {
 // We start probing from 0x40820000 (128KB in) to avoid firmware regions.
 // A smarter approach would use heap_caps APIs to find actual free regions.
 //
-// IMPORTANT: Flash is configured for 2MB even if physical chip is 4MB.
-// Reading beyond 0x42200000 causes cache errors!
+// CRITICAL: ESP32-C6 cache error discovery (2026-01-26):
+// - Reading unprogrammed Flash causes unrecoverable cache errors (mcause=0x19)
+// - The cache error happens during instruction fetch AFTER the data load
+// - Our MTVEC exception handler cannot catch this because the exception
+//   occurs during instruction prefetch, not during the load instruction
+// - We must ONLY probe Flash addresses that contain programmed data
+// - Firmware is ~160KB, so limit Flash probing to 0x42030000 (192KB)
 static const known_region_t KNOWN_SAFE_REGIONS[] = {
     {0x40820000, 0x40850000, "HP SRAM (heap)", false},  // Skip first 128KB where firmware lives
-    {0x42000000, 0x42200000, "Flash", true},            // 2MB mapped (not 4MB!), read-only
+    // DISABLED: Flash probing causes unrecoverable cache errors even with fault handler
+    // The cache error occurs after the read completes, during instruction prefetch
+    // {0x42000000, 0x42020000, "Flash (bootloader+app)", true},
     {0x50000000, 0x50004000, "LP SRAM", false},         // 16KB
     {0x60000000, 0x60010000, "Peripherals", true},      // 64KB only, read-only for safety
 };

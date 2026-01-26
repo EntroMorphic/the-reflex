@@ -156,6 +156,7 @@ static void mve_substrate(void) {
     ESP_LOGW(TAG, "  MVE RESULT: %d/%d tests passed", pass, total_tests);
     ESP_LOGW(TAG, "===========================================");
     ESP_LOGW(TAG, "");
+
 }
 
 // ============================================================
@@ -245,11 +246,9 @@ void app_main(void) {
 
     vTaskDelay(pdMS_TO_TICKS(1000));
 
-    // Run full discovery
-    // NOTE: Disabled for now - flash coarse discovery causes cache errors
-    // TODO: Implement proper fault handling (M1) before enabling
-    ESP_LOGW(TAG, "Full discovery disabled pending fault handler implementation.");
-    // run_discovery();
+    // Run full discovery (M1 fault handler now enabled)
+    // Flash limited to first 192KB to avoid cache errors on unprogrammed regions
+    run_discovery();
 
     // Keep alive
     ESP_LOGW(TAG, "");

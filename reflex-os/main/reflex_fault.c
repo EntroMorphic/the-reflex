@@ -175,11 +175,15 @@ void fault_init(void) {
 static inline void fault_hook_install(void) {
     uint32_t new_mtvec = (uint32_t)fault_vector_entry;
     __asm__ volatile("csrw mtvec, %0" :: "r"(new_mtvec));
+    // Instruction fence to ensure pipeline sees new MTVEC
+    __asm__ volatile("fence.i" ::: "memory");
 }
 
 // Restore original exception handler
 static inline void fault_hook_restore(void) {
     __asm__ volatile("csrw mtvec, %0" :: "r"(s_original_mtvec));
+    // Instruction fence to ensure pipeline sees restored MTVEC
+    __asm__ volatile("fence.i" ::: "memory");
 }
 
 // ============================================================
