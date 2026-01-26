@@ -113,8 +113,15 @@ typedef struct {
 /**
  * Initialize substrate discovery system
  * Must be called before any probing.
+ * Also initializes fault handling if available.
  */
 void substrate_init(void);
+
+/**
+ * Check if fault handling is available
+ * Returns true if exception recovery is enabled
+ */
+bool substrate_has_fault_recovery(void);
 
 /**
  * Mark region as self (will not be probed)

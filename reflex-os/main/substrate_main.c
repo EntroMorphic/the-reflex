@@ -17,6 +17,7 @@
 
 #include "reflex.h"
 #include "reflex_substrate.h"
+#include "reflex_fault.h"
 
 static const char* TAG = "SUBSTRATE_MAIN";
 
@@ -95,10 +96,64 @@ static void mve_substrate(void) {
              mem_type_str(r4.type),
              test4_pass ? "PASS" : "FAIL");
 
+    // Test 5: Fault Recovery (M1 milestone)
+    ESP_LOGW(TAG, "Test 5: FAULT RECOVERY (M1)");
+    if (!fault_recovery_enabled()) {
+        ESP_LOGW(TAG, "  SKIP: Fault recovery not enabled");
+    } else {
+        // Test: Trigger EBREAK which MUST cause exception (mcause=3)
+        ESP_LOGW(TAG, "  Triggering EBREAK instruction...");
+
+        // Disable interrupts and install our handler
+        uint32_t mstatus;
+        __asm__ volatile("csrrci %0, mstatus, 8" : "=r"(mstatus));
+
+        // Get original MTVEC
+        uint32_t orig_mtvec;
+        __asm__ volatile("csrr %0, mtvec" : "=r"(orig_mtvec));
+
+        // Set our handler
+        extern void fault_vector_entry(void);
+        uint32_t our_mtvec = (uint32_t)fault_vector_entry;
+        __asm__ volatile("csrw mtvec, %0" :: "r"(our_mtvec));
+
+        // Verify
+        uint32_t actual_mtvec;
+        __asm__ volatile("csrr %0, mtvec" : "=r"(actual_mtvec));
+        ESP_LOGW(TAG, "  MTVEC: orig=0x%08lx, set=0x%08lx, actual=0x%08lx",
+                 (unsigned long)orig_mtvec, (unsigned long)our_mtvec, (unsigned long)actual_mtvec);
+
+        // Set up fault guard
+        fault_guard_begin(0);
+
+        // Trigger EBREAK - this MUST cause an exception
+        __asm__ volatile("ebreak");
+
+        fault_guard_end();
+
+        // Restore
+        __asm__ volatile("csrw mtvec, %0" :: "r"(orig_mtvec));
+        __asm__ volatile("csrw mstatus, %0" :: "r"(mstatus));
+
+        bool test5_pass = fault_occurred();
+        ESP_LOGW(TAG, "  faulted=%d, cause=0x%lx (%s)",
+                 fault_occurred(),
+                 (unsigned long)fault_cause(),
+                 fault_cause_str(fault_cause()));
+        ESP_LOGW(TAG, "  Handler calls: %lu", (unsigned long)fault_handler_calls());
+
+        if (test5_pass) {
+            pass++;
+            ESP_LOGW(TAG, "  >>> EBREAK RECOVERED! Handler works! <<<");
+        }
+        ESP_LOGW(TAG, "  FAULT RECOVERY: [%s]", test5_pass ? "PASS" : "FAIL");
+    }
+
     // Summary
+    int total_tests = fault_recovery_enabled() ? 5 : 4;
     ESP_LOGW(TAG, "");
     ESP_LOGW(TAG, "===========================================");
-    ESP_LOGW(TAG, "  MVE RESULT: %d/4 tests passed", pass);
+    ESP_LOGW(TAG, "  MVE RESULT: %d/%d tests passed", pass, total_tests);
     ESP_LOGW(TAG, "===========================================");
     ESP_LOGW(TAG, "");
 }

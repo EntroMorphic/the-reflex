@@ -8,6 +8,7 @@
  */
 
 #include "reflex_substrate.h"
+#include "reflex_fault.h"
 #include "reflex.h"
 
 #include <string.h>
@@ -17,6 +18,9 @@
 #include "esp_cpu.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+
+// Flag indicating if fault recovery is available
+static bool s_fault_recovery_enabled = false;
 
 static const char* TAG = "SUBSTRATE";
 
@@ -68,10 +72,20 @@ extern uint32_t _data_end;
 extern uint32_t _bss_start;
 extern uint32_t _bss_end;
 
+bool substrate_has_fault_recovery(void) {
+    return s_fault_recovery_enabled;
+}
+
 void substrate_init(void) {
-    ESP_LOGI(TAG, "Initializing substrate discovery...");
+    ESP_LOGW(TAG, "Initializing substrate discovery...");
 
     s_num_self_regions = 0;
+
+    // Initialize fault handling system
+    fault_init();
+
+    // Check if fault recovery was successfully enabled
+    s_fault_recovery_enabled = fault_recovery_enabled();
 
     // Mark our own memory regions
     // These will be skipped during probing
@@ -79,7 +93,9 @@ void substrate_init(void) {
     // Note: These linker symbols may not be available on all builds
     // If they fail, we'll use hardcoded safe ranges
 
-    ESP_LOGI(TAG, "Substrate initialized. Self regions: %d", s_num_self_regions);
+    ESP_LOGW(TAG, "Substrate initialized. Self regions: %d", s_num_self_regions);
+    ESP_LOGW(TAG, "Fault recovery: %s",
+             s_fault_recovery_enabled ? "ENABLED" : "DISABLED (defensive mode)");
 }
 
 void substrate_mark_self(uint32_t start, uint32_t end) {

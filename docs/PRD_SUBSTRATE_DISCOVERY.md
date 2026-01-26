@@ -1,8 +1,8 @@
 # Product Requirements Document: Reflex Substrate Discovery
 
-> **Version:** 1.3
+> **Version:** 1.5
 > **Date:** 2026-01-26
-> **Status:** In Progress - MVE Complete
+> **Status:** In Progress - M1 Complete (5/5 MVE tests passing)
 > **Author:** Claude (via LMM synthesis)
 
 ---
@@ -551,7 +551,7 @@ void mve_substrate(void) {
 | Milestone | Description | Dependencies | Status |
 |-----------|-------------|--------------|--------|
 | M0 | MVE passes 4/4 tests (without fault handling) | None | ✅ **COMPLETE** |
-| M1 | Fault Catcher working | None | 🔄 In Progress |
+| M1 | Fault Catcher working | None | ✅ **COMPLETE** |
 | M2 | Single-address probing with fault recovery | M1 | Pending |
 | M3 | Full MVE with FAULT test | M2 | Pending |
 | M4 | Map persistence | M3 | Pending |
@@ -569,6 +569,31 @@ void mve_substrate(void) {
 **Blockers for Full Discovery:**
 - Flash probing (0x42000000-0x42200000) causes cache errors during coarse discovery
 - Requires M1 (Fault Catcher) to safely probe unmapped/protected regions
+
+**M1 Complete (2026-01-26):**
+
+Fault recovery is working! 5/5 MVE tests pass including exception recovery.
+
+Technical solution:
+- Disable interrupts during probe (prevents FreeRTOS scheduler interference)
+- Install custom MTVEC with **256-byte alignment** (`.align 8` in assembly)
+- Custom exception handler in IRAM catches faults and skips faulting instruction
+- Restore original MTVEC and re-enable interrupts after probe
+
+Key findings:
+- ESP32-C6 forces vectored mode (MTVEC mode=1) regardless of what we write
+- In vectored mode, exceptions jump to `(MTVEC & ~3)`
+- Proper alignment ensures our code is at the address the CPU jumps to
+- ESP32-C6 does NOT fault on reads from unmapped addresses (returns garbage)
+- ESP32-C6 does NOT fault on writes to ROM (silently ignores)
+- EBREAK instruction reliably triggers exception for testing
+
+Test results:
+- Test 1 (RAM): PASS - correctly identifies heap memory
+- Test 2 (ROM): PASS - correctly identifies flash
+- Test 3 (REGISTER): PASS - read from GPIO succeeded
+- Test 4 (SELF): PASS - stack identified as self
+- Test 5 (FAULT RECOVERY): PASS - EBREAK recovered, cause=0x3 (Breakpoint)
 
 ### 8.2 File Structure
 
@@ -595,7 +620,7 @@ the-reflex/
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
 | ESP-IDF panic handler conflicts | Medium | High | Test early, use `esp_panic_handler_register()` |
-| setjmp/longjmp incompatible with FreeRTOS | Low | High | Use task-local recovery points |
+| setjmp/longjmp incompatible with FreeRTOS | Medium | High | **RESOLVED**: Not needed. Direct MTVEC hooking works when: (1) interrupts disabled during probe, (2) vector aligned to 256 bytes. |
 | Probing corrupts DMA/peripheral state | Medium | Medium | Add quiescence checks |
 | PMP blocks expected memory regions | Low | Medium | Document and adapt |
 | Flash wear from frequent NVS writes | Low | Low | Batch writes, rate limit |
@@ -754,4 +779,6 @@ csrr t0, 0x7E2   ; Read current cycle count into t0
 | 1.1 | 2026-01-26 | Claude | Corrected cycle counter (ESP32-C6 uses 0x7E0-0x7E2, not mcycle); Updated exception handler API to `esp_panic_handler_register()`; Added LP SRAM terminology; Added Appendix C for performance counters; Expanded risk assessment; Added Q6 to open questions |
 | 1.2 | 2026-01-26 | Claude | Added FR4.6 (trajectory capture) based on Delta Observer research; Added discovery_trajectory_t data structure; Added trajectory API; Added reference to Delta Observer |
 | 1.3 | 2026-01-26 | Claude | **M0 (MVE) COMPLETE**: 4/4 tests pass (RAM, ROM, REGISTER, SELF). Updated milestones to show M0 complete, M1 in progress. Documented blockers: flash probing causes cache errors, requires fault handler. Updated success criteria. |
+| 1.4 | 2026-01-26 | Claude | **M1 BLOCKED**: Direct MTVEC hooking incompatible with FreeRTOS vectored interrupt mode. Documented technical investigation and alternative approaches. Using defensive probing as interim solution. |
+| 1.5 | 2026-01-26 | Claude | **M1 COMPLETE**: Fault recovery working! Key: 256-byte alignment for vector entry + disable interrupts during probe. 5/5 MVE tests pass. ESP32-C6 behavior documented: doesn't fault on unmapped reads or ROM writes. |
 
