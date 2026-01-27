@@ -8,6 +8,7 @@
  */
 
 #include "reflex_substrate.h"
+#include "reflex_substrate_stream.h"
 #include "reflex_fault.h"
 #include "reflex.h"
 
@@ -371,6 +372,19 @@ void substrate_map_print(memory_map_t* map) {
     }
 }
 
+void substrate_map_stream(memory_map_t* map) {
+    // Stream map to Rerun visualization
+    substrate_stream_map_start();
+    substrate_stream_phase("LOADED_FROM_NVS");
+
+    for (int i = 0; i < map->num_regions; i++) {
+        mem_region_t* r = &map->regions[i];
+        substrate_stream_region(r->start, r->end, r->type, r->avg_read_cycles);
+    }
+
+    substrate_stream_map_end(map->total_probes, map->total_faults, map->num_regions);
+}
+
 // ============================================================
 // NVS Persistence
 // ============================================================
@@ -520,6 +534,7 @@ static const known_region_t KNOWN_SAFE_REGIONS[] = {
 
 void substrate_discover_coarse(memory_map_t* map) {
     ESP_LOGW(TAG, "Starting coarse discovery (known safe regions)...");
+    substrate_stream_phase("COARSE_DISCOVERY");
 
     discovery_trajectory_t traj = {0};
 
@@ -551,6 +566,7 @@ void substrate_discover_coarse(memory_map_t* map) {
                 result = substrate_probe(addrs[i]);
             }
             substrate_map_add(map, &result);
+            substrate_stream_probe(&result);  // Stream to Rerun
 
             ESP_LOGW(TAG, "  0x%08lx: %s (%lu cycles)",
                      (unsigned long)result.addr,
@@ -572,6 +588,7 @@ void substrate_discover_coarse(memory_map_t* map) {
 
 void substrate_discover_fine(memory_map_t* map) {
     ESP_LOGW(TAG, "Starting fine discovery (4KB stride in non-FAULT regions)...");
+    substrate_stream_phase("FINE_DISCOVERY");
 
     discovery_trajectory_t traj = {0};
     substrate_trajectory_load(&traj);  // Load existing trajectory
@@ -597,6 +614,7 @@ void substrate_discover_fine(memory_map_t* map) {
                 result = substrate_probe(addr);
             }
             substrate_map_add(map, &result);
+            substrate_stream_probe(&result);  // Stream to Rerun
 
             // Progress every 64KB
             if ((addr & 0xFFFF) == 0) {
@@ -617,6 +635,7 @@ void substrate_discover_fine(memory_map_t* map) {
 
 void substrate_discover_registers(memory_map_t* map) {
     ESP_LOGW(TAG, "Starting register discovery (peripheral bus, 4B stride)...");
+    substrate_stream_phase("REGISTER_DISCOVERY");
 
     // The peripheral bus is at 0x60000000 - 0x600FFFFF
     // This is where GPIO, UART, SPI, etc. registers live
@@ -636,10 +655,12 @@ void substrate_discover_registers(memory_map_t* map) {
         }
 
         substrate_map_add(map, &result);
+        substrate_stream_probe(&result);  // Stream to Rerun
 
         // Progress every 4KB
         if ((addr & 0xFFF) == 0) {
             ESP_LOGW(TAG, "  0x%08lx probed", (unsigned long)addr);
+            fflush(stdout);  // Flush stream periodically
         }
     }
 

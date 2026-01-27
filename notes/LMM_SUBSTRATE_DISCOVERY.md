@@ -2,7 +2,7 @@
 
 > *The body discovers itself.*
 >
-> 2026-01-26 | Updated after scope decision
+> 2026-01-26 | M3 Streaming Complete
 
 ---
 
@@ -11,7 +11,7 @@
 **M0 MVE:** DONE — 5/5 tests pass
 **M1 Fault Catcher:** DONE — EBREAK recovery works
 **M2 Cartography:** DONE — 16,461 probes, 0 faults
-**M3 Awareness:** READY
+**M3 Awareness:** DONE — Rerun streaming protocol implemented
 
 ---
 
@@ -162,17 +162,61 @@ typedef struct {
 
 ---
 
-## M3: Awareness Integration (Future)
+## M3: Awareness Integration
 
-After cartography, connect to Rerun visualization:
+Substrate discovery streams to Rerun visualization:
 
 ```
-Substrate → Serial → Pi4 → Rerun
+ESP32-C6 → Serial → Pi4 → Rerun
 
-Each probe result streams as:
-- Position: memory address (normalized to 3D space)
-- Color: memory type (RAM=green, REGISTER=blue, FAULT=red)
-- Intensity: latency (brighter = faster)
+Pipeline:
+1. reflex_substrate_stream.c streams text protocol over serial
+2. substrate_rerun.py parses stream and logs to Rerun
+3. Memory addresses map to 3D space
+4. Colors by type, size by latency
+```
+
+### Streaming Protocol
+
+```
+##SUBSTRATE##:INIT
+##SUBSTRATE##:PHASE:<phase_name>
+##SUBSTRATE##:PROBE:<addr>,<type>,<read_cycles>,<write_cycles>
+##SUBSTRATE##:REGION:<start>,<end>,<type>,<avg_cycles>
+##SUBSTRATE##:MAP_START
+##SUBSTRATE##:MAP_END:<total_probes>,<faults>,<regions>
+```
+
+### 3D Visualization Mapping
+
+| Memory Address | 3D Coordinate |
+|----------------|---------------|
+| Bits 0-11 (page offset) | X axis (0-4m) |
+| Bits 12-19 (page number) | Y axis (0-4m) |
+| Top 4 bits (region) | Z axis: 0x4→0, 0x5→1, 0x6→2 |
+
+| Memory Type | Color |
+|-------------|-------|
+| RAM | Green |
+| REGISTER | Blue |
+| ROM | Gray |
+| FAULT | Red |
+| SELF | Yellow |
+
+Point radius indicates latency (larger = slower).
+
+### Running the Visualization
+
+```bash
+# On Pi4, in one terminal:
+cd ~/reflex-os
+idf.py -p /dev/ttyACM0 flash && idf.py -p /dev/ttyACM0 monitor
+
+# On Pi4, in another terminal:
+python3 tools/substrate_rerun.py /dev/ttyACM0
+
+# Or with output file:
+python3 tools/substrate_rerun.py /dev/ttyACM0 substrate.rrd
 ```
 
 The Reflex sees its own body in real-time.
@@ -187,20 +231,30 @@ The Reflex sees its own body in real-time.
 - [x] Memory map data structure
 - [x] NVS save/load for persistence
 
-### M2 Tasks
-- [ ] Run coarse discovery on HP SRAM
-- [ ] Run coarse discovery on LP SRAM
-- [ ] Run coarse discovery on Peripherals
-- [ ] Fine discovery (4KB stride) on HP SRAM
-- [ ] Peripheral census with known base addresses
-- [ ] Timing signature collection
-- [ ] Generate substrate map report
+### M2 Tasks (all done)
+- [x] Run coarse discovery on HP SRAM
+- [x] Run coarse discovery on LP SRAM
+- [x] Run coarse discovery on Peripherals
+- [x] Fine discovery (4KB stride) on HP SRAM
+- [x] Peripheral census with known base addresses
+- [x] Timing signature collection
+- [x] Generate substrate map report
 
-### M2 Success Criteria
-- [ ] Complete memory map of all 272KB
-- [ ] No crashes during discovery
-- [ ] Latency data for each region
-- [ ] Map persists in NVS across reboots
+### M2 Success Criteria (all met)
+- [x] Complete memory map of all 272KB
+- [x] No crashes during discovery (0 faults)
+- [x] Latency data for each region
+- [x] Map persists in NVS across reboots
+
+### M3 Tasks (all done)
+- [x] Text streaming protocol (reflex_substrate_stream.h/c)
+- [x] Stream probe results during discovery
+- [x] Stream regions summary
+- [x] Stream loaded map from NVS
+- [x] Python receiver (substrate_rerun.py)
+- [x] Address to 3D mapping
+- [x] Color by memory type
+- [x] Size by latency
 
 ---
 
@@ -208,14 +262,20 @@ The Reflex sees its own body in real-time.
 
 ```
 substrate_main.c
-    └── mve_substrate()        // 5/5 tests
+    └── mve_substrate()           // 5/5 tests
     └── run_discovery()
+        ├── substrate_stream_init()
+        ├── substrate_stream_map_start()
         ├── substrate_discover_coarse()
         │   └── substrate_probe() / substrate_probe_readonly()
         │       └── fault_try_read32() / fault_try_write32()
         │           └── MTVEC hook + guarded access
-        ├── substrate_discover_fine()
-        └── substrate_discover_registers()
+        │   └── substrate_stream_probe()    ─┐
+        ├── substrate_discover_fine()        │
+        │   └── substrate_stream_probe()    ─┼─→ Serial → Pi4 → Rerun
+        ├── substrate_discover_registers()   │
+        │   └── substrate_stream_probe()    ─┘
+        └── substrate_stream_map_end()
 ```
 
 ---
@@ -225,8 +285,10 @@ substrate_main.c
 | File | Lines | Purpose |
 |------|-------|---------|
 | `reflex_fault.c` | ~280 | Exception handler, MTVEC hooking |
-| `reflex_substrate.c` | ~600 | Probing logic, memory map, NVS |
-| `substrate_main.c` | ~260 | Entry point, MVE, discovery driver |
+| `reflex_substrate.c` | ~650 | Probing logic, memory map, NVS |
+| `reflex_substrate_stream.c` | ~70 | Serial streaming protocol |
+| `substrate_main.c` | ~240 | Entry point, MVE, discovery driver |
+| `tools/substrate_rerun.py` | ~280 | Pi4 receiver, Rerun visualization |
 
 ---
 

@@ -203,6 +203,11 @@ bool substrate_map_load(memory_map_t* map);
  */
 void substrate_map_print(memory_map_t* map);
 
+/**
+ * Stream map to Rerun visualization
+ */
+void substrate_map_stream(memory_map_t* map);
+
 // ============================================================
 // API: Trajectory
 // ============================================================
