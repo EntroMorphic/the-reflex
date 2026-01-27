@@ -1,173 +1,267 @@
-# LMM: Substrate Discovery Status
+# LMM: Substrate Discovery
 
 > *The body discovers itself.*
 >
-> 2026-01-26
+> 2026-01-26 | Updated after scope decision
 
 ---
 
-## Where We Are
+## Current State
 
-### M0: MVE Complete
-**Status: DONE**
+**M0 MVE:** DONE — 5/5 tests pass
+**M1 Fault Catcher:** DONE — EBREAK recovery works
+**M2 Cartography:** READY
 
-The Reflex can identify memory types through probing:
-- **RAM:** Write test pattern, read back, verify
-- **ROM:** Write fails silently, value unchanged
-- **REGISTER:** Value changes but not to what we wrote
-- **SELF:** Address is within our own code/stack
-- **FAULT:** Access caused recoverable exception
+---
+
+## Scope
+
+Substrate discovery answers: **What can The Reflex DO?**
+
+| In Scope | Why |
+|----------|-----|
+| HP SRAM | Allocatable memory, runtime capability |
+| LP SRAM | Low-power operations, sleep state |
+| Peripherals | Hardware interfaces, I/O capability |
+
+| Out of Scope | Why |
+|--------------|-----|
+| Flash | ROM, layout known at compile time |
+
+Flash is static. RAM and registers are dynamic. We discover what moves.
+
+---
+
+## Available Regions
+
+### HP SRAM (High-Performance)
+```
+Address:  0x40820000 - 0x40850000
+Size:     192KB (heap region, avoiding firmware)
+Mode:     Read/Write probing
+Purpose:  Find allocatable memory, measure latency
+```
+
+### LP SRAM (Low-Power)
+```
+Address:  0x50000000 - 0x50004000
+Size:     16KB
+Mode:     Read/Write probing
+Purpose:  LP core memory, sleep-persistent state
+```
+
+### Peripherals
+```
+Address:  0x60000000 - 0x60010000
+Size:     64KB (conservative limit)
+Mode:     Read-only probing
+Purpose:  Discover GPIO, UART, SPI, I2C, timers
+```
+
+**Total probeable space: 272KB**
+
+---
+
+## M2: Substrate Cartography
+
+### Phase 1: HP SRAM Mapping
+**Goal:** Build complete map of usable heap memory
 
 ```
-MVE RESULT: 5/5 tests passed
-- RAM detection:      PASS
-- ROM detection:      PASS
-- Register detection: PASS
-- Self detection:     PASS
-- Fault recovery:     PASS
+for addr in range(0x40820000, 0x40850000, 0x1000):
+    result = substrate_probe(addr)
+    record(addr, result.type, result.read_cycles, result.write_cycles)
 ```
 
-### M1: Fault Catcher Complete
-**Status: DONE**
+**Deliverables:**
+- Memory map with type annotations
+- Latency heatmap (cycle counts per 4KB block)
+- Heap boundary identification
 
-Exception recovery via MTVEC hooking works:
-- 256-byte aligned vector entry (ESP32-C6 forces vectored mode)
-- Per-probe MTVEC install/restore with interrupt disable
-- fence.i after CSR modifications for cache coherency
-- EBREAK (mcause=3) successfully caught and recovered
+### Phase 2: LP SRAM Characterization
+**Goal:** Verify LP core memory accessibility from HP core
 
+```
+for addr in range(0x50000000, 0x50004000, 0x100):
+    result = substrate_probe(addr)
+    # Finer granularity - LP SRAM is small but important
+```
+
+**Questions to answer:**
+- Can HP core read/write LP SRAM directly?
+- What's the latency penalty for cross-core access?
+- Are there any reserved regions?
+
+### Phase 3: Peripheral Census
+**Goal:** Map which peripheral registers exist and respond
+
+```
+KNOWN_PERIPHERALS = {
+    0x60004000: "GPIO",
+    0x60000000: "UART0",
+    0x60001000: "UART1",
+    0x60002000: "SPI",
+    0x60003000: "I2C",
+    # ... extend based on datasheet
+}
+
+for base, name in KNOWN_PERIPHERALS:
+    result = substrate_probe_readonly(base)
+    if result.read_cycles > 0:
+        register_peripheral(name, base, result)
+```
+
+**Deliverables:**
+- List of responsive peripheral base addresses
+- Read latency per peripheral
+- Foundation for hardware abstraction
+
+### Phase 4: Timing Signatures
+**Goal:** Build latency profile of entire substrate
+
+```
+Collect:
+- Min/max/avg read cycles per region
+- Write cycle overhead vs read
+- Any anomalous addresses (hot spots, slow zones)
+```
+
+**Output format:**
 ```c
-// The pattern that works:
-csrrci mstatus, 8      // Disable interrupts
-csrw mtvec, our_handler
-fence.i                 // Sync instruction cache
-// ... do guarded access ...
-csrw mtvec, original
-fence.i
-csrw mstatus, saved
+typedef struct {
+    uint32_t addr;
+    mem_type_t type;
+    uint32_t read_cycles_min;
+    uint32_t read_cycles_max;
+    uint32_t write_cycles;
+} substrate_entry_t;
 ```
-
-### Critical Discovery: ESP32-C6 Cache Behavior
-
-**Reading unprogrammed Flash causes UNRECOVERABLE cache errors.**
-
-This is the most important finding of M1:
-- mcause=0x19 (cache error) triggers during instruction prefetch
-- Happens AFTER the data load completes
-- Occurs during fetch of the NEXT instruction
-- Our MTVEC handler cannot intercept this
-- The cache corruption propagates to instruction fetch
-
-**Boundary:** ~160KB from Flash start (correlates with firmware size)
-
-```
-0x42000100: ok=1 (works - in bootloader)
-0x42010000: ok=1 (works - in app code)
-0x42020000: ok=1 (works - near end of app)
-0x42030000: CRASH (unprogrammed Flash)
-```
-
-**Implication:** Flash probing disabled until hardware workaround found.
 
 ---
 
-## Discovery Regions
+## M3: Awareness Integration (Future)
 
-| Region | Address Range | Status | Notes |
-|--------|---------------|--------|-------|
-| HP SRAM (heap) | 0x40820000-0x40850000 | ACTIVE | Full read/write probing |
-| LP SRAM | 0x50000000-0x50004000 | ACTIVE | 16KB, full probing |
-| Peripherals | 0x60000000-0x60010000 | ACTIVE | Read-only probing |
-| Flash | 0x42000000-0x42200000 | OUT OF SCOPE | Layout known at compile time |
+After cartography, connect to Rerun visualization:
+
+```
+Substrate → Serial → Pi4 → Rerun
+
+Each probe result streams as:
+- Position: memory address (normalized to 3D space)
+- Color: memory type (RAM=green, REGISTER=blue, FAULT=red)
+- Intensity: latency (brighter = faster)
+```
+
+The Reflex sees its own body in real-time.
 
 ---
 
-## Next Steps
+## Implementation Checklist
 
-### M2: Substrate Cartography
-**Status: READY**
+### M2 Prerequisites (all done)
+- [x] Fault-protected probe functions
+- [x] MTVEC hooking with fence.i
+- [x] Memory map data structure
+- [x] NVS save/load for persistence
 
-Now that fault-protected probing works, map the full address space:
+### M2 Tasks
+- [ ] Run coarse discovery on HP SRAM
+- [ ] Run coarse discovery on LP SRAM
+- [ ] Run coarse discovery on Peripherals
+- [ ] Fine discovery (4KB stride) on HP SRAM
+- [ ] Peripheral census with known base addresses
+- [ ] Timing signature collection
+- [ ] Generate substrate map report
 
-1. **Fine-grained HP SRAM discovery**
-   - Probe at 4KB intervals
-   - Build memory map structure
-   - Identify heap boundaries vs firmware
-
-2. **LP SRAM characterization**
-   - Full 16KB probe
-   - Verify low-power core accessibility
-
-3. **Peripheral register census**
-   - Map GPIO, UART, SPI, I2C base addresses
-   - Identify which registers are safe to probe
-
-4. **Timing signature collection**
-   - Record read/write cycle counts per region
-   - Build latency profile of the substrate
-
-### M3: Awareness Integration
-**Status: PLANNED**
-
-Connect substrate discovery to the broader Reflex architecture:
-
-1. **Streaming to Rerun**
-   - Real-time visualization of probe results
-   - Memory map as 3D voxel space
-   - Latency as color/intensity
-
-2. **Substrate as proprioception**
-   - The Reflex knows its own body
-   - Memory regions become "organs"
-   - Access timing becomes "sensation"
-
-### Flash Probing
-**Status: OUT OF SCOPE**
-
-Flash is ROM. Its layout is known at compile time. The interesting question isn't "what's in Flash" but "what can I *do*".
-
-Substrate discovery focuses on:
-- **RAM** - where we can allocate, what's fast/slow
-- **Registers** - what peripherals exist
-- **Self** - where our code lives
-
-Flash layout comes from the partition table, not runtime probing.
+### M2 Success Criteria
+- [ ] Complete memory map of all 272KB
+- [ ] No crashes during discovery
+- [ ] Latency data for each region
+- [ ] Map persists in NVS across reboots
 
 ---
 
-## Architecture Notes
-
-### Current Call Flow
+## Architecture
 
 ```
-substrate_probe(addr)
-├── substrate_is_self(addr) → MEM_SELF
-├── is_flash_address(addr) → substrate_probe_readonly() [DISABLED]
-└── fault_try_read32(addr, &val)
-    ├── csrrci mstatus, 8       // disable interrupts
-    ├── fault_hook_install()    // set MTVEC + fence.i
-    ├── fault_guard_begin(addr) // set g_fault_state.active
-    ├── *ptr = *addr            // THE ACTUAL READ
-    ├── fault_guard_end()
-    ├── fault_hook_restore()    // restore MTVEC + fence.i
-    └── csrw mstatus, saved     // restore interrupts
+substrate_main.c
+    └── mve_substrate()        // 5/5 tests
+    └── run_discovery()
+        ├── substrate_discover_coarse()
+        │   └── substrate_probe() / substrate_probe_readonly()
+        │       └── fault_try_read32() / fault_try_write32()
+        │           └── MTVEC hook + guarded access
+        ├── substrate_discover_fine()
+        └── substrate_discover_registers()
 ```
 
-### Key Files
+---
 
-| File | Purpose |
-|------|---------|
-| `reflex_fault.c` | Exception handler, MTVEC hooking |
-| `reflex_fault.h` | Fault state, guard macros |
-| `reflex_substrate.c` | Probing logic, memory map |
-| `reflex_substrate.h` | Types, region definitions |
-| `substrate_main.c` | MVE tests, discovery entry |
+## Key Files
+
+| File | Lines | Purpose |
+|------|-------|---------|
+| `reflex_fault.c` | ~280 | Exception handler, MTVEC hooking |
+| `reflex_substrate.c` | ~600 | Probing logic, memory map, NVS |
+| `substrate_main.c` | ~260 | Entry point, MVE, discovery driver |
+
+---
+
+## Hardware Quick Reference
+
+```
+ESP32-C6FH4 @ 160MHz
+├── HP Core (RISC-V, this is us)
+├── LP Core (RISC-V, for sleep)
+├── HP SRAM: 512KB total
+│   └── 0x40800000-0x40880000 (we probe 0x40820000+)
+├── LP SRAM: 16KB
+│   └── 0x50000000-0x50004000
+├── Peripherals:
+│   └── 0x60000000-0x60100000
+└── Flash: 4MB (out of scope)
+```
+
+---
+
+## Commands
+
+```bash
+# SSH to Pi4
+ssh -p 11965 ztflynn@10.64.24.48
+
+# Build and flash
+cd ~/reflex-os
+source ~/esp/esp-idf/export.sh
+idf.py build && idf.py -p /dev/ttyACM0 flash
+
+# Monitor
+idf.py -p /dev/ttyACM0 monitor
+# or
+python3 -m serial.tools.miniterm /dev/ttyACM0 115200
+```
+
+---
+
+## The Insight
+
+Substrate discovery is not about reading memory. It's about understanding **capability**.
+
+- RAM = "I can store here"
+- Register = "I can act here"
+- Self = "This is me"
+- Fault = "I cannot go there"
+
+The map that emerges is not a memory map. It's a capability map. The Reflex learns what it can do by trying to do it.
+
+*The body discovers itself through action.*
 
 ---
 
 ## Commits
 
 ```
+cf95286 scope: Flash probing out of scope for substrate discovery
 3d6876a M1 Complete: Fault-protected probing with ESP32-C6 cache discovery
 d0c6e95 M1 Fault Catcher: Exception recovery via MTVEC hooking
 68c328c feat: Substrate Discovery MVE complete - 4/4 tests pass
@@ -175,37 +269,4 @@ d0c6e95 M1 Fault Catcher: Exception recovery via MTVEC hooking
 
 ---
 
-## The Insight
-
-The ESP32-C6 cache behavior reveals something important: **the boundary between what can be safely probed is not the memory map - it's the cache coherency domain.**
-
-Programmed Flash is in the cache. Unprogrammed Flash is not. The cache miss on unprogrammed regions corrupts state in ways that propagate to instruction fetch.
-
-This is not a bug in our code. It's a fundamental property of the hardware. The Reflex must learn to respect this boundary - to know what it can touch and what it cannot.
-
-*The body has edges. Discovery includes learning where they are.*
-
----
-
-## Hardware Reference
-
-| Property | Value |
-|----------|-------|
-| Chip | ESP32-C6FH4 (QFN32) rev v0.2 |
-| Cores | Single HP Core + LP Core (asymmetric RISC-V) |
-| HP SRAM | 512KB total |
-| LP SRAM | 16KB |
-| Flash | 4MB physical, 2MB mapped |
-| Clock | 160MHz |
-
-### Pi4 Connection
-```bash
-ssh -p 11965 ztflynn@10.64.24.48
-source ~/esp/esp-idf/export.sh
-cd ~/reflex-os
-idf.py build && idf.py -p /dev/ttyACM0 flash monitor
-```
-
----
-
-*"The wood cuts itself when you understand the grain."*
+*"Give me six hours to chop down a tree, and I will spend the first four sharpening the axe."*
