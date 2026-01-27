@@ -10,7 +10,8 @@
 
 **M0 MVE:** DONE — 5/5 tests pass
 **M1 Fault Catcher:** DONE — EBREAK recovery works
-**M2 Cartography:** READY
+**M2 Cartography:** DONE — 16,461 probes, 0 faults
+**M3 Awareness:** READY
 
 ---
 
@@ -59,6 +60,28 @@ Purpose:  Discover GPIO, UART, SPI, I2C, timers
 ```
 
 **Total probeable space: 272KB**
+
+---
+
+## M2 Results: Substrate Map
+
+```
+Total probes: 16,461
+Faults: 0
+Regions: 64
+```
+
+| Region | Size | Latency | Type |
+|--------|------|---------|------|
+| HP SRAM | 192KB (48 × 4KB) | 74 cycles | RAM |
+| LP SRAM | 16KB (4 × 4KB) | 75-76 cycles | RAM |
+| Peripherals | 64KB | 82-98 cycles | REGISTER |
+
+**Findings:**
+- LP SRAM accessible from HP core with 1-2 cycle penalty
+- Peripheral registers 10-20 cycles slower than SRAM
+- Zero faults across entire substrate
+- Map persists in NVS across reboots
 
 ---
 
@@ -261,6 +284,8 @@ The map that emerges is not a memory map. It's a capability map. The Reflex lear
 ## Commits
 
 ```
+8b2650f M2 Complete: Substrate Cartography - 16,461 probes, 0 faults
+ee11a47 docs: LMM updated with M2 scope and implementation plan
 cf95286 scope: Flash probing out of scope for substrate discovery
 3d6876a M1 Complete: Fault-protected probing with ESP32-C6 cache discovery
 d0c6e95 M1 Fault Catcher: Exception recovery via MTVEC hooking
