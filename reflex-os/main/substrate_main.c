@@ -168,42 +168,42 @@ static void run_discovery(void) {
 
     // Try to load existing map
     if (substrate_map_load(&map)) {
-        ESP_LOGI(TAG, "Loaded existing map from NVS");
+        ESP_LOGW(TAG, "Loaded existing map from NVS");
         substrate_map_print(&map);
-
-        // Ask if we should re-discover
-        ESP_LOGI(TAG, "To re-discover, erase NVS and reboot");
+        ESP_LOGW(TAG, "To re-discover, erase NVS and reboot");
         return;
     }
 
     // Initialize fresh map
     substrate_map_init(&map);
 
-    ESP_LOGI(TAG, "");
-    ESP_LOGI(TAG, "Starting substrate discovery...");
-    ESP_LOGI(TAG, "The Reflex is discovering its body.");
-    ESP_LOGI(TAG, "");
+    ESP_LOGW(TAG, "");
+    ESP_LOGW(TAG, "===========================================");
+    ESP_LOGW(TAG, "  M2: SUBSTRATE CARTOGRAPHY");
+    ESP_LOGW(TAG, "  The Reflex maps its body");
+    ESP_LOGW(TAG, "===========================================");
+    ESP_LOGW(TAG, "");
 
     // Phase 1: Coarse discovery
-    ESP_LOGI(TAG, "=== PHASE 1: Coarse Discovery ===");
+    ESP_LOGW(TAG, "--- PHASE 1: Coarse Discovery ---");
     substrate_discover_coarse(&map);
     vTaskDelay(pdMS_TO_TICKS(100));
 
     // Phase 2: Fine discovery
-    ESP_LOGI(TAG, "");
-    ESP_LOGI(TAG, "=== PHASE 2: Fine Discovery ===");
+    ESP_LOGW(TAG, "");
+    ESP_LOGW(TAG, "--- PHASE 2: Fine Discovery (4KB stride) ---");
     substrate_discover_fine(&map);
     vTaskDelay(pdMS_TO_TICKS(100));
 
-    // Phase 3: Register discovery (limited)
-    ESP_LOGI(TAG, "");
-    ESP_LOGI(TAG, "=== PHASE 3: Register Discovery ===");
+    // Phase 3: Register discovery
+    ESP_LOGW(TAG, "");
+    ESP_LOGW(TAG, "--- PHASE 3: Peripheral Census ---");
     substrate_discover_registers(&map);
 
-    ESP_LOGI(TAG, "");
-    ESP_LOGI(TAG, "===========================================");
-    ESP_LOGI(TAG, "  DISCOVERY COMPLETE");
-    ESP_LOGI(TAG, "===========================================");
+    ESP_LOGW(TAG, "");
+    ESP_LOGW(TAG, "===========================================");
+    ESP_LOGW(TAG, "  M2 COMPLETE: SUBSTRATE MAPPED");
+    ESP_LOGW(TAG, "===========================================");
     substrate_map_print(&map);
 }
 

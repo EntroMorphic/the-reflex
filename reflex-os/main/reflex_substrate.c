@@ -108,7 +108,7 @@ void substrate_mark_self(uint32_t start, uint32_t end) {
     s_self_regions[s_num_self_regions].end = end;
     s_num_self_regions++;
 
-    ESP_LOGI(TAG, "Marked self region: 0x%08lx - 0x%08lx",
+    ESP_LOGW(TAG, "Marked self region: 0x%08lx - 0x%08lx",
              (unsigned long)start, (unsigned long)end);
 }
 
@@ -352,8 +352,8 @@ mem_region_t* substrate_map_find(memory_map_t* map, uint32_t addr) {
 }
 
 void substrate_map_print(memory_map_t* map) {
-    ESP_LOGI(TAG, "=== MEMORY MAP ===");
-    ESP_LOGI(TAG, "Total probes: %lu, Faults: %lu, Regions: %d",
+    ESP_LOGW(TAG, "=== MEMORY MAP ===");
+    ESP_LOGW(TAG, "Total probes: %lu, Faults: %lu, Regions: %d",
              (unsigned long)map->total_probes,
              (unsigned long)map->total_faults,
              map->num_regions);
@@ -361,7 +361,7 @@ void substrate_map_print(memory_map_t* map) {
     for (int i = 0; i < map->num_regions; i++) {
         mem_region_t* r = &map->regions[i];
         uint32_t size = r->end - r->start;
-        ESP_LOGI(TAG, "  [%d] 0x%08lx - 0x%08lx (%lu KB) %s  avg=%lu cycles",
+        ESP_LOGW(TAG, "  [%d] 0x%08lx - 0x%08lx (%lu KB) %s  avg=%lu cycles",
                  i,
                  (unsigned long)r->start,
                  (unsigned long)r->end,
@@ -399,7 +399,7 @@ bool substrate_map_save(memory_map_t* map) {
     err = nvs_commit(handle);
     nvs_close(handle);
 
-    ESP_LOGI(TAG, "Map saved to NVS (%d regions)", map->num_regions);
+    ESP_LOGW(TAG, "Map saved to NVS (%d regions)", map->num_regions);
     return err == ESP_OK;
 }
 
@@ -420,7 +420,7 @@ bool substrate_map_load(memory_map_t* map) {
         return false;
     }
 
-    ESP_LOGI(TAG, "Loaded map from NVS (%d regions)", map->num_regions);
+    ESP_LOGW(TAG, "Loaded map from NVS (%d regions)", map->num_regions);
     return true;
 }
 
@@ -519,14 +519,14 @@ static const known_region_t KNOWN_SAFE_REGIONS[] = {
 #define NUM_KNOWN_REGIONS (sizeof(KNOWN_SAFE_REGIONS) / sizeof(KNOWN_SAFE_REGIONS[0]))
 
 void substrate_discover_coarse(memory_map_t* map) {
-    ESP_LOGI(TAG, "Starting coarse discovery (known safe regions)...");
+    ESP_LOGW(TAG, "Starting coarse discovery (known safe regions)...");
 
     discovery_trajectory_t traj = {0};
 
     // First, probe known safe regions
     for (int r = 0; r < NUM_KNOWN_REGIONS; r++) {
         const known_region_t* kr = &KNOWN_SAFE_REGIONS[r];
-        ESP_LOGI(TAG, "Probing %s (0x%08lx - 0x%08lx)%s...",
+        ESP_LOGW(TAG, "Probing %s (0x%08lx - 0x%08lx)%s...",
                  kr->name, (unsigned long)kr->start, (unsigned long)kr->end,
                  kr->read_only ? " [read-only]" : "");
 
@@ -552,7 +552,7 @@ void substrate_discover_coarse(memory_map_t* map) {
             }
             substrate_map_add(map, &result);
 
-            ESP_LOGI(TAG, "  0x%08lx: %s (%lu cycles)",
+            ESP_LOGW(TAG, "  0x%08lx: %s (%lu cycles)",
                      (unsigned long)result.addr,
                      mem_type_str(result.type),
                      (unsigned long)result.read_cycles);
@@ -566,12 +566,12 @@ void substrate_discover_coarse(memory_map_t* map) {
     substrate_map_save(map);
     substrate_trajectory_save(&traj);
 
-    ESP_LOGI(TAG, "Coarse discovery complete.");
+    ESP_LOGW(TAG, "Coarse discovery complete.");
     substrate_map_print(map);
 }
 
 void substrate_discover_fine(memory_map_t* map) {
-    ESP_LOGI(TAG, "Starting fine discovery (4KB stride in non-FAULT regions)...");
+    ESP_LOGW(TAG, "Starting fine discovery (4KB stride in non-FAULT regions)...");
 
     discovery_trajectory_t traj = {0};
     substrate_trajectory_load(&traj);  // Load existing trajectory
@@ -580,7 +580,7 @@ void substrate_discover_fine(memory_map_t* map) {
     for (int r = 0; r < NUM_KNOWN_REGIONS; r++) {
         const known_region_t* kr = &KNOWN_SAFE_REGIONS[r];
 
-        ESP_LOGI(TAG, "Fine probing %s%s...", kr->name,
+        ESP_LOGW(TAG, "Fine probing %s%s...", kr->name,
                  kr->read_only ? " [read-only]" : "");
 
         for (uint32_t addr = kr->start; addr < kr->end; addr += 0x1000) {
@@ -600,7 +600,7 @@ void substrate_discover_fine(memory_map_t* map) {
 
             // Progress every 64KB
             if ((addr & 0xFFFF) == 0) {
-                ESP_LOGI(TAG, "  0x%08lx: %s",
+                ESP_LOGW(TAG, "  0x%08lx: %s",
                          (unsigned long)addr, mem_type_str(result.type));
             }
         }
@@ -611,12 +611,12 @@ void substrate_discover_fine(memory_map_t* map) {
     substrate_map_save(map);
     substrate_trajectory_save(&traj);
 
-    ESP_LOGI(TAG, "Fine discovery complete.");
+    ESP_LOGW(TAG, "Fine discovery complete.");
     substrate_map_print(map);
 }
 
 void substrate_discover_registers(memory_map_t* map) {
-    ESP_LOGI(TAG, "Starting register discovery (peripheral bus, 4B stride)...");
+    ESP_LOGW(TAG, "Starting register discovery (peripheral bus, 4B stride)...");
 
     // The peripheral bus is at 0x60000000 - 0x600FFFFF
     // This is where GPIO, UART, SPI, etc. registers live
@@ -639,10 +639,10 @@ void substrate_discover_registers(memory_map_t* map) {
 
         // Progress every 4KB
         if ((addr & 0xFFF) == 0) {
-            ESP_LOGI(TAG, "  0x%08lx probed", (unsigned long)addr);
+            ESP_LOGW(TAG, "  0x%08lx probed", (unsigned long)addr);
         }
     }
 
     substrate_map_save(map);
-    ESP_LOGI(TAG, "Register discovery complete.");
+    ESP_LOGW(TAG, "Register discovery complete.");
 }
