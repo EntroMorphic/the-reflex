@@ -1,0 +1,9 @@
+reflex_bridge:
+  ros__parameters:
+    force_topic: "/force_sensor"
+    command_topic: "/gripper_command"
+    poll_rate_hz: 1000
+
+reflex_telemetry:
+  ros__parameters:
+    # Telemetry node uses default settings

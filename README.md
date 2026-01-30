@@ -48,6 +48,13 @@ the-reflex/
 │   └── scripts/
 │       └── setup_rt_host.sh  # RT configuration
 │
+├── reflex_ros_bridge/        # ROS2 INTEGRATION (NEW)
+│   ├── src/
+│   │   ├── bridge_node.cpp   # ROS2 topics ↔ shared memory
+│   │   └── channel.cpp       # SharedChannel class
+│   ├── reflex_force_control.c # Native 10kHz force controller
+│   └── README.md             # Integration guide
+│
 ├── reflex-os/                # THE REFLEX BECOMES THE ESP32-C6
 │   ├── include/
 │   │   ├── reflex.h          # Core primitive (50 lines)
@@ -293,6 +300,27 @@ isolcpus=0,1,2 rcu_nocbs=0,1,2
 sudo taskset -c 0-2 ./control_loop
 ```
 **Result:** P99 drops to 926ns
+
+---
+
+## ROS2 Integration
+
+The Reflex bridges to ROS2 via shared memory, giving you sub-microsecond control alongside the ROS ecosystem:
+
+```
+ROS2 Topics (1kHz)          Native Controller (10kHz)
+      │                              │
+      ▼                              ▼
+┌─────────────┐              ┌─────────────────┐
+│ bridge_node │◄── shm ─────►│ reflex_force_   │
+│             │              │ control         │
+└─────────────┘              └─────────────────┘
+      │                              │
+/force_sensor              /dev/shm/reflex_*
+/gripper_command           (64 bytes, 103ns avg)
+```
+
+See [`reflex_ros_bridge/`](reflex_ros_bridge/) for full documentation.
 
 ---
 
