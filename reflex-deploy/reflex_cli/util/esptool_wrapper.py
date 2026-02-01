@@ -58,8 +58,14 @@ def get_chip_info(port: str) -> Optional[ChipInfo]:
     for line in output.split("\n"):
         line = line.strip()
         
+        # esptool 4.x format: "Chip is ESP32-C6"
+        # esptool 5.x format: "Chip type:          ESP32-C6FH4 (QFN32)"
         if "Chip is" in line:
             match = re.search(r"Chip is (\S+)", line)
+            if match:
+                chip_type = match.group(1)
+        elif "Chip type:" in line:
+            match = re.search(r"Chip type:\s+(\S+)", line)
             if match:
                 chip_type = match.group(1)
         
@@ -68,18 +74,26 @@ def get_chip_info(port: str) -> Optional[ChipInfo]:
             if match:
                 chip_id = match.group(1)
         
-        elif "MAC:" in line:
-            match = re.search(r"MAC: ([0-9a-fA-F:]+)", line)
+        # esptool 4.x: "MAC: aa:bb:cc:dd:ee:ff"
+        # esptool 5.x: "MAC:                aa:bb:cc:dd:ee:ff"
+        elif "MAC:" in line and "BASE" not in line and "EXT" not in line:
+            match = re.search(r"MAC:\s+([0-9a-fA-F:]+)", line)
             if match:
                 mac = match.group(1)
         
+        # esptool 4.x: "Crystal is 40MHz"
+        # esptool 5.x: "Crystal frequency:  40MHz"
         elif "Crystal is" in line:
             match = re.search(r"Crystal is (\d+MHz)", line)
             if match:
                 crystal = match.group(1)
+        elif "Crystal frequency:" in line:
+            match = re.search(r"Crystal frequency:\s+(\d+MHz)", line)
+            if match:
+                crystal = match.group(1)
         
         elif "Features:" in line:
-            match = re.search(r"Features: (.+)", line)
+            match = re.search(r"Features:\s+(.+)", line)
             if match:
                 features = [f.strip() for f in match.group(1).split(",")]
     

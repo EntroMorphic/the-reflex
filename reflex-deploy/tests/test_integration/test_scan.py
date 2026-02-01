@@ -50,8 +50,9 @@ class TestDeviceScanning:
         probed = probe_device(real_device)
         
         assert probed.mac_address is not None
-        # MAC should be 6 bytes in XX:XX:XX:XX:XX:XX format
-        assert len(probed.mac_address.split(':')) == 6
+        # MAC can be 6 bytes (traditional) or 8 bytes (EUI-64)
+        mac_parts = probed.mac_address.split(':')
+        assert len(mac_parts) in [6, 8], f"Unexpected MAC format: {probed.mac_address}"
     
     @pytest.mark.hardware
     def test_scan_and_probe_combined(self, all_real_devices):
