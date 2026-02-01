@@ -24,3 +24,4 @@ __pycache__/
 
 # ESP-IDF build artifacts
 reflex-os/build/
+.coverage

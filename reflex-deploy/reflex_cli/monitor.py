@@ -107,16 +107,16 @@ def parse_telemetry(text: str) -> Dict[str, Any]:
     if anomalies_match:
         metrics['anomaly_count'] = int(anomalies_match.group(1))
     
-    # Parse latency
-    min_match = re.search(r'Min:\s*(\d+)\s*ns', text)
+    # Parse latency - handles both "Min: 87 ns" and "Min: 14 cycles = 87 ns" formats
+    min_match = re.search(r'Min:.*?(\d+)\s*ns', text)
     if min_match:
         metrics['reflex_min_ns'] = int(min_match.group(1))
     
-    max_match = re.search(r'Max:\s*(\d+)\s*ns', text)
+    max_match = re.search(r'Max:.*?(\d+)\s*ns', text)
     if max_match:
         metrics['reflex_max_ns'] = int(max_match.group(1))
     
-    avg_match = re.search(r'Avg:\s*(\d+)\s*ns', text)
+    avg_match = re.search(r'Avg:.*?(\d+)\s*ns', text)
     if avg_match:
         metrics['reflex_avg_ns'] = int(avg_match.group(1))
     
