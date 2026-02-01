@@ -46,21 +46,23 @@ typedef struct {
  * Read cycle counter
  * ESP32-C6 runs at 160MHz, so 1 cycle = 6.25ns
  *
- * Note: Direct rdcycle CSR is restricted on ESP32-C6.
- * Use ESP-IDF's esp_cpu_get_cycle_count() instead.
+ * BARE METAL: Direct CSR read, no ESP-IDF dependency.
+ *
+ * ESP32-C6 uses a custom performance counter CSR (0x7e2), NOT the
+ * standard RISC-V mcycle (0xB00). This CSR is accessible from
+ * application code without requiring M-mode.
+ *
+ * Reference: ESP-IDF components/riscv/include/riscv/rv_utils.h
  */
-#if defined(ESP_PLATFORM)
-#include "esp_cpu.h"
-static inline uint32_t reflex_cycles(void) {
-    return (uint32_t)esp_cpu_get_cycle_count();
-}
-#else
+
+// ESP32-C6 performance counter CSR (PCCR_MACHINE)
+#define REFLEX_CSR_PCCR  0x7e2
+
 static inline uint32_t reflex_cycles(void) {
     uint32_t cycles;
-    __asm__ volatile("rdcycle %0" : "=r"(cycles));
+    __asm__ volatile("csrr %0, %1" : "=r"(cycles) : "i"(REFLEX_CSR_PCCR));
     return cycles;
 }
-#endif
 
 /**
  * Signal: Write value and increment sequence
