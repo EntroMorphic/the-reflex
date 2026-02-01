@@ -52,6 +52,48 @@ Reflex OS is not an operating system that runs on the ESP32-C6. Reflex OS **is**
 
 ---
 
+## THE SUMMIT: Zero External Dependencies (Feb 1, 2026)
+
+**We stripped everything.** The Reflex now runs with zero libc, zero ESP-IDF HAL.
+
+| What We Stripped | Bare Metal Replacement |
+|------------------|------------------------|
+| `esp_cpu.h` | Direct CSR 0x7e2 read |
+| `driver/gpio.h` | Direct GPIO registers (0x60091000) |
+| `stdio.h` / `printf` | Direct USB Serial JTAG (0x6000F000) |
+
+### Bare Metal Results
+
+```
+================================================================
+                    THE SUMMIT ACHIEVED                         
+================================================================
+
+  This binary uses ZERO libc functions.
+  This binary uses ZERO ESP-IDF HAL functions.
+
+  +-----------------------------------------+
+  |  PURE DECISION LATENCY: 12 NANOSECONDS  |
+  +-----------------------------------------+
+
+  Baseline:        34 cy = 212 ns
+  No GPIO:         11 cy =  68 ns  
+  Pure decision:    2 cy =  12 ns   <-- THE MONEY
+  With channel:    73 cy = 456 ns
+  
+  Adversarial (100K samples, interrupts ON):
+    Avg: 200 ns | Min: 68 ns | Max: 5.6 μs
+================================================================
+```
+
+### What Remains
+
+- `<stdint.h>` - types only, no functions
+- `<stdbool.h>` - types only, no functions  
+- ESP-IDF bootloader - to be replaced in Phase 4
+
+---
+
 ## Quick Start
 
 ### Prerequisites
@@ -69,11 +111,11 @@ source ~/esp/esp-idf/export.sh
 # Navigate to reflex-os
 cd /path/to/the-reflex/reflex-os
 
-# Build
+# Build (spine_summit.c is the default - zero dependencies)
 idf.py build
 
 # Flash and monitor
-idf.py -p /dev/ttyUSB0 flash monitor
+idf.py -p /dev/ttyACM0 flash monitor
 ```
 
 ### Expected Output
@@ -132,9 +174,10 @@ The space between signals carries information:
 ```
 reflex-os/
 ├── include/
-│   ├── reflex.h           # Core primitive (50 lines)
+│   ├── reflex.h           # Core primitive - direct CSR 0x7e2
 │   ├── reflex_c6.h        # Master header - includes all
-│   ├── reflex_gpio.h      # GPIO as channels (12ns)
+│   ├── reflex_gpio.h      # GPIO as channels (12ns) - direct registers
+│   ├── reflex_uart.h      # USB Serial JTAG (bare metal printf)
 │   ├── reflex_timer.h     # Timer as channels (10kHz)
 │   ├── reflex_adc.h       # ADC as channels (21us)
 │   ├── reflex_spline.h    # Catmull-Rom interpolation (137ns)
@@ -144,7 +187,10 @@ reflex-os/
 │   ├── reflex_echip.h     # Self-composing processor (echip)
 │   └── reflex_obsbot.h    # OBSBOT PTZ camera control (Linux)
 ├── main/
-│   └── main.c             # Benchmark suite
+│   ├── spine_summit.c     # THE SUMMIT - zero dependencies (default)
+│   ├── spine_bare.c       # Bare metal with printf (transitional)
+│   ├── spine_main.c       # Pure spine CNS demo (ESP-IDF)
+│   └── main.c             # Full benchmark suite
 ├── shared/
 │   └── channels.h         # Shared channel definitions
 ├── tools/                 # Linux host tools (Pi4, Thor)

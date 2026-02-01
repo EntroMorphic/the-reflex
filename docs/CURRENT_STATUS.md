@@ -10,7 +10,7 @@ The Reflex is a sub-microsecond coordination primitive for robotics. We've prove
 
 **Current Focus:** Valentine's Day Demo (February 14, 2026) - 13 days remaining.
 
-**Latest:** reflex-cli deployment tool verified with 97 passing tests on 3 ESP32-C6 devices.
+**Latest:** THE SUMMIT - Zero external dependencies achieved. 12ns pure decision using only direct register access.
 
 ---
 
@@ -24,6 +24,16 @@ The Reflex is a sub-microsecond coordination primitive for robotics. We've prove
 | 10kHz control loop | ✅ Verified | 926ns P99 |
 | ESP32-C6 substrate | ✅ Working | 87ns ideal, 187ns realistic |
 | Jetson Thor | ✅ Operational | 309ns normal, 366ns under load |
+
+### Bare Metal Achievement ✅ (THE SUMMIT - Feb 1)
+
+| What We Stripped | Replacement |
+|------------------|-------------|
+| esp_cpu.h | Direct CSR 0x7e2 read |
+| driver/gpio.h | Direct GPIO registers (0x60091000) |
+| stdio.h / printf | Direct USB Serial JTAG (0x6000F000) |
+
+**Result:** Zero libc functions. Zero ESP-IDF HAL. Just silicon.
 
 ### ROS2 Integration ✅ (NEW - Day 1)
 
@@ -183,7 +193,7 @@ the-reflex/
 | C6 #2 | /dev/ttyACM1 | ESP32-C6FH4 | 4MB | b4:3a:45:ff:fe:8a:c7:d4 |
 | C6 #3 | /dev/ttyACM2 | ESP32-C6FH4 | 4MB | b4:3a:45:ff:fe:8a:c8:24 |
 
-All devices pass 6/6 pre-flight checks. C6 #1 running spine firmware (87ns avg latency verified).
+All devices pass 6/6 pre-flight checks. C6 #1 running **spine_summit** (bare metal, zero dependencies).
 
 ---
 
