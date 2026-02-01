@@ -41,10 +41,15 @@
 | Network | 10.42.0.2:11965 |
 | Role | Consciousness substrate, geological time layer |
 
-**Reflex Performance:**
-- reflex_signal(): ~50 ns
-- P99 control loop: 926 ns
-- echip capacity: 100M+ shapes
+**Reflex Performance (Falsified):**
+
+| Metric | Value | Condition |
+|--------|-------|-----------|
+| Processing time | 309 ns | Normal operation |
+| Processing time | 366 ns | Under CPU stress (+18%) |
+| P99 control loop | 926 ns | With isolcpus + rcu_nocbs |
+| Max observed | 1,268 ns | Under stress test |
+| echip capacity | 100M+ shapes | |
 
 ---
 
@@ -72,11 +77,13 @@
 
 ## Tier 3: Peripheral Neurons (ESP32-C6)
 
-| Device | Status | Role |
-|--------|--------|------|
-| ESP32-C6 #1 | Connected to Pi4 | Primary dev board |
-| ESP32-C6 #2 | Available | Swarm node |
-| ESP32-C6 #3 | Available | Swarm node |
+| Device | Port | Status | Chip | Flash | MAC |
+|--------|------|--------|------|-------|-----|
+| ESP32-C6 #1 | /dev/ttyACM0 | ✅ Running spine firmware | ESP32-C6FH4 | 4MB | b4:3a:45:ff:fe:8a:c4:d4 |
+| ESP32-C6 #2 | /dev/ttyACM1 | ✅ Verified | ESP32-C6FH4 | 4MB | b4:3a:45:ff:fe:8a:c7:d4 |
+| ESP32-C6 #3 | /dev/ttyACM2 | ✅ Verified | ESP32-C6FH4 | 4MB | b4:3a:45:ff:fe:8a:c8:24 |
+
+*Last verified: February 1, 2026 via reflex-cli (97 tests passing)*
 
 **Specs (each):**
 - CPU: RISC-V @ 160 MHz
@@ -84,11 +91,18 @@
 - Features: WiFi 6, BLE 5, 802.15.4
 - Cost: ~$5
 
-**Reflex Performance:**
-- gpio_write(): 12 ns
-- reflex_signal(): 118 ns
-- spline_read(): 137 ns
-- echip capacity: 4K shapes, 16K routes
+**Reflex Performance (Falsified):**
+
+| Metric | Value | Condition |
+|--------|-------|-----------|
+| gpio_write() | 12 ns | Direct register |
+| Pure decision | 12 ns | Threshold + GPIO |
+| Ideal operation | 87 ns | Interrupts disabled |
+| Realistic | 187 ns | Interrupts enabled |
+| With channel | 437 ns | Cross-core coordination |
+| Worst case | 5.5 μs | 0% >6μs in 100K samples |
+
+**echip capacity:** 4K shapes, 16K routes
 
 ---
 

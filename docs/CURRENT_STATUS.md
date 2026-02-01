@@ -1,6 +1,6 @@
 # The Reflex: Current Status
 
-**Last Updated:** January 31, 2026
+**Last Updated:** February 1, 2026
 
 ---
 
@@ -8,7 +8,9 @@
 
 The Reflex is a sub-microsecond coordination primitive for robotics. We've proven **926ns P99 latency** on Jetson AGX Thor, enabling 10kHz control loops that are **255x faster than baseline Linux**.
 
-**Current Focus:** Valentine's Day Demo (February 14, 2026) - demonstrating ROS2 integration with Reflex-augmented force control.
+**Current Focus:** Valentine's Day Demo (February 14, 2026) - 13 days remaining.
+
+**Latest:** reflex-cli deployment tool verified with 97 passing tests on 3 ESP32-C6 devices.
 
 ---
 
@@ -32,6 +34,16 @@ The Reflex is a sub-microsecond coordination primitive for robotics. We've prove
 | Bridge node | ✅ Running | 1kHz poll rate |
 | Force controller | ✅ Tested | 9.69 MHz effective rate |
 
+### Deployment Tool ✅ (NEW - Feb 1)
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| reflex-cli | ✅ v0.1.0 | 10 commands, ~2,000 LOC |
+| Test suite | ✅ 97 passing | Unit, mock, and integration tests |
+| Device scan | ✅ Working | Finds all 3 C6s automatically |
+| Pre-flight verify | ✅ Working | 6 checks, all passing |
+| Live monitoring | ✅ Working | YAML/JSON/Markdown/Prometheus output |
+
 ### Documentation ✅
 
 | Document | Purpose |
@@ -40,7 +52,9 @@ The Reflex is a sub-microsecond coordination primitive for robotics. We've prove
 | HARDWARE_INVENTORY.md | All compute resources |
 | reflex-robotics/docs/ | Phase 1-4 results |
 | reflex-os/docs/ | C6 architecture, API |
+| reflex-deploy/README.md | CLI deployment tool |
 | docs/VALENTINE_*.md | Demo planning |
+| docs/FALSIFICATION_*.md | Claims verification |
 
 ---
 
@@ -93,10 +107,14 @@ the-reflex/
 ├── reflex-os/            # ESP32-C6 substrate
 │   └── 12ns pure, 187ns realistic, splines, entropy field
 │
-├── reflex_ros_bridge/    # ROS2 integration (NEW)
+├── reflex_ros_bridge/    # ROS2 integration
 │   ├── bridge_node       # Topics ↔ shared memory
 │   ├── telemetry_node    # Stats publishing
 │   └── reflex_force_control.c  # Native 10kHz controller
+│
+├── reflex-deploy/        # Deployment tooling (NEW)
+│   ├── reflex_cli/       # CLI tool (10 commands)
+│   └── tests/            # 97 tests (unit, mock, integration)
 │
 ├── src/                  # Research experiments
 │   └── e3_latency_comparison.c
@@ -104,6 +122,7 @@ the-reflex/
 ├── docs/                 # Documentation
 │   ├── PRD*.md           # Product requirements
 │   ├── VALENTINE_*.md    # Demo planning
+│   ├── FALSIFICATION_*.md # Claims verification
 │   └── LINCOLN_MANIFOLD_*.md  # Design analysis
 │
 ├── delta-observer/       # Neural network observation
@@ -152,9 +171,19 @@ the-reflex/
 | Platform | Status | Use Case |
 |----------|--------|----------|
 | Jetson AGX Thor | ✅ Primary | Production robotics |
-| ESP32-C6 (×3) | ✅ Working | Edge sensing/actuation |
+| ESP32-C6 (×3) | ✅ Verified | Edge sensing/actuation |
 | Raspberry Pi 4 | ✅ Working | Development, OBSBOT control |
 | x86_64 Linux | ✅ Works | Development, Colab |
+
+### ESP32-C6 Fleet (Verified Feb 1, 2026)
+
+| Device | Port | Chip | Flash | MAC |
+|--------|------|------|-------|-----|
+| C6 #1 | /dev/ttyACM0 | ESP32-C6FH4 | 4MB | b4:3a:45:ff:fe:8a:c4:d4 |
+| C6 #2 | /dev/ttyACM1 | ESP32-C6FH4 | 4MB | b4:3a:45:ff:fe:8a:c7:d4 |
+| C6 #3 | /dev/ttyACM2 | ESP32-C6FH4 | 4MB | b4:3a:45:ff:fe:8a:c8:24 |
+
+All devices pass 6/6 pre-flight checks. C6 #1 running spine firmware (87ns avg latency verified).
 
 ---
 
