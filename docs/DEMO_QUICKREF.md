@@ -2,7 +2,7 @@
 
 ## The Pitch
 
-> "432 nanoseconds. That's the difference between catching a slip and crushing the object."
+> "309 nanoseconds. Event-driven means we never miss a threshold breach."
 
 ---
 
@@ -10,11 +10,11 @@
 
 | Mode | Processing | Check Rate | Anomalies |
 |------|------------|------------|-----------|
-| **REFLEX** | **~300 ns** | Event-driven | 1,127 |
-| ROS2-1kHz | ~700 ns | 1 kHz | 1,070 |
-| ROS2-100Hz | ~700 ns | 100 Hz | ~113 |
+| **REFLEX** | **~309 ns** | Event-driven | 1,127 |
+| ROS2-1kHz | ~500 ns | 1 kHz | 1,070 |
+| ROS2-100Hz | ~500 ns | 100 Hz | ~113 |
 
-**Honest take:** REFLEX catches ~5% more than well-tuned 1kHz ROS2. The big win is over 100Hz polling (10x more anomalies caught).
+**Honest take:** REFLEX catches ~5% more anomalies than well-tuned 1kHz ROS2. The significant win is over typical 100Hz systems (10x more anomalies caught).
 
 ---
 
@@ -30,8 +30,8 @@ cd /home/ztflynn/the-reflex/reflex_ros_bridge/scripts
 ./run_demo.sh compare
 
 # Or run individually
-./run_demo.sh reflex   # 432ns mode
-./run_demo.sh ros2     # 10ms baseline
+./run_demo.sh reflex   # ~309ns processing
+./run_demo.sh ros2     # 10ms polling baseline
 ```
 
 ### Manual Start
@@ -79,8 +79,9 @@ cd /home/ztflynn/the-reflex/reflex_ros_bridge
 ### Key Moment: ANOMALY Phase
 
 - Force spikes to 7N (threshold is 5N)
-- **REFLEX mode:** Detects in 432ns, catches 1,127 anomalies
-- **ROS2 mode:** Detects in ~10ms, catches only 113 anomalies
+- **REFLEX mode:** Processes in ~309ns, catches 1,127 anomalies (event-driven)
+- **ROS2-100Hz mode:** Checks every 10ms, catches only ~113 anomalies
+- **ROS2-1kHz mode:** Checks every 1ms, catches ~1,070 anomalies (fair baseline)
 
 ---
 
@@ -96,24 +97,39 @@ cd /home/ztflynn/the-reflex/reflex_ros_bridge
   Loop count:     15,992
   Anomaly count:  1,127
   
-  Reaction time:  432 ns average, 1,037 ns max
+  Processing time:  309 ns average, 1,268 ns max
   
-  ✓ Responds within nanoseconds of threshold breach
+  ✓ Event-driven - responds on every signal arrival
 ```
 
-### ROS2 Mode
+### ROS2-1kHz Mode (Fair Baseline)
 
 ```
 ╔═══════════════════════════════════════════════════════════════╗
-║       FORCE CONTROL: STATISTICS (ROS2 MODE)                   ║
+║       FORCE CONTROL: STATISTICS (ROS2-1kHz MODE)              ║
 ╚═══════════════════════════════════════════════════════════════╝
-  Mode:           ROS2
-  Loop count:     1,591
-  Anomaly count:  113
+  Mode:           ROS2-1kHz
+  Loop count:     ~16,000
+  Anomaly count:  ~1,070
   
-  Reaction time:  Up to 10 ms worst case
+  Check interval: 1 ms
   
-  ✗ May miss threshold breach for up to 10 ms
+  ✓ Well-tuned baseline - catches most anomalies
+```
+
+### ROS2-100Hz Mode (Typical Baseline)
+
+```
+╔═══════════════════════════════════════════════════════════════╗
+║       FORCE CONTROL: STATISTICS (ROS2-100Hz MODE)             ║
+╚═══════════════════════════════════════════════════════════════╝
+  Mode:           ROS2-100Hz
+  Loop count:     ~1,600
+  Anomaly count:  ~113
+  
+  Check interval: 10 ms
+  
+  ✗ Typical polling - misses anomalies between checks
 ```
 
 ---
@@ -141,8 +157,23 @@ cd /home/ztflynn/the-reflex/reflex_ros_bridge
 ```c
 // Spin until sequence changes (hardware does the waiting)
 while (ch->sequence == last_seq) { }
-// React: 432ns from here to command sent
+// Process: ~309ns from signal arrival to command sent
 ```
+
+---
+
+## Falsification Results
+
+These numbers have been verified under adversarial testing:
+
+| Platform | Normal | Under Stress | Worst Case |
+|----------|--------|--------------|------------|
+| Thor | 309 ns | 366 ns (+18%) | 1.3 μs |
+| C6 | 87 ns (ideal) | 187 ns (realistic) | 5.5 μs |
+
+Zero catastrophic failures (>6μs) in 100K+ samples on either platform.
+
+See: [FALSIFICATION_COMPLETE.md](FALSIFICATION_COMPLETE.md)
 
 ---
 

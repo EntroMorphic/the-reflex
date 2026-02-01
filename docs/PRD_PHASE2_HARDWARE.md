@@ -350,8 +350,8 @@ void trigger_safe_state() {
 
 ## Revised Claims (Post-Phase 2)
 
-**Current (Phase 1):**
-> "309ns reaction time. 23,148x faster than ROS2."
+**Current (Phase 1, Falsified):**
+> "309ns processing time on Thor, 187ns realistic on C6. Event-driven catches ~5% more anomalies than well-tuned 1kHz polling, ~10x more than typical 100Hz systems. Zero catastrophic failures in 100K+ samples."
 
 **Target (Phase 2):**
 > "End-to-end force response in under 500μs - 10x faster than standard ROS2 control loops. In physical testing, this reduced force overshoot by 40% when handling delicate objects. Validated on real hardware with RT kernel under load."

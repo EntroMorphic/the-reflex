@@ -1,6 +1,6 @@
 # The Reflex: Current Status
 
-**Last Updated:** January 30, 2026
+**Last Updated:** January 31, 2026
 
 ---
 
@@ -18,10 +18,10 @@ The Reflex is a sub-microsecond coordination primitive for robotics. We've prove
 
 | Component | Status | Performance |
 |-----------|--------|-------------|
-| reflex.h primitive | ✅ Production | 118ns (C6), 297ns (Thor) |
+| reflex.h primitive | ✅ Production | 12ns pure (C6), 309ns (Thor) |
 | 10kHz control loop | ✅ Verified | 926ns P99 |
-| ESP32-C6 substrate | ✅ Working | 77 probes, 64 regions mapped |
-| Jetson Thor | ✅ Operational | CUDA 13.0, 128GB unified |
+| ESP32-C6 substrate | ✅ Working | 87ns ideal, 187ns realistic |
+| Jetson Thor | ✅ Operational | 309ns normal, 366ns under load |
 
 ### ROS2 Integration ✅ (NEW - Day 1)
 
@@ -62,19 +62,20 @@ reflex_ros_bridge (bridge_node)
     ▼
 reflex_force_control (event-driven, spin-wait)
     │
-    │  432ns reaction time
+    │  ~309ns processing time
     ▼
 /gripper_command (Float64) → actuator
 ```
 
-**Progress:** Day 2 complete. Full stack verified.
+**Progress:** Day 2 complete. Full stack verified. Falsification complete.
 
 | Milestone | Status |
 |-----------|--------|
 | ROS2 bridge | ✅ Working |
 | Force simulator | ✅ 14-second grasp cycle |
-| Event-driven controller | ✅ 432ns reaction |
-| A/B comparison | ✅ 23,148x faster than ROS2 |
+| Event-driven controller | ✅ 309ns processing |
+| A/B/C comparison | ✅ Fair comparison with 1kHz and 100Hz baselines |
+| Falsification suite | ✅ Claims verified under adversarial testing |
 | Demo scripts | ✅ run_demo.sh |
 | Video recording | ⬜ Pending |
 
@@ -90,7 +91,7 @@ the-reflex/
 │   └── 926ns P99 achieved
 │
 ├── reflex-os/            # ESP32-C6 substrate
-│   └── 118ns signaling, splines, entropy field
+│   └── 12ns pure, 187ns realistic, splines, entropy field
 │
 ├── reflex_ros_bridge/    # ROS2 integration (NEW)
 │   ├── bridge_node       # Topics ↔ shared memory
@@ -115,20 +116,34 @@ the-reflex/
 
 ## Key Metrics
 
-| Metric | Value | Source |
-|--------|-------|--------|
-| **REFLEX processing** | **~300 ns** | Day 2 test |
-| P99 Latency (core) | 926 ns | Thor Phase 4 |
-| ESP32-C6 signal latency | 118 ns | Benchmark |
-| Force simulator rate | 1 kHz | Config |
+### Thor (Jetson AGX)
+
+| Metric | Value | Condition |
+|--------|-------|-----------|
+| Processing time | **309 ns** | Normal operation |
+| Processing time | **366 ns** | Under CPU stress (18% degradation) |
+| P99 Latency | 926 ns | With isolcpus + rcu_nocbs |
+| Max observed | 1,268 ns | Under stress test |
+
+### ESP32-C6
+
+| Metric | Value | Condition |
+|--------|-------|-----------|
+| Pure decision | **12 ns** | Threshold check + GPIO only |
+| Ideal operation | **87 ns** | Interrupts disabled |
+| Realistic operation | **187 ns** | Interrupts enabled |
+| With channel signal | **437 ns** | Cross-core coordination |
+| Worst case | 5.5 μs | Interrupt storm (0% >6μs in 100K samples) |
 
 ### A/B/C Comparison (Fair)
 
 | Mode | Processing | Anomalies | Notes |
 |------|------------|-----------|-------|
-| REFLEX | ~300 ns | 1,127 | Event-driven |
-| ROS2-1kHz | ~700 ns | 1,070 | Fair baseline |
-| ROS2-100Hz | ~700 ns | ~113 | Typical baseline |
+| REFLEX | ~300 ns | 1,127 | Event-driven, never misses |
+| ROS2-1kHz | ~500 ns | 1,070 | Fair baseline (~5% fewer) |
+| ROS2-100Hz | ~500 ns | ~113 | Typical baseline (~10x fewer) |
+
+**Honest assessment:** REFLEX catches ~5% more anomalies than well-tuned 1kHz polling. The significant advantage is over typical 100Hz systems (10x improvement).
 
 ---
 

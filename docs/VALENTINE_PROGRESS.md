@@ -307,15 +307,21 @@ command_out → bridge_node → /gripper_command topic
    - `run_demo.sh reflex|ros2|compare`
    - `telemetry_dashboard.py` for Rerun visualization
 
-### A/B Comparison Results (FINAL)
+### A/B/C Comparison Results (FINAL - Falsified)
 
-| Metric | REFLEX | ROS2 | Improvement |
-|--------|--------|------|-------------|
-| **Reaction time** | **432 ns** | 10 ms | **23,148x** |
-| Anomalies caught | 1,127 | ~113 | 10x |
+| Mode | Processing | Check Rate | Anomalies |
+|------|------------|------------|-----------|
+| **REFLEX** | **~309 ns** | Event-driven | 1,127 |
+| ROS2-1kHz | ~500 ns | 1 kHz | ~1,070 |
+| ROS2-100Hz | ~500 ns | 100 Hz | ~113 |
+
+**Honest assessment:**
+- REFLEX catches ~5% more anomalies than well-tuned 1kHz polling
+- REFLEX catches ~10x more anomalies than typical 100Hz polling
+- The real advantage is event-driven vs polling, not raw speed
 
 **The pitch:**
-> "432 nanoseconds. That's the difference between catching a slip and crushing the object."
+> "309 nanoseconds processing. Event-driven means we catch what polling misses."
 
 ### Key Fix: Polling → Event-Driven
 
