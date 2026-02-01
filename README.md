@@ -305,10 +305,10 @@ sudo taskset -c 0-2 ./control_loop
 
 ## ROS2 Integration
 
-The Reflex bridges to ROS2 via shared memory, giving you sub-microsecond control alongside the ROS ecosystem:
+The Reflex bridges to ROS2 via shared memory, giving you **nanosecond** processing alongside the ROS ecosystem:
 
 ```
-ROS2 Topics (1kHz)          Native Controller (10kHz)
+ROS2 Topics (1kHz)          Native Controller (event-driven)
       │                              │
       ▼                              ▼
 ┌─────────────┐              ┌─────────────────┐
@@ -317,8 +317,16 @@ ROS2 Topics (1kHz)          Native Controller (10kHz)
 └─────────────┘              └─────────────────┘
       │                              │
 /force_sensor              /dev/shm/reflex_*
-/gripper_command           (64 bytes, 103ns avg)
+/gripper_command           ~300ns processing
 ```
+
+| Mode | Processing Time | Check Rate | Use Case |
+|------|-----------------|------------|----------|
+| **REFLEX** | **~300 ns** | Event-driven | Safety-critical |
+| ROS2-1kHz | ~500 ns | 1 kHz | Well-tuned baseline |
+| ROS2-100Hz | ~500 ns | 100 Hz | Typical baseline |
+
+**What this means:** REFLEX reacts to every signal in ~300ns. Polling-based systems can miss signals that arrive between checks. With 1kHz sensor input, REFLEX catches threshold breaches that 100Hz polling misses.
 
 See [`reflex_ros_bridge/`](reflex_ros_bridge/) for full documentation.
 

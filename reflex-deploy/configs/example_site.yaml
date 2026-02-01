@@ -1,0 +1,45 @@
+# Example Site Configuration for The Reflex
+# Copy and modify for your deployment
+
+device:
+  name: "spine-node-01"
+  role: "force-reflex"
+  description: "Force threshold reflex for gripper safety"
+
+firmware:
+  version: "0.1.0"
+  
+reflex:
+  threshold: 128          # Anomaly threshold (0-255 for synthetic, actual units for real sensor)
+  hysteresis: 10          # Hysteresis to prevent oscillation
+  safe_value: 0           # Actuator value in safe mode (0 = off)
+  decision_timeout_ns: 1000  # Max acceptable decision time
+
+watchdog:
+  hardware_timeout_s: 10   # Hardware watchdog (chip reset if exceeded)
+  task_timeout_ms: 1000    # Task watchdog (catches hung tasks)
+  reflex_timeout_ms: 100   # Reflex loop watchdog
+  comm_timeout_s: 60       # Communication watchdog (alert if no host contact)
+
+telemetry:
+  interval_ms: 1000        # How often to report metrics
+  format: "yaml"           # yaml | json | prometheus
+  # endpoint: "http://localhost:9090/metrics"  # Placeholder for future
+
+pins:
+  led: 8                   # Status LED (GPIO8 on C6)
+  actuator: 5              # Actuator output (GPIO5)
+  sensor: 4                # Sensor input (GPIO4, if applicable)
+
+# Certification compliance settings
+compliance:
+  log_retention_days: 90   # How long to keep audit logs
+  audit_all_changes: true  # Log all config/firmware changes
+  checksum_verification: true  # Verify checksums on all operations
+  
+# Network settings (placeholder for future WiFi/BLE)
+# network:
+#   wifi_ssid: ""
+#   wifi_password: ""
+#   mqtt_broker: ""
+#   mqtt_port: 1883

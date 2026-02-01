@@ -42,10 +42,21 @@ ament_target_dependencies(telemetry_node
 )
 target_link_libraries(telemetry_node reflex_channel)
 
+# Force simulator node
+add_executable(force_simulator_node
+  src/force_simulator_node.cpp
+)
+ament_target_dependencies(force_simulator_node
+  rclcpp
+  std_msgs
+  geometry_msgs
+)
+
 # Install executables
 install(TARGETS
   bridge_node
   telemetry_node
+  force_simulator_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
