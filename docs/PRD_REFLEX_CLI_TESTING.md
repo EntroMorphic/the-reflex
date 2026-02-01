@@ -377,15 +377,50 @@ def real_device():
 
 | Claim | Test | Status |
 |-------|------|--------|
-| "Discovers ESP32 devices" | test_scan.py | ⬜ |
-| "Verifies hardware before flash" | test_verify.py | ⬜ |
-| "Safely flashes firmware" | test_install.py | ⬜ |
-| "Validates installation" | test_validate.py | ⬜ |
-| "Monitors live telemetry" | test_monitor.py | ⬜ |
-| "Recovers bricked devices" | test_recover.py | ⬜ |
-| "Handles disconnects gracefully" | test_disconnect.py | ⬜ |
-| "Rejects wrong hardware" | test_wrong_device.py | ⬜ |
-| "Maintains audit trail" | test_audit.py | ⬜ |
+| "Discovers ESP32 devices" | test_scan.py | ✅ PASSED (9/9) |
+| "Verifies hardware before flash" | test_verify.py | ✅ PASSED (11/11) |
+| "Safely flashes firmware" | test_install.py | ⬜ Not tested (no firmware binary) |
+| "Validates installation" | test_validate.py | ⬜ Not tested |
+| "Monitors live telemetry" | test_monitor.py | ✅ PASSED (10/10) |
+| "Recovers bricked devices" | test_recover.py | ⬜ Not tested |
+| "Handles disconnects gracefully" | test_disconnect.py | ⬜ Planned |
+| "Rejects wrong hardware" | test_wrong_device.py | ⬜ Planned |
+| "Maintains audit trail" | test_audit.py | ⬜ Not tested |
+
+## Test Results (February 1, 2026)
+
+**Total: 97 tests passing**
+
+| Category | Tests | Status |
+|----------|-------|--------|
+| Unit | 36 | ✅ All passing |
+| Mock | 31 | ✅ All passing |
+| Integration (scan) | 9 | ✅ All passing |
+| Integration (verify) | 11 | ✅ All passing |
+| Integration (monitor) | 10 | ✅ All passing |
+
+### Hardware Verified
+
+| Device | Port | Chip | Flash | MAC |
+|--------|------|------|-------|-----|
+| C6 #1 | /dev/ttyACM0 | ESP32-C6FH4 | 4MB | b4:3a:45:ff:fe:8a:c4:d4 |
+| C6 #2 | /dev/ttyACM1 | ESP32-C6FH4 | 4MB | b4:3a:45:ff:fe:8a:c7:d4 |
+| C6 #3 | /dev/ttyACM2 | ESP32-C6FH4 | 4MB | b4:3a:45:ff:fe:8a:c8:24 |
+
+### Benchmark Output (C6 #1)
+
+```
+TRUE REFLEX LATENCY
+Min:   13 cycles =   81 ns
+Max:  345 cycles = 2156 ns
+Avg:   14 cycles =   87 ns
+```
+
+### Bugs Found & Fixed
+
+1. **Telemetry regex** - Wasn't parsing `Min: 14 cycles = 87 ns` format
+2. **esptool 5.x** - Output format changed (`Chip type:` vs `Chip is`)
+3. **EUI-64 MAC** - C6 uses 8-byte MAC, test expected 6-byte
 
 ---
 
