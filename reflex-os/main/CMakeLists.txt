@@ -14,7 +14,7 @@
 
 idf_component_register(
     SRCS
-        "hologram_mesh_demo.c"
+        "hologram_q15_demo.c"
         "../shared/channels.c"
     INCLUDE_DIRS
         "../include"
