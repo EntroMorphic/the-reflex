@@ -871,6 +871,186 @@ static inline void fabric_cfc_step_hw_palletized(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// DMA PULSE TRAIN - One transmission for ALL gates, one for ALL candidates
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Giant buffer for entire gate or candidate pass
+// 64 neurons × ~50 pulses avg × marker = ~4000 symbols
+#define FABRIC_CFC_TRAIN_BUFFER_SIZE  8192
+
+// Marker pulse between neurons (long pulse for timing)
+#define FABRIC_CFC_MARKER_TICKS       500  // 50 μs marker at 10MHz
+
+/**
+ * Build pulse train for ALL gates (or ALL candidates)
+ * 
+ * Structure: [N0 pulses][MARKER][N1 pulses][MARKER]...[N63 pulses][END]
+ * 
+ * The marker is a long LOW period that creates a timing gap.
+ * We sample PCNT after each marker to get individual sums.
+ * 
+ * Returns array of PCNT sample points (cumulative pulse counts at each marker)
+ */
+static inline int fabric_build_pulse_train(
+    rmt_symbol_word_t* buffer,
+    const uint8_t* concat_q4,
+    const fabric_cfc_sparse_weights_t* weights,
+    bool is_gate,  // true = gate weights, false = candidate weights
+    int* pulse_counts_out  // Output: cumulative pulse count at each neuron boundary
+) {
+    int pos = 0;
+    int cumulative_pulses = 0;
+    
+    for (int n = 0; n < FABRIC_CFC_HIDDEN_DIM && pos < FABRIC_CFC_TRAIN_BUFFER_SIZE - 20; n++) {
+        const fabric_sparse_row_t* row = is_gate ? &weights->gate[n] : &weights->cand[n];
+        
+        // Add pulses for this neuron's positive weights
+        for (int i = 0; i < row->pos_count; i++) {
+            uint8_t val = concat_q4[row->pos_indices[i]];
+            for (int p = 0; p < val && pos < FABRIC_CFC_TRAIN_BUFFER_SIZE - 2; p++) {
+                buffer[pos].duration0 = FABRIC_CFC_PULSE_HIGH_TICKS;
+                buffer[pos].level0 = 1;
+                buffer[pos].duration1 = FABRIC_CFC_PULSE_LOW_TICKS;
+                buffer[pos].level1 = 0;
+                pos++;
+                cumulative_pulses++;
+            }
+        }
+        
+        // Record cumulative count at this neuron boundary
+        pulse_counts_out[n] = cumulative_pulses;
+        
+        // Add marker (long low period) between neurons
+        // This creates timing gap for PCNT sampling
+        buffer[pos].duration0 = 1;  // Tiny high
+        buffer[pos].level0 = 1;
+        buffer[pos].duration1 = FABRIC_CFC_MARKER_TICKS;  // Long low
+        buffer[pos].level1 = 0;
+        pos++;
+        cumulative_pulses++;  // Marker counts as 1 pulse
+    }
+    
+    // End marker
+    buffer[pos].duration0 = 0;
+    buffer[pos].level0 = 0;
+    buffer[pos].duration1 = 0;
+    buffer[pos].level1 = 0;
+    pos++;
+    
+    return pos;
+}
+
+/**
+ * Run one CfC step using PULSE TRAIN (2 RMT calls total!)
+ * 
+ * Instead of 128 rmt_transmit() calls, we do:
+ *   1. Build + transmit ALL 64 gate sparse dots
+ *   2. Read PCNT 64 times (fast register reads)
+ *   3. Build + transmit ALL 64 candidate sparse dots
+ *   4. Read PCNT 64 times
+ *   5. Apply mixer LUTs
+ */
+static inline void fabric_cfc_step_hw_train(
+    fabric_cfc_engine_t* engine,
+    const uint8_t* input_q4
+) {
+    static rmt_symbol_word_t* train_buffer = NULL;
+    static int* pulse_counts = NULL;
+    
+    // Lazy allocate train buffer (32 KB)
+    if (!train_buffer) {
+        train_buffer = (rmt_symbol_word_t*)malloc(
+            sizeof(rmt_symbol_word_t) * FABRIC_CFC_TRAIN_BUFFER_SIZE);
+        pulse_counts = (int*)malloc(sizeof(int) * FABRIC_CFC_HIDDEN_DIM);
+        if (!train_buffer || !pulse_counts) return;
+    }
+    
+    uint8_t concat_q4[FABRIC_CFC_CONCAT_DIM];
+    memcpy(concat_q4, input_q4, FABRIC_CFC_INPUT_DIM);
+    memcpy(concat_q4 + FABRIC_CFC_INPUT_DIM, engine->hidden_q4, FABRIC_CFC_HIDDEN_DIM);
+    
+    uint8_t new_hidden[FABRIC_CFC_HIDDEN_DIM];
+    int gate_q4[FABRIC_CFC_HIDDEN_DIM];
+    
+    rmt_transmit_config_t tx_config = {.loop_count = 0};
+    
+    // === PHASE 1: ALL GATES IN ONE TRANSMISSION ===
+    fabric_clear_accumulator(engine->fabric);
+    
+    int num_symbols = fabric_build_pulse_train(
+        train_buffer, concat_q4, &engine->weights, true, pulse_counts);
+    
+    // ONE transmission for all 64 gate sparse dots!
+    rmt_transmit(engine->fabric->rmt_chan, engine->fabric->rmt_encoder,
+        train_buffer, num_symbols * sizeof(rmt_symbol_word_t), &tx_config);
+    rmt_tx_wait_all_done(engine->fabric->rmt_chan, portMAX_DELAY);
+    
+    // Read final PCNT value (total of all positive pulses)
+    int total_pulses = fabric_read_accumulator(engine->fabric);
+    
+    // Reconstruct per-neuron sums from cumulative counts
+    // pulse_counts[n] = cumulative count up to and including neuron n
+    for (int n = 0; n < FABRIC_CFC_HIDDEN_DIM; n++) {
+        int pos_sum;
+        if (n == 0) {
+            pos_sum = pulse_counts[0] - 1;  // -1 for marker pulse
+        } else {
+            pos_sum = pulse_counts[n] - pulse_counts[n-1] - 1;  // -1 for marker
+        }
+        
+        // Compute negative sum in software (fast!)
+        int neg_sum = 0;
+        for (int i = 0; i < engine->weights.gate[n].neg_count; i++) {
+            neg_sum += concat_q4[engine->weights.gate[n].neg_indices[i]];
+        }
+        
+        int gate_sum = pos_sum - neg_sum;
+        int gate_idx = gate_sum + 128;
+        if (gate_idx < 0) gate_idx = 0;
+        if (gate_idx > 255) gate_idx = 255;
+        gate_q4[n] = engine->activations.sigmoid[gate_idx];
+    }
+    
+    // === PHASE 2: ALL CANDIDATES IN ONE TRANSMISSION ===
+    fabric_clear_accumulator(engine->fabric);
+    
+    num_symbols = fabric_build_pulse_train(
+        train_buffer, concat_q4, &engine->weights, false, pulse_counts);
+    
+    rmt_transmit(engine->fabric->rmt_chan, engine->fabric->rmt_encoder,
+        train_buffer, num_symbols * sizeof(rmt_symbol_word_t), &tx_config);
+    rmt_tx_wait_all_done(engine->fabric->rmt_chan, portMAX_DELAY);
+    
+    // Reconstruct candidate sums and apply mixer
+    for (int n = 0; n < FABRIC_CFC_HIDDEN_DIM; n++) {
+        int pos_sum;
+        if (n == 0) {
+            pos_sum = pulse_counts[0] - 1;
+        } else {
+            pos_sum = pulse_counts[n] - pulse_counts[n-1] - 1;
+        }
+        
+        int neg_sum = 0;
+        for (int i = 0; i < engine->weights.cand[n].neg_count; i++) {
+            neg_sum += concat_q4[engine->weights.cand[n].neg_indices[i]];
+        }
+        
+        int cand_sum = pos_sum - neg_sum;
+        int cand_idx = cand_sum + 128;
+        if (cand_idx < 0) cand_idx = 0;
+        if (cand_idx > 255) cand_idx = 255;
+        uint8_t cand_q4 = engine->activations.tanh_lut[cand_idx];
+        
+        // Mixer via LUT
+        uint8_t h_prev_q4 = engine->hidden_q4[n];
+        new_hidden[n] = engine->mixer_luts[n].lut[gate_q4[n]][h_prev_q4][cand_q4];
+    }
+    
+    memcpy(engine->hidden_q4, new_hidden, FABRIC_CFC_HIDDEN_DIM);
+    engine->inference_count++;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // PARALLEL Hardware Fabric (4 PCNT units, 4 RMT channels)
 // ═══════════════════════════════════════════════════════════════════════════
 

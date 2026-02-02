@@ -453,6 +453,74 @@ static void benchmark_hardware_palletized(void) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Benchmark: PULSE TRAIN (2 RMT calls for entire inference!)
+// ═══════════════════════════════════════════════════════════════════════════
+
+static void benchmark_hardware_train(void) {
+    printf("\n");
+    printf("════════════════════════════════════════════════════════════════\n");
+    printf("           BENCHMARK: DMA PULSE TRAIN (2 RMT calls!)\n");
+    printf("════════════════════════════════════════════════════════════════\n");
+    printf("\n");
+    printf("  All 64 gates in ONE transmission!\n");
+    printf("  All 64 candidates in ONE transmission!\n");
+    printf("  2 rmt_transmit() calls instead of 128!\n");
+    printf("\n");
+    
+    // Reset hidden state
+    for (int i = 0; i < FABRIC_CFC_HIDDEN_DIM; i++) {
+        g_cfc_fabric.hidden_q4[i] = 8;
+    }
+    
+    uint8_t input_q4[FABRIC_CFC_INPUT_DIM] = {8, 10, 6, 12};
+    
+    const int ITERATIONS = 10;
+    uint32_t min_cycles = UINT32_MAX;
+    uint32_t max_cycles = 0;
+    uint64_t total_cycles = 0;
+    
+    printf("  Running %d PULSE TRAIN inferences...\n", ITERATIONS);
+    fflush(stdout);
+    
+    for (int iter = 0; iter < ITERATIONS; iter++) {
+        input_q4[0] = (iter % 16);
+        
+        uint32_t start = esp_cpu_get_cycle_count();
+        fabric_cfc_step_hw_train(&g_cfc_fabric, input_q4);
+        uint32_t end = esp_cpu_get_cycle_count();
+        
+        uint32_t cycles = end - start;
+        total_cycles += cycles;
+        if (cycles < min_cycles) min_cycles = cycles;
+        if (cycles > max_cycles) max_cycles = cycles;
+        
+        printf("    Iteration %d: %lu cycles\n", iter + 1, (unsigned long)cycles);
+        fflush(stdout);
+    }
+    
+    uint32_t avg_cycles = (uint32_t)(total_cycles / ITERATIONS);
+    uint32_t cpu_mhz = 160;
+    float avg_ms = avg_cycles / (float)cpu_mhz / 1000.0f;
+    
+    printf("\n  Results (%d iterations):\n", ITERATIONS);
+    printf("    Min: %lu cycles = %.2f ms\n", 
+           (unsigned long)min_cycles, min_cycles / (float)cpu_mhz / 1000.0f);
+    printf("    Avg: %lu cycles = %.2f ms\n", 
+           (unsigned long)avg_cycles, avg_ms);
+    printf("    Max: %lu cycles = %.2f ms\n", 
+           (unsigned long)max_cycles, max_cycles / (float)cpu_mhz / 1000.0f);
+    printf("    Throughput: %.1f Hz\n", 
+           1000.0f / avg_ms);
+    printf("\n");
+    
+    printf("  Hidden state (4-bit, first 16 of %d):\n    ", FABRIC_CFC_HIDDEN_DIM);
+    for (int i = 0; i < 16; i++) {
+        printf("%2d ", g_cfc_fabric.hidden_q4[i]);
+    }
+    printf("...\n\n");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Benchmark: PARALLEL Hardware Fabric (4 neurons at once!)
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -651,8 +719,11 @@ void app_main(void) {
     // PALLETIZED hardware benchmark (memcpy from pre-computed patterns)
     benchmark_hardware_palletized();
     
-    // PARALLEL hardware benchmark (4 PCNT + 4 RMT)
-    benchmark_hardware_parallel();
+    // PULSE TRAIN benchmark (2 RMT calls total!)
+    benchmark_hardware_train();
+    
+    // Skip parallel for now (resource conflict)
+    // benchmark_hardware_parallel();
     
     // Timing breakdown to find optimization opportunities
     analyze_timing_breakdown();
