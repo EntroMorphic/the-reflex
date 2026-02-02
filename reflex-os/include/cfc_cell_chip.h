@@ -398,7 +398,7 @@ static inline void CFC_CELL_LUT(
  * The max_concat_dim is set to 32 to handle hidden_dim up to ~24
  * without dynamic allocation. For larger networks, increase this.
  */
-#define CFC_SPARSE_MAX_CONCAT  32
+#define CFC_SPARSE_MAX_CONCAT  128  // Supports up to 64 hidden + 64 input
 
 typedef struct {
     int8_t pos_idx[CFC_SPARSE_MAX_CONCAT + 1];  /* indices where w=+1, -1 terminated */
@@ -411,10 +411,9 @@ typedef struct {
  * Built once at init from float weights via cfc_build_sparse().
  * Biases remain float (not sparse — always dense, always small).
  *
- * max_hidden_dim is 32 to match CFC_SPARSE_MAX_CONCAT. If you need
- * larger, increase both.
+ * max_hidden_dim is 64 to support larger networks.
  */
-#define CFC_SPARSE_MAX_HIDDEN  32
+#define CFC_SPARSE_MAX_HIDDEN  64
 
 typedef struct {
     CfcSparseRow gate[CFC_SPARSE_MAX_HIDDEN];

@@ -83,18 +83,26 @@ static void run_benchmark(void) {
     printf("    Throughput: ~%lu kHz\n", (unsigned long)(1000000 / (avg_cycles * 1000 / cpu_mhz / 1000)));
     printf("\n");
     
-    // Show output
-    printf("  Hidden state (Q15):\n    ");
-    for (int i = 0; i < HOLO_Q15_HIDDEN_DIM; i++) {
+    // Show first 8 of output (32 is too many to print)
+    printf("  Hidden state (Q15, first 8 of %d):\n    ", HOLO_Q15_HIDDEN_DIM);
+    for (int i = 0; i < 8 && i < HOLO_Q15_HIDDEN_DIM; i++) {
         printf("%6d ", g_node.cfc.hidden[i]);
     }
-    printf("\n\n");
+    printf("...\n\n");
     
-    printf("  Hidden state (float equivalent):\n    ");
-    for (int i = 0; i < HOLO_Q15_HIDDEN_DIM; i++) {
+    printf("  Hidden state (float, first 8 of %d):\n    ", HOLO_Q15_HIDDEN_DIM);
+    for (int i = 0; i < 8 && i < HOLO_Q15_HIDDEN_DIM; i++) {
         printf("%6.3f ", q15_to_float(g_node.cfc.hidden[i]));
     }
-    printf("\n\n");
+    printf("...\n\n");
+    
+    printf("  Configuration:\n");
+    printf("    Input dim:  %d\n", HOLO_Q15_INPUT_DIM);
+    printf("    Hidden dim: %d\n", HOLO_Q15_HIDDEN_DIM);
+    printf("    Concat dim: %d\n", HOLO_Q15_CONCAT_DIM);
+    printf("    Sparse ternary weights: ~%d adds per neuron (81%% sparsity)\n", 
+           (int)(HOLO_Q15_CONCAT_DIM * 0.19f));
+    printf("\n");
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -151,15 +159,19 @@ static void run_crystallization_test(void) {
     printf("    Confidence:           %.1f%%\n", q15_to_float(g_node.confidence) * 100.0f);
     printf("\n");
     
-    // Show entropy per neuron
-    printf("  Neuron entropy:\n    ");
-    for (int i = 0; i < HOLO_Q15_HIDDEN_DIM; i++) {
+    // Show entropy per neuron (first 16)
+    printf("  Neuron entropy (first 16 of %d):\n    ", HOLO_Q15_HIDDEN_DIM);
+    for (int i = 0; i < 16 && i < HOLO_Q15_HIDDEN_DIM; i++) {
         printf("%3d ", g_node.neuron_entropy[i]);
     }
-    printf("\n\n");
+    printf("...\n\n");
     
-    printf("  Crystallized mask: 0x%02X\n", g_node.crystallized_mask);
-    printf("  Potential mask:    0x%02X\n", g_node.potential_mask);
+    printf("  Crystallized mask: 0x%016llX (%d neurons)\n", 
+           (unsigned long long)g_node.crystallized_mask,
+           __builtin_popcountll(g_node.crystallized_mask));
+    printf("  Potential mask:    0x%016llX (%d neurons)\n", 
+           (unsigned long long)g_node.potential_mask,
+           __builtin_popcountll(g_node.potential_mask));
     printf("\n");
 }
 

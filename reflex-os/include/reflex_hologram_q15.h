@@ -34,9 +34,9 @@ extern "C" {
 // ════════════════════════════════════════════════════════════════════════════
 
 #define HOLO_Q15_INPUT_DIM          4       // Input dimension
-#define HOLO_Q15_HIDDEN_DIM         8       // Hidden dimension (matches packet)
+#define HOLO_Q15_HIDDEN_DIM         64      // Hidden dimension - 64x64 sparse matvec!
 #define HOLO_Q15_CONCAT_DIM         (HOLO_Q15_INPUT_DIM + HOLO_Q15_HIDDEN_DIM)
-#define HOLO_Q15_MAX_CONCAT         32      // For sparse weight arrays
+#define HOLO_Q15_MAX_CONCAT         128     // For sparse weight arrays
 
 #define HOLO_Q15_MAX_NEIGHBORS      8       // Max nodes in mesh
 #define HOLO_Q15_NEIGHBOR_TIMEOUT   1000    // Ticks before neighbor expires
@@ -84,7 +84,7 @@ typedef struct {
 // ════════════════════════════════════════════════════════════════════════════
 
 typedef struct __attribute__((packed, aligned(4))) {
-    uint8_t  hidden[8];     // Compressed hidden state (high byte of Q15)
+    uint8_t  hidden[HOLO_Q15_HIDDEN_DIM]; // Compressed hidden state (high byte of Q15)
     uint8_t  node_id;       // Source node
     uint8_t  confidence;    // Self-assessed (0-255)
     uint8_t  entropy_high;  // Count of high-entropy neurons
@@ -143,8 +143,8 @@ typedef struct {
     // Entropy & Learning (per neuron)
     // ─────────────────────────────────────────────────────────
     uint8_t neuron_entropy[HOLO_Q15_HIDDEN_DIM];
-    uint8_t crystallized_mask;  // Bitmask: which neurons are stable
-    uint8_t potential_mask;     // Bitmask: which neurons are ready
+    uint64_t crystallized_mask;  // Bitmask: which neurons are stable (up to 64)
+    uint64_t potential_mask;     // Bitmask: which neurons are ready (up to 64)
     
     // ─────────────────────────────────────────────────────────
     // Output
@@ -260,7 +260,7 @@ static inline void holo_q15_init(holo_q15_node_t* node, uint8_t node_id, uint32_
     }
     
     node->crystallized_mask = 0;
-    node->potential_mask = 0xFF;  // All neurons are potential initially
+    node->potential_mask = 0xFFFFFFFFFFFFFFFFULL;  // All 64 neurons are potential initially
     node->confidence = Q15_HALF;   // Start at 0.5
 }
 
@@ -305,7 +305,9 @@ static inline void holo_q15_expire_neighbors(holo_q15_node_t* node) {
 static inline uint16_t holo_q15_checksum(const holo_q15_packet_t* pkt) {
     const uint8_t* data = (const uint8_t*)pkt;
     uint16_t sum = 0;
-    for (int i = 0; i < 14; i++) {
+    // Checksum everything except the checksum field itself
+    const int len = sizeof(holo_q15_packet_t) - sizeof(uint16_t);
+    for (int i = 0; i < len; i++) {
         sum ^= data[i];
         sum = (sum << 1) | (sum >> 15);
     }
@@ -320,7 +322,7 @@ static inline void holo_q15_create_packet(const holo_q15_node_t* node, holo_q15_
     
     pkt->node_id = node->node_id;
     pkt->confidence = (uint8_t)((node->confidence >> 7) & 0xFF);  // Q15 to 0-255
-    pkt->entropy_high = __builtin_popcount(node->potential_mask);
+    pkt->entropy_high = __builtin_popcountll(node->potential_mask);
     pkt->flags = 0;
     if (node->crystallization_count > 0) pkt->flags |= HOLO_Q15_FLAG_LEARNING;
     pkt->sequence = (uint16_t)(node->tick_count & 0xFFFF);
@@ -428,7 +430,7 @@ static inline void holo_q15_update_entropy(holo_q15_node_t* node) {
         }
         
         // Update masks
-        uint8_t bit = (1 << i);
+        uint64_t bit = (1ULL << i);
         if (node->neuron_entropy[i] < HOLO_Q15_ENTROPY_CRYSTALLIZE) {
             if (!(node->crystallized_mask & bit)) {
                 node->crystallized_mask |= bit;
@@ -514,7 +516,7 @@ static inline void holo_q15_tick(
     // PHASE 6: Modulate output by confidence
     // ═══════════════════════════════════════════════════════════
     for (int i = 0; i < HOLO_Q15_HIDDEN_DIM; i++) {
-        uint8_t bit = (1 << i);
+        uint64_t bit = (1ULL << i);
         
         if (node->confidence < HOLO_Q15_CONF_LOW) {
             // Low confidence: only output crystallized neurons
@@ -557,8 +559,8 @@ static inline holo_q15_stats_t holo_q15_get_stats(const holo_q15_node_t* node) {
     s.neighbor_count = node->neighbor_count;
     s.confidence_q15 = node->confidence;
     s.confidence_f = q15_to_float(node->confidence);
-    s.crystallized_count = __builtin_popcount(node->crystallized_mask);
-    s.potential_count = __builtin_popcount(node->potential_mask);
+    s.crystallized_count = __builtin_popcountll(node->crystallized_mask);
+    s.potential_count = __builtin_popcountll(node->potential_mask);
     s.agreements = node->agreement_count;
     s.disagreements = node->disagreement_count;
     s.crystallizations = node->crystallization_count;
