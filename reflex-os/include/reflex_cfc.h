@@ -34,7 +34,10 @@ extern "C" {
 // Configuration
 // ============================================================
 
-#define CFC_NUM_NEURONS     64      // Hidden layer size
+// Configuration options - trade size for speed
+#ifndef CFC_NUM_NEURONS
+#define CFC_NUM_NEURONS     64      // Hidden layer size (8, 16, 32, or 64)
+#endif
 #define CFC_INPUT_BITS      64      // Input vector width
 #define CFC_OUTPUT_BITS     64      // Output vector width
 #define CFC_BYTES_PER_MASK  8       // 64 bits = 8 bytes
@@ -188,6 +191,68 @@ static inline bool activate(uint8_t pre_act, uint8_t threshold) {
 // ============================================================
 
 /**
+ * Fast 64-bit popcount using parallel bit manipulation
+ * Fewer memory accesses than LUT for 64 bits
+ */
+static inline uint8_t popcount64_fast(uint64_t x) {
+    x = x - ((x >> 1) & 0x5555555555555555ULL);
+    x = (x & 0x3333333333333333ULL) + ((x >> 2) & 0x3333333333333333ULL);
+    x = (x + (x >> 4)) & 0x0F0F0F0F0F0F0F0FULL;
+    return (x * 0x0101010101010101ULL) >> 56;
+}
+
+/**
+ * Ternary neuron using 64-bit operations (faster than byte-wise)
+ */
+static inline uint8_t ternary_neuron_fast(
+    uint64_t input,
+    uint64_t pos_mask,
+    uint64_t neg_mask,
+    int8_t bias
+) {
+    int16_t pre_act = popcount64_fast(input & pos_mask) 
+                    - popcount64_fast(input & neg_mask) 
+                    + bias + CFC_PREACT_OFFSET;
+    
+    if (pre_act < 0) pre_act = 0;
+    if (pre_act > CFC_PREACT_MAX) pre_act = CFC_PREACT_MAX;
+    return (uint8_t)pre_act;
+}
+
+/**
+ * Load 8 bytes as uint64_t (handles alignment)
+ */
+static inline uint64_t load64(const uint8_t* p) {
+    uint64_t v;
+    memcpy(&v, p, 8);
+    return v;
+}
+
+/**
+ * Store uint64_t as 8 bytes
+ */
+static inline void store64(uint8_t* p, uint64_t v) {
+    memcpy(p, &v, 8);
+}
+
+/**
+ * Process 4 neurons at once (manual unroll)
+ */
+#define PROCESS_4_NEURONS(base, combined, layer, f_gate, g_bits) do { \
+    for (int _i = 0; _i < 4; _i++) { \
+        int _n = (base) + _i; \
+        uint64_t _pf = load64(layer->f_weights[_n].pos_mask); \
+        uint64_t _nf = load64(layer->f_weights[_n].neg_mask); \
+        uint64_t _pg = load64(layer->g_weights[_n].pos_mask); \
+        uint64_t _ng = load64(layer->g_weights[_n].neg_mask); \
+        uint8_t _fp = ternary_neuron_fast(combined, _pf, _nf, layer->f_bias[_n]); \
+        uint8_t _gp = ternary_neuron_fast(combined, _pg, _ng, layer->g_bias[_n]); \
+        if (sigmoid_lut[_fp] > 128) f_gate |= (1ULL << _n); \
+        if (_gp > (CFC_PREACT_OFFSET + 8)) g_bits |= (1ULL << _n); \
+    } \
+} while(0)
+
+/**
  * CfC update equation (simplified binary version):
  *
  *   σ_f = sigmoid(f(input, hidden))     -- time constant
@@ -205,52 +270,99 @@ static inline void cfc_forward(
     const uint8_t* input,       // 64-bit input vector
     uint8_t* output             // 64-bit output vector
 ) {
+    // Load as 64-bit for faster operations
+    uint64_t input64 = load64(input);
+    uint64_t hidden64 = load64(layer->hidden);
+    uint64_t combined = input64 | hidden64;
+    
+    uint64_t g_bits = 0;       // Target state bits
+    uint64_t f_gate = 0;       // Which neurons update
+    
+    // Process all 64 neurons (unrolled 4x = 16 iterations)
+    PROCESS_4_NEURONS(0, combined, layer, f_gate, g_bits);
+    PROCESS_4_NEURONS(4, combined, layer, f_gate, g_bits);
+    PROCESS_4_NEURONS(8, combined, layer, f_gate, g_bits);
+    PROCESS_4_NEURONS(12, combined, layer, f_gate, g_bits);
+    PROCESS_4_NEURONS(16, combined, layer, f_gate, g_bits);
+    PROCESS_4_NEURONS(20, combined, layer, f_gate, g_bits);
+    PROCESS_4_NEURONS(24, combined, layer, f_gate, g_bits);
+    PROCESS_4_NEURONS(28, combined, layer, f_gate, g_bits);
+    PROCESS_4_NEURONS(32, combined, layer, f_gate, g_bits);
+    PROCESS_4_NEURONS(36, combined, layer, f_gate, g_bits);
+    PROCESS_4_NEURONS(40, combined, layer, f_gate, g_bits);
+    PROCESS_4_NEURONS(44, combined, layer, f_gate, g_bits);
+    PROCESS_4_NEURONS(48, combined, layer, f_gate, g_bits);
+    PROCESS_4_NEURONS(52, combined, layer, f_gate, g_bits);
+    PROCESS_4_NEURONS(56, combined, layer, f_gate, g_bits);
+    PROCESS_4_NEURONS(60, combined, layer, f_gate, g_bits);
+    
+    // Apply CfC dynamics: blend hidden with g based on f gate
+    uint64_t new_hidden = (f_gate & g_bits) | ((~f_gate) & hidden64);
+    
+    // Store updated hidden state
+    store64(layer->hidden, new_hidden);
+    
+    // Compute output layer (unrolled)
+    uint64_t output64 = 0;
+    #define PROCESS_OUTPUT(o) do { \
+        uint64_t _po = load64(layer->out_weights[o].pos_mask); \
+        uint64_t _no = load64(layer->out_weights[o].neg_mask); \
+        uint8_t _op = ternary_neuron_fast(new_hidden, _po, _no, layer->out_bias[o]); \
+        if (sigmoid_lut[_op] > 128) output64 |= (1ULL << (o)); \
+    } while(0)
+    
+    // Unroll output layer too
+    for (int o = 0; o < CFC_OUTPUT_BITS; o += 8) {
+        PROCESS_OUTPUT(o+0); PROCESS_OUTPUT(o+1);
+        PROCESS_OUTPUT(o+2); PROCESS_OUTPUT(o+3);
+        PROCESS_OUTPUT(o+4); PROCESS_OUTPUT(o+5);
+        PROCESS_OUTPUT(o+6); PROCESS_OUTPUT(o+7);
+    }
+    #undef PROCESS_OUTPUT
+    
+    store64(output, output64);
+}
+
+/**
+ * Original forward pass (for comparison)
+ */
+static inline void cfc_forward_original(
+    cfc_layer_t* layer,
+    const uint8_t* input,
+    uint8_t* output
+) {
     uint8_t combined[CFC_BYTES_PER_MASK];
     uint8_t f_activations[CFC_NUM_NEURONS];
     uint8_t g_activations[CFC_NUM_NEURONS];
     uint8_t new_hidden[CFC_BYTES_PER_MASK] = {0};
     
-    // Combine input and hidden state for processing
-    // combined = input XOR hidden (simple combination)
     for (int i = 0; i < CFC_BYTES_PER_MASK; i++) {
-        combined[i] = input[i] | layer->hidden[i];  // OR to see both
+        combined[i] = input[i] | layer->hidden[i];
     }
     
-    // Compute f (time constant) and g (target) for each neuron
     for (int n = 0; n < CFC_NUM_NEURONS; n++) {
-        // f pathway: how much to update
         uint8_t f_pre = ternary_neuron(combined, &layer->f_weights[n], layer->f_bias[n]);
         f_activations[n] = sigmoid_lut[f_pre];
         
-        // g pathway: target state
         uint8_t g_pre = ternary_neuron(combined, &layer->g_weights[n], layer->g_bias[n]);
-        g_activations[n] = g_pre;  // Keep pre-activation for thresholding
+        g_activations[n] = g_pre;
     }
     
-    // Update hidden state (CfC dynamics)
     for (int n = 0; n < CFC_NUM_NEURONS; n++) {
         int byte_idx = n / 8;
         int bit_idx = n % 8;
         
-        // Get current hidden bit
         bool h_old = (layer->hidden[byte_idx] >> bit_idx) & 1;
-        
-        // Get target state (threshold g activation)
-        bool g_bit = g_activations[n] > (CFC_PREACT_OFFSET + 8);  // threshold at +8
-        
-        // Blend: if f_activation > 128, use g_bit, else keep h_old
+        bool g_bit = g_activations[n] > (CFC_PREACT_OFFSET + 8);
         bool h_new = (f_activations[n] > 128) ? g_bit : h_old;
         
-        // Set new hidden bit
         if (h_new) {
             new_hidden[byte_idx] |= (1 << bit_idx);
         }
     }
     
-    // Update hidden state
     memcpy(layer->hidden, new_hidden, CFC_BYTES_PER_MASK);
     
-    // Compute output
     memset(output, 0, CFC_BYTES_PER_MASK);
     for (int o = 0; o < CFC_OUTPUT_BITS; o++) {
         uint8_t out_pre = ternary_neuron(layer->hidden, &layer->out_weights[o], layer->out_bias[o]);

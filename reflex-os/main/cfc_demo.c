@@ -120,13 +120,12 @@ void app_main(void) {
         cfc_forward(&cfc, input, output);
     }
     
-    // Benchmark forward pass
+    // Benchmark OPTIMIZED forward pass
     uint32_t min_cycles = UINT32_MAX;
     uint32_t max_cycles = 0;
     uint64_t sum_cycles = 0;
     
     for (int i = 0; i < BENCHMARK_CYCLES; i++) {
-        // Vary input slightly
         input[0] = (uint8_t)i;
         
         uint32_t t0 = reflex_cycles();
@@ -139,25 +138,61 @@ void app_main(void) {
     }
     
     uint32_t avg_cycles = (uint32_t)(sum_cycles / BENCHMARK_CYCLES);
+    uint32_t ns_per_forward = reflex_cycles_to_ns(avg_cycles);
+    uint32_t forwards_per_sec = ns_per_forward > 0 ? 1000000000 / ns_per_forward : 0;
     
-    printf("  Forward pass (%d iterations):\n", BENCHMARK_CYCLES);
+    printf("  OPTIMIZED forward pass (64-bit ops):\n");
     printf("    Min: %lu cycles = %lu ns\n", 
            (unsigned long)min_cycles, 
            (unsigned long)reflex_cycles_to_ns(min_cycles));
     printf("    Avg: %lu cycles = %lu ns\n",
            (unsigned long)avg_cycles,
-           (unsigned long)reflex_cycles_to_ns(avg_cycles));
+           (unsigned long)ns_per_forward);
     printf("    Max: %lu cycles = %lu ns\n",
            (unsigned long)max_cycles,
            (unsigned long)reflex_cycles_to_ns(max_cycles));
+    printf("    Throughput: ~%lu kHz\n", (unsigned long)(forwards_per_sec / 1000));
+    printf("\n");
+    fflush(stdout);
+    
+    // Benchmark ORIGINAL forward pass for comparison
+    min_cycles = UINT32_MAX;
+    max_cycles = 0;
+    sum_cycles = 0;
+    
+    for (int i = 0; i < BENCHMARK_CYCLES; i++) {
+        input[0] = (uint8_t)i;
+        
+        uint32_t t0 = reflex_cycles();
+        cfc_forward_original(&cfc, input, output);
+        uint32_t cycles = reflex_cycles() - t0;
+        
+        if (cycles < min_cycles) min_cycles = cycles;
+        if (cycles > max_cycles) max_cycles = cycles;
+        sum_cycles += cycles;
+    }
+    
+    uint32_t avg_cycles_orig = (uint32_t)(sum_cycles / BENCHMARK_CYCLES);
+    uint32_t ns_per_forward_orig = reflex_cycles_to_ns(avg_cycles_orig);
+    uint32_t forwards_per_sec_orig = ns_per_forward_orig > 0 ? 1000000000 / ns_per_forward_orig : 0;
+    
+    printf("  ORIGINAL forward pass (byte-wise):\n");
+    printf("    Min: %lu cycles = %lu ns\n", 
+           (unsigned long)min_cycles, 
+           (unsigned long)reflex_cycles_to_ns(min_cycles));
+    printf("    Avg: %lu cycles = %lu ns\n",
+           (unsigned long)avg_cycles_orig,
+           (unsigned long)ns_per_forward_orig);
+    printf("    Max: %lu cycles = %lu ns\n",
+           (unsigned long)max_cycles,
+           (unsigned long)reflex_cycles_to_ns(max_cycles));
+    printf("    Throughput: ~%lu kHz\n", (unsigned long)(forwards_per_sec_orig / 1000));
     printf("\n");
     
-    // Calculate throughput
-    uint32_t ns_per_forward = reflex_cycles_to_ns(avg_cycles);
-    uint32_t forwards_per_sec = 1000000000 / ns_per_forward;
-    
-    printf("  Throughput: ~%lu forward passes/second\n", (unsigned long)forwards_per_sec);
-    printf("  Effective frequency: ~%lu kHz\n", (unsigned long)(forwards_per_sec / 1000));
+    // Speedup
+    if (ns_per_forward > 0) {
+        printf("  SPEEDUP: %.1fx faster\n", (float)ns_per_forward_orig / (float)ns_per_forward);
+    }
     printf("\n");
     fflush(stdout);
     
@@ -225,8 +260,9 @@ void app_main(void) {
     printf("    - %lu bytes total\n", (unsigned long)stats.total_bytes);
     printf("    - %lu neurons\n", (unsigned long)stats.num_neurons);
     printf("    - %lu%% sparse\n", (unsigned long)stats.sparsity_percent);
-    printf("    - %lu ns per forward pass\n", (unsigned long)ns_per_forward);
+    printf("    - %lu ns per forward pass (optimized)\n", (unsigned long)ns_per_forward);
     printf("    - ~%lu kHz effective frequency\n", (unsigned long)(forwards_per_sec / 1000));
+    printf("    - %.1fx speedup over byte-wise\n", (float)ns_per_forward_orig / (float)ns_per_forward);
     printf("\n");
     printf("  Operations used: AND, POPCOUNT, SUB, LUT\n");
     printf("  Operations NOT used: MULTIPLY, DIVIDE, FLOAT\n");
