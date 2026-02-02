@@ -190,9 +190,77 @@ static void benchmark_hardware(void) {
            1000000.0f / (avg_cycles / (float)cpu_mhz));
     printf("\n");
     
-    printf("  NOTE: Hardware is slower due to RMT pulse latency.\n");
-    printf("        But CPU is FREE during pulse generation!\n");
-    printf("        With full ETM chaining, CPU can SLEEP.\n");
+    printf("  NOTE: Individual RMT calls have high latency.\n");
+    printf("        Let's try BATCHED pulses next!\n");
+    printf("\n");
+    
+    // Show hidden state
+    printf("  Hidden state (4-bit, first 16 of %d):\n    ", FABRIC_CFC_HIDDEN_DIM);
+    for (int i = 0; i < 16; i++) {
+        printf("%2d ", g_cfc_fabric.hidden_q4[i]);
+    }
+    printf("...\n\n");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Benchmark: BATCHED Hardware Fabric 
+// ═══════════════════════════════════════════════════════════════════════════
+
+static void benchmark_hardware_batched(void) {
+    printf("\n");
+    printf("════════════════════════════════════════════════════════════════\n");
+    printf("           BENCHMARK: BATCHED HARDWARE (64 neurons)\n");
+    printf("════════════════════════════════════════════════════════════════\n");
+    printf("\n");
+    printf("  ONE rmt_transmit() per sparse dot instead of N!\n");
+    printf("  All pulses for a sparse dot batched into one DMA transfer.\n");
+    printf("\n");
+    
+    // Reset hidden state
+    for (int i = 0; i < FABRIC_CFC_HIDDEN_DIM; i++) {
+        g_cfc_fabric.hidden_q4[i] = 8;
+    }
+    
+    // Test input
+    uint8_t input_q4[FABRIC_CFC_INPUT_DIM] = {8, 10, 6, 12};
+    
+    const int ITERATIONS = 10;
+    uint32_t min_cycles = UINT32_MAX;
+    uint32_t max_cycles = 0;
+    uint64_t total_cycles = 0;
+    
+    printf("  Running %d BATCHED hardware inferences...\n", ITERATIONS);
+    fflush(stdout);
+    
+    for (int iter = 0; iter < ITERATIONS; iter++) {
+        input_q4[0] = (iter % 16);
+        
+        uint32_t start = esp_cpu_get_cycle_count();
+        fabric_cfc_step_hw_batched(&g_cfc_fabric, input_q4);
+        uint32_t end = esp_cpu_get_cycle_count();
+        
+        uint32_t cycles = end - start;
+        total_cycles += cycles;
+        if (cycles < min_cycles) min_cycles = cycles;
+        if (cycles > max_cycles) max_cycles = cycles;
+        
+        printf("    Iteration %d: %lu cycles\n", iter + 1, (unsigned long)cycles);
+        fflush(stdout);
+    }
+    
+    uint32_t avg_cycles = (uint32_t)(total_cycles / ITERATIONS);
+    uint32_t cpu_mhz = 160;
+    float avg_ms = avg_cycles / (float)cpu_mhz / 1000.0f;
+    
+    printf("\n  Results (%d iterations):\n", ITERATIONS);
+    printf("    Min: %lu cycles = %.1f ms\n", 
+           (unsigned long)min_cycles, min_cycles / (float)cpu_mhz / 1000.0f);
+    printf("    Avg: %lu cycles = %.1f ms\n", 
+           (unsigned long)avg_cycles, avg_ms);
+    printf("    Max: %lu cycles = %.1f ms\n", 
+           (unsigned long)max_cycles, max_cycles / (float)cpu_mhz / 1000.0f);
+    printf("    Throughput: %.1f Hz\n", 
+           1000.0f / avg_ms);
     printf("\n");
     
     // Show hidden state
@@ -316,8 +384,11 @@ void app_main(void) {
     // Verify SW vs HW match
     verify_sw_vs_hw();
     
-    // Hardware benchmark (slower but CPU-free)
+    // Hardware benchmark (individual RMT calls)
     benchmark_hardware();
+    
+    // BATCHED hardware benchmark (one RMT call per sparse dot)
+    benchmark_hardware_batched();
     
     // Summary
     printf("\n");
@@ -331,7 +402,7 @@ void app_main(void) {
     printf("  LUT lookups = memory reads.\n");
     printf("  No multiply in the hot path.\n");
     printf("  \n");
-    printf("  The fabric can think while the CPU sleeps.\n");
+    printf("  BATCHED: One DMA transfer per sparse dot!\n");
     printf("\n");
     fflush(stdout);
     

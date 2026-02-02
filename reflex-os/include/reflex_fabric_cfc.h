@@ -125,6 +125,11 @@ extern "C" {
 // Sparse weight representation
 #define FABRIC_CFC_MAX_NONZERO      32      // Max nonzero weights per row (with 81% sparsity, expect ~12)
 
+// Batched pulse buffer: max 32 weights × 15 pulses = 480 symbols
+#define FABRIC_CFC_MAX_PULSES       512     // RMT symbols per sparse dot
+#define FABRIC_CFC_PULSE_HIGH_TICKS 5       // 500ns at 10MHz
+#define FABRIC_CFC_PULSE_LOW_TICKS  5       // 500ns gap
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Quantization Functions
 // ═══════════════════════════════════════════════════════════════════════════
@@ -304,6 +309,9 @@ typedef struct {
     // Hardware handles
     fabric_engine_t* fabric;  // Base PCNT/RMT fabric
     
+    // Batched pulse buffer for DMA
+    rmt_symbol_word_t* pulse_buffer;  // Pre-allocated for batching
+    
     // Statistics
     uint32_t inference_count;
     bool initialized;
@@ -383,6 +391,17 @@ static inline esp_err_t fabric_cfc_init(fabric_cfc_engine_t* engine, fabric_engi
         engine->hidden_q4[i] = 8;   // 0 in [-1, +1] range
         engine->hidden_q15[i] = 0;
     }
+    
+    // Allocate batched pulse buffer (2 KB)
+    engine->pulse_buffer = (rmt_symbol_word_t*)malloc(
+        sizeof(rmt_symbol_word_t) * FABRIC_CFC_MAX_PULSES
+    );
+    if (!engine->pulse_buffer) {
+        free(engine->mixer_luts);
+        return ESP_ERR_NO_MEM;
+    }
+    printf("  Pulse buffer ready: %d bytes\n", 
+           (int)(sizeof(rmt_symbol_word_t) * FABRIC_CFC_MAX_PULSES));
     
     engine->initialized = true;
     return ESP_OK;
@@ -530,6 +549,140 @@ static inline void fabric_cfc_step_hw(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// BATCHED Hardware Fabric Implementation
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Build batched pulse buffer for a sparse dot product
+ * Returns the number of RMT symbols written
+ * 
+ * Instead of calling rmt_transmit() for each weight, we build ALL pulses
+ * into one buffer and transmit once. PCNT counts all pulses = sum!
+ */
+static inline int fabric_build_batched_pulses(
+    rmt_symbol_word_t* buffer,
+    const uint8_t* concat_q4,
+    const uint8_t* indices,
+    int count
+) {
+    int pos = 0;
+    
+    for (int i = 0; i < count; i++) {
+        uint8_t val = concat_q4[indices[i]];
+        
+        // Generate 'val' pulses for this weight
+        for (int p = 0; p < val && pos < FABRIC_CFC_MAX_PULSES - 1; p++) {
+            buffer[pos].duration0 = FABRIC_CFC_PULSE_HIGH_TICKS;
+            buffer[pos].level0 = 1;
+            buffer[pos].duration1 = FABRIC_CFC_PULSE_LOW_TICKS;
+            buffer[pos].level1 = 0;
+            pos++;
+        }
+    }
+    
+    // End marker
+    buffer[pos].duration0 = 0;
+    buffer[pos].level0 = 0;
+    buffer[pos].duration1 = 0;
+    buffer[pos].level1 = 0;
+    pos++;
+    
+    return pos;
+}
+
+/**
+ * Run one CfC step using BATCHED hardware fabric
+ * 
+ * Key difference: ONE rmt_transmit() per sparse dot instead of N.
+ * This dramatically reduces RMT setup overhead.
+ */
+static inline void fabric_cfc_step_hw_batched(
+    fabric_cfc_engine_t* engine,
+    const uint8_t* input_q4
+) {
+    // Build concat vector
+    uint8_t concat_q4[FABRIC_CFC_CONCAT_DIM];
+    memcpy(concat_q4, input_q4, FABRIC_CFC_INPUT_DIM);
+    memcpy(concat_q4 + FABRIC_CFC_INPUT_DIM, engine->hidden_q4, FABRIC_CFC_HIDDEN_DIM);
+    
+    uint8_t new_hidden[FABRIC_CFC_HIDDEN_DIM];
+    
+    rmt_transmit_config_t tx_config = {
+        .loop_count = 0,
+    };
+    
+    for (int n = 0; n < FABRIC_CFC_HIDDEN_DIM; n++) {
+        // === GATE SPARSE DOT via BATCHED PCNT ===
+        fabric_clear_accumulator(engine->fabric);
+        
+        // Build ALL positive pulses into one buffer
+        int num_symbols = fabric_build_batched_pulses(
+            engine->pulse_buffer,
+            concat_q4,
+            engine->weights.gate[n].pos_indices,
+            engine->weights.gate[n].pos_count
+        );
+        
+        // ONE transmission for all positive weights!
+        if (num_symbols > 1) {
+            rmt_transmit(engine->fabric->rmt_chan, engine->fabric->rmt_encoder,
+                engine->pulse_buffer, num_symbols * sizeof(rmt_symbol_word_t),
+                &tx_config);
+            rmt_tx_wait_all_done(engine->fabric->rmt_chan, portMAX_DELAY);
+        }
+        int pos_sum = fabric_read_accumulator(engine->fabric);
+        
+        // Negative weights (software for now - could use second PCNT channel)
+        int neg_sum = 0;
+        for (int i = 0; i < engine->weights.gate[n].neg_count; i++) {
+            neg_sum += concat_q4[engine->weights.gate[n].neg_indices[i]];
+        }
+        
+        int gate_sum = pos_sum - neg_sum;
+        int gate_idx = gate_sum + 128;
+        if (gate_idx < 0) gate_idx = 0;
+        if (gate_idx > 255) gate_idx = 255;
+        uint8_t gate_q4 = engine->activations.sigmoid[gate_idx];
+        
+        // === CANDIDATE SPARSE DOT via BATCHED PCNT ===
+        fabric_clear_accumulator(engine->fabric);
+        
+        num_symbols = fabric_build_batched_pulses(
+            engine->pulse_buffer,
+            concat_q4,
+            engine->weights.cand[n].pos_indices,
+            engine->weights.cand[n].pos_count
+        );
+        
+        if (num_symbols > 1) {
+            rmt_transmit(engine->fabric->rmt_chan, engine->fabric->rmt_encoder,
+                engine->pulse_buffer, num_symbols * sizeof(rmt_symbol_word_t),
+                &tx_config);
+            rmt_tx_wait_all_done(engine->fabric->rmt_chan, portMAX_DELAY);
+        }
+        pos_sum = fabric_read_accumulator(engine->fabric);
+        
+        neg_sum = 0;
+        for (int i = 0; i < engine->weights.cand[n].neg_count; i++) {
+            neg_sum += concat_q4[engine->weights.cand[n].neg_indices[i]];
+        }
+        
+        int cand_sum = pos_sum - neg_sum;
+        int cand_idx = cand_sum + 128;
+        if (cand_idx < 0) cand_idx = 0;
+        if (cand_idx > 255) cand_idx = 255;
+        uint8_t cand_q4 = engine->activations.tanh_lut[cand_idx];
+        
+        // === MIXER via LUT (no computation!) ===
+        uint8_t h_prev_q4 = engine->hidden_q4[n];
+        new_hidden[n] = engine->mixer_luts[n].lut[gate_q4][h_prev_q4][cand_q4];
+    }
+    
+    memcpy(engine->hidden_q4, new_hidden, FABRIC_CFC_HIDDEN_DIM);
+    engine->inference_count++;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Cleanup
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -537,6 +690,10 @@ static inline void fabric_cfc_deinit(fabric_cfc_engine_t* engine) {
     if (engine->mixer_luts) {
         free(engine->mixer_luts);
         engine->mixer_luts = NULL;
+    }
+    if (engine->pulse_buffer) {
+        free(engine->pulse_buffer);
+        engine->pulse_buffer = NULL;
     }
     engine->initialized = false;
 }
