@@ -169,7 +169,14 @@ typedef struct {
 // Direct Register Access Macros
 // ============================================================
 
+#ifdef __riscv
+// On actual ESP32-C6, access registers directly
 #define NAV_REG(addr)           (*(volatile uint32_t*)(addr))
+#else
+// On host (x86/ARM), stub out register access
+static volatile uint32_t _nav_dummy_reg;
+#define NAV_REG(addr)           (_nav_dummy_reg)
+#endif
 
 // GDMA registers
 #define NAV_GDMA_CH_OFFSET(n)   (0x70 + (n) * 0xC0)
@@ -262,7 +269,7 @@ static inline void nav_palette_init(nav_palette_t* palette) {
         palette->descriptors[i].length = palette->lengths[i] * 4;
         palette->descriptors[i].suc_eof = 1;        // EOF
         palette->descriptors[i].owner = 1;          // DMA owns
-        palette->descriptors[i].src_addr = (uint32_t)palette->patterns[i];
+        palette->descriptors[i].src_addr = (uintptr_t)palette->patterns[i];
         palette->descriptors[i].next = NULL;        // End of chain
     }
 }
@@ -363,7 +370,7 @@ static inline void nav_build_jump_table(
         table->entries[i].length = palette->lengths[i] * 4;
         table->entries[i].suc_eof = 1;
         table->entries[i].owner = 1;
-        table->entries[i].src_addr = (uint32_t)palette->patterns[i];
+        table->entries[i].src_addr = (uintptr_t)palette->patterns[i];
         table->entries[i].next = NULL;
     }
 }
@@ -457,7 +464,7 @@ static inline void nav_load_pattern(nav_engine_t* engine, uint8_t index) {
     if (index >= NAV_PALETTE_SIZE) index = NAV_PALETTE_SIZE - 1;
     
     // Point GDMA CH0 to the selected descriptor
-    uint32_t desc_addr = (uint32_t)&engine->palette.descriptors[index];
+    uintptr_t desc_addr = (uintptr_t)&engine->palette.descriptors[index];
     NAV_REG(NAV_GDMA_OUT_LINK(0)) = (desc_addr & 0xFFFFF);
     
     engine->current_index = index;

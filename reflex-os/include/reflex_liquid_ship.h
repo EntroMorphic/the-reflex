@@ -151,33 +151,8 @@ typedef struct {
 } liquid_ship_t;
 
 // ============================================================
-// Ship Initialization
+// Panel Generation (must come before ship_init)
 // ============================================================
-
-/**
- * Initialize the liquid ship
- * 
- * @param ship   The ship to initialize
- * @param decay  Decay value for the mixer (0.5 to 0.99)
- */
-static inline void ship_init(liquid_ship_t* ship, float decay) {
-    memset(ship, 0, sizeof(liquid_ship_t));
-    
-    // Initialize the energy source (splined mixer)
-    spline_mixer_generate(&ship->mixer, decay);
-    spline_activations_generate(&ship->activations);
-    
-    // Initialize navigation system
-    nav_init(&ship->navigator);
-    
-    // Initialize state to zero (center of state space)
-    for (int i = 0; i < SHIP_STATE_BYTES; i++) {
-        ship->state.neurons[i] = 0x88;  // All neurons at 8 (center)
-    }
-    
-    // Generate panels (pre-computed navigation samples)
-    ship_generate_panels(ship);
-}
 
 /**
  * Generate navigation panels from splined mixer
@@ -218,6 +193,35 @@ static inline void ship_generate_panels(liquid_ship_t* ship) {
             ship->panels[p].expected_delta[s] = offset;
         }
     }
+}
+
+// ============================================================
+// Ship Initialization
+// ============================================================
+
+/**
+ * Initialize the liquid ship
+ * 
+ * @param ship   The ship to initialize
+ * @param decay  Decay value for the mixer (0.5 to 0.99)
+ */
+static inline void ship_init(liquid_ship_t* ship, float decay) {
+    memset(ship, 0, sizeof(liquid_ship_t));
+    
+    // Initialize the energy source (splined mixer)
+    spline_mixer_generate(&ship->mixer, decay);
+    spline_activations_generate(&ship->activations);
+    
+    // Initialize navigation system
+    nav_init(&ship->navigator);
+    
+    // Initialize state to zero (center of state space)
+    for (int i = 0; i < SHIP_STATE_BYTES; i++) {
+        ship->state.neurons[i] = 0x88;  // All neurons at 8 (center)
+    }
+    
+    // Generate panels (pre-computed navigation samples)
+    ship_generate_panels(ship);
 }
 
 // ============================================================
