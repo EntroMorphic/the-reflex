@@ -52,6 +52,39 @@ Reflex OS is not an operating system that runs on the ESP32-C6. Reflex OS **is**
 
 ---
 
+## Neural Computation (Feb 2, 2026)
+
+| System | Rate | Neurons | Notes |
+|--------|------|---------|-------|
+| Yinsen Q15 CfC | **90 kHz** | 8 | Zero floating-point |
+| Yinsen Q15 CfC | **18 kHz** | 32 | Sparse ternary weights |
+| Yinsen Q15 CfC | **6.9 kHz** | 64 | Full hidden state |
+| ETM Fabric CfC | **551 Hz** | 64 | **Near-zero CPU** |
+
+### ETM Fabric: Hardware Neural Network
+
+The ETM Fabric runs neural inference with **near-zero CPU involvement**:
+
+- **PCNT** counts pulses = hardware addition
+- **RMT** generates pulse trains = value encoding
+- **256 KB LUT** = multiply-free mixer
+- **2 RMT calls** per inference (not 128!)
+
+See [docs/ETM_FABRIC_CFC.md](docs/ETM_FABRIC_CFC.md) for details.
+
+### Holographic Intelligence: Distributed Brain
+
+Multiple nodes form a mesh that thinks through **interference patterns**:
+
+- Three $5 chips = one emergent mind
+- Neurons **crystallize** when neighbors agree
+- Fault-tolerant: remove a node, others compensate
+- 6.9 kHz tick rate with 64 neurons per node
+
+See [docs/HOLOGRAPHIC_INTELLIGENCE.md](docs/HOLOGRAPHIC_INTELLIGENCE.md) for details.
+
+---
+
 ## THE SUMMIT: Zero External Dependencies (Feb 1, 2026)
 
 **We stripped everything.** The Reflex now runs with zero libc, zero ESP-IDF HAL.
