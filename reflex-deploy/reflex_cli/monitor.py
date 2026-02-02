@@ -33,25 +33,70 @@ class DeviceMetrics:
     free_heap: int = 0
     last_error: str = ""
     status: str = "unknown"
+    # Hologram-specific metrics
+    firmware_type: str = "reflex"  # "reflex" or "hologram"
+    node_id: int = 0
+    neighbors: int = 0
+    confidence: float = 0.0
+    crystallized_bits: int = 0
+    radio_tx: int = 0
+    radio_rx: int = 0
+    radio_errors: int = 0
+    rssi: int = 0
+    hidden_state: str = ""
+    constructive: str = ""
+    destructive: str = ""
+    tick_count: int = 0
+    entropy_map: str = ""
     
     def to_dict(self) -> dict:
-        return {
+        d = {
             "port": self.port,
             "timestamp": self.timestamp,
             "heartbeat": self.heartbeat,
-            "uptime_s": self.uptime_s,
-            "reflex": {
-                "min_ns": self.reflex_min_ns,
-                "max_ns": self.reflex_max_ns,
-                "avg_ns": self.reflex_avg_ns,
-            },
-            "anomaly_count": self.anomaly_count,
-            "signal_count": self.signal_count,
-            "temperature_c": self.temperature_c,
-            "free_heap": self.free_heap,
-            "last_error": self.last_error,
             "status": self.status,
+            "firmware_type": self.firmware_type,
         }
+        
+        if self.firmware_type == "hologram":
+            d.update({
+                "node_id": self.node_id,
+                "hologram": {
+                    "neighbors": self.neighbors,
+                    "confidence": self.confidence,
+                    "crystallized_bits": self.crystallized_bits,
+                    "tick_count": self.tick_count,
+                    "entropy_map": self.entropy_map,
+                },
+                "radio": {
+                    "tx": self.radio_tx,
+                    "rx": self.radio_rx,
+                    "errors": self.radio_errors,
+                    "rssi": self.rssi,
+                },
+                "interference": {
+                    "hidden": self.hidden_state,
+                    "constructive": self.constructive,
+                    "destructive": self.destructive,
+                },
+                "last_error": self.last_error,
+            })
+        else:
+            d.update({
+                "uptime_s": self.uptime_s,
+                "reflex": {
+                    "min_ns": self.reflex_min_ns,
+                    "max_ns": self.reflex_max_ns,
+                    "avg_ns": self.reflex_avg_ns,
+                },
+                "anomaly_count": self.anomaly_count,
+                "signal_count": self.signal_count,
+                "temperature_c": self.temperature_c,
+                "free_heap": self.free_heap,
+                "last_error": self.last_error,
+            })
+        
+        return d
     
     def to_yaml(self) -> str:
         return yaml.dump(self.to_dict(), default_flow_style=False)
@@ -97,6 +142,76 @@ def parse_telemetry(text: str) -> Dict[str, Any]:
     """Parse telemetry data from device output."""
     metrics = {}
     
+    # ═══════════════════════════════════════════════════════════════════════
+    # HOLOGRAM TELEMETRY PARSING
+    # ═══════════════════════════════════════════════════════════════════════
+    
+    # Parse node ID: "NODE 1 STATUS" or "NODE 2" etc
+    node_match = re.search(r'NODE\s+(\d+)', text)
+    if node_match:
+        metrics['node_id'] = int(node_match.group(1))
+        metrics['firmware_type'] = 'hologram'
+    
+    # Parse neighbors: "Neighbors:     1 active"
+    neighbors_match = re.search(r'Neighbors:\s*(\d+)\s*active', text)
+    if neighbors_match:
+        metrics['neighbors'] = int(neighbors_match.group(1))
+    
+    # Parse confidence: "Confidence:    55.6%"
+    confidence_match = re.search(r'Confidence:\s*([\d.]+)%', text)
+    if confidence_match:
+        metrics['confidence'] = float(confidence_match.group(1))
+    
+    # Parse crystallized bits: "Crystallized:  21 bits"
+    crystallized_match = re.search(r'Crystallized:\s*(\d+)\s*bits', text)
+    if crystallized_match:
+        metrics['crystallized_bits'] = int(crystallized_match.group(1))
+    
+    # Parse radio stats: "Radio TX: 1996  RX: 4  Errors: 0  RSSI: -54 dBm"
+    tx_match = re.search(r'Radio TX:\s*(\d+)', text)
+    if tx_match:
+        metrics['radio_tx'] = int(tx_match.group(1))
+    
+    rx_match = re.search(r'RX:\s*(\d+)', text)
+    if rx_match:
+        metrics['radio_rx'] = int(rx_match.group(1))
+    
+    radio_errors_match = re.search(r'Errors:\s*(\d+)', text)
+    if radio_errors_match:
+        metrics['radio_errors'] = int(radio_errors_match.group(1))
+    
+    rssi_match = re.search(r'RSSI:\s*(-?\d+)\s*dBm', text)
+    if rssi_match:
+        metrics['rssi'] = int(rssi_match.group(1))
+    
+    # Parse hidden state: "Hidden:        0x02000c1244888243"
+    hidden_match = re.search(r'Hidden:\s*(0x[0-9a-fA-F]+)', text)
+    if hidden_match:
+        metrics['hidden_state'] = hidden_match.group(1)
+    
+    # Parse interference: "Constructive:  0x..." and "Destructive:   0x..."
+    constructive_match = re.search(r'Constructive:\s*(0x[0-9a-fA-F]+)', text)
+    if constructive_match:
+        metrics['constructive'] = constructive_match.group(1)
+    
+    destructive_match = re.search(r'Destructive:\s*(0x[0-9a-fA-F]+)', text)
+    if destructive_match:
+        metrics['destructive'] = destructive_match.group(1)
+    
+    # Parse tick count from status header: "tick 20000"
+    tick_match = re.search(r'tick\s+(\d+)', text)
+    if tick_match:
+        metrics['tick_count'] = int(tick_match.group(1))
+    
+    # Parse entropy map: "Entropy: ##....#..#.....##"
+    entropy_match = re.search(r'Entropy:\s*([#.\-]+)', text)
+    if entropy_match:
+        metrics['entropy_map'] = entropy_match.group(1)
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # STANDARD REFLEX TELEMETRY PARSING
+    # ═══════════════════════════════════════════════════════════════════════
+    
     # Parse signal/anomaly counts
     # Looking for: "Signals:       5009" and "Anomalies:     2532"
     signals_match = re.search(r'Signals:\s*(\d+)', text)
@@ -120,9 +235,13 @@ def parse_telemetry(text: str) -> Dict[str, Any]:
     if avg_match:
         metrics['reflex_avg_ns'] = int(avg_match.group(1))
     
-    # Check for errors
-    if 'error' in text.lower() or 'fault' in text.lower():
-        metrics['last_error'] = "Error detected in output"
+    # Check for real errors (not "Errors: N" from radio stats or "last_error" key)
+    if re.search(r'panic|guru meditation|stack.*fault|watchdog', text, re.IGNORECASE):
+        metrics['last_error'] = "Critical error detected"
+    elif re.search(r'\berror\b', text, re.IGNORECASE):
+        # Ignore "Radio ... Errors:" and "last_error" references
+        if not re.search(r'(Radio.*Errors:|last_error)', text, re.IGNORECASE):
+            metrics['last_error'] = "Error detected in output"
     
     return metrics
 
@@ -161,6 +280,37 @@ class DeviceMonitor:
                     # Parse telemetry from buffer
                     parsed = parse_telemetry(buffer)
                     
+                    # Update hologram metrics if detected
+                    if parsed.get('firmware_type') == 'hologram':
+                        self.metrics.firmware_type = 'hologram'
+                    if parsed.get('node_id'):
+                        self.metrics.node_id = parsed['node_id']
+                    if 'neighbors' in parsed:
+                        self.metrics.neighbors = parsed['neighbors']
+                    if 'confidence' in parsed:
+                        self.metrics.confidence = parsed['confidence']
+                    if 'crystallized_bits' in parsed:
+                        self.metrics.crystallized_bits = parsed['crystallized_bits']
+                    if 'radio_tx' in parsed:
+                        self.metrics.radio_tx = parsed['radio_tx']
+                    if 'radio_rx' in parsed:
+                        self.metrics.radio_rx = parsed['radio_rx']
+                    if 'radio_errors' in parsed:
+                        self.metrics.radio_errors = parsed['radio_errors']
+                    if 'rssi' in parsed:
+                        self.metrics.rssi = parsed['rssi']
+                    if 'hidden_state' in parsed:
+                        self.metrics.hidden_state = parsed['hidden_state']
+                    if 'constructive' in parsed:
+                        self.metrics.constructive = parsed['constructive']
+                    if 'destructive' in parsed:
+                        self.metrics.destructive = parsed['destructive']
+                    if 'tick_count' in parsed:
+                        self.metrics.tick_count = parsed['tick_count']
+                    if 'entropy_map' in parsed:
+                        self.metrics.entropy_map = parsed['entropy_map']
+                    
+                    # Update standard reflex metrics
                     if parsed.get('signal_count'):
                         self.metrics.signal_count = parsed['signal_count']
                     if parsed.get('anomaly_count'):
@@ -190,6 +340,14 @@ class DeviceMonitor:
                     self.metrics.status = "offline"
                 elif self.metrics.last_error:
                     self.metrics.status = "error"
+                elif self.metrics.firmware_type == "hologram":
+                    # Hologram-specific status
+                    if self.metrics.neighbors > 0 and self.metrics.confidence > 30:
+                        self.metrics.status = "ok"
+                    elif self.metrics.neighbors > 0:
+                        self.metrics.status = "learning"
+                    else:
+                        self.metrics.status = "isolated"
                 elif self.metrics.reflex_avg_ns > 1000:
                     self.metrics.status = "warning"
                 else:

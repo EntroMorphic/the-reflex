@@ -21,11 +21,13 @@
 #include "reflex_gpio.h"
 #include "reflex_hologram.h"
 
-// Uncomment to enable mesh (requires 802.15.4 radio)
-// #define HOLOGRAM_MESH_ENABLED
+// Enable mesh for multi-node testing
+#define HOLOGRAM_MESH_ENABLED
 
 #ifdef HOLOGRAM_MESH_ENABLED
-#include "reflex_mesh.h"
+#include "esp_ieee802154.h"
+// Note: reflex_mesh.h has issues with esp_ieee802154 API
+// Using simplified direct radio access instead
 #endif
 
 static const char* TAG = "hologram";

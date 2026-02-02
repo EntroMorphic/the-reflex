@@ -346,6 +346,189 @@ def update():
 
 
 @app.command()
+def hologram(
+    action: str = typer.Argument(..., help="Action: deploy, monitor, status"),
+    node_id: Optional[int] = typer.Option(None, "--node", "-n", help="Node ID (1-3) for deploy"),
+    device: Optional[str] = typer.Option(None, "--device", "-d", help="Specific device port"),
+    output: str = typer.Option("yaml", "--output", "-o", help="Output format: yaml, json"),
+):
+    """Holographic Intelligence mesh operations.
+    
+    Actions:
+      deploy  - Build and flash hologram firmware to mesh nodes
+      monitor - Monitor holographic mesh (alias for monitor --fleet)
+      status  - Quick status of all mesh nodes
+    """
+    from pathlib import Path
+    import subprocess
+    import os
+    
+    print_header()
+    
+    reflex_os_dir = Path(__file__).parent.parent.parent / "reflex-os"
+    firmware_dir = Path(__file__).parent.parent / "firmware"
+    
+    if action == "deploy":
+        typer.echo("╔═══════════════════════════════════════════════════════════╗")
+        typer.echo("║           HOLOGRAPHIC INTELLIGENCE DEPLOYMENT             ║")
+        typer.echo("╚═══════════════════════════════════════════════════════════╝")
+        typer.echo("")
+        
+        # Find devices
+        devices = find_esp32_devices()
+        if not devices:
+            typer.echo("No ESP32 devices found!")
+            raise typer.Exit(1)
+        
+        typer.echo(f"Found {len(devices)} device(s):")
+        for i, d in enumerate(devices):
+            typer.echo(f"  [{i+1}] {d.port}")
+        typer.echo("")
+        
+        if device:
+            # Flash specific device with specific node ID
+            if node_id is None:
+                typer.echo("Error: --node required when using --device")
+                raise typer.Exit(1)
+            deploy_targets = [(device, node_id)]
+        else:
+            # Flash all devices with sequential node IDs
+            deploy_targets = [(d.port, i+1) for i, d in enumerate(devices[:3])]
+        
+        # Source ESP-IDF
+        esp_idf_path = os.path.expanduser("~/esp/v5.4/export.sh")
+        
+        for port, nid in deploy_targets:
+            typer.echo(f"═══ Deploying NODE {nid} to {port} ═══")
+            
+            # Update NODE_ID in source
+            demo_file = reflex_os_dir / "main" / "hologram_mesh_demo.c"
+            with open(demo_file, 'r') as f:
+                content = f.read()
+            
+            import re
+            content = re.sub(
+                r'#define NODE_ID\s+\d+',
+                f'#define NODE_ID             {nid}',
+                content
+            )
+            
+            with open(demo_file, 'w') as f:
+                f.write(content)
+            
+            typer.echo(f"  - Set NODE_ID = {nid}")
+            
+            # Build
+            typer.echo("  - Building firmware...")
+            result = subprocess.run(
+                f"source {esp_idf_path} 2>/dev/null && cd {reflex_os_dir} && idf.py build",
+                shell=True, capture_output=True, text=True, executable="/bin/bash"
+            )
+            if result.returncode != 0:
+                typer.echo(f"  ✗ Build failed!")
+                typer.echo(result.stderr[-500:] if result.stderr else "Unknown error")
+                continue
+            typer.echo("  - Build complete")
+            
+            # Flash
+            typer.echo(f"  - Flashing to {port}...")
+            result = subprocess.run(
+                f"source {esp_idf_path} 2>/dev/null && cd {reflex_os_dir} && idf.py -p {port} flash",
+                shell=True, capture_output=True, text=True, executable="/bin/bash"
+            )
+            if result.returncode != 0:
+                typer.echo(f"  ✗ Flash failed!")
+                continue
+            typer.echo(f"  ✓ NODE {nid} deployed to {port}")
+            typer.echo("")
+        
+        # Copy final firmware to firmware dir
+        typer.echo("Copying firmware to deployment directory...")
+        import shutil
+        shutil.copy(reflex_os_dir / "build" / "bootloader" / "bootloader.bin", firmware_dir)
+        shutil.copy(reflex_os_dir / "build" / "partition_table" / "partition-table.bin", firmware_dir)
+        shutil.copy(reflex_os_dir / "build" / "reflex_os.bin", firmware_dir)
+        
+        typer.echo("")
+        typer.echo("╔═══════════════════════════════════════════════════════════╗")
+        typer.echo("║                  DEPLOYMENT COMPLETE                      ║")
+        typer.echo("╚═══════════════════════════════════════════════════════════╝")
+        typer.echo("")
+        typer.echo("Run 'reflex-cli hologram monitor' to observe the mesh.")
+        
+    elif action == "monitor":
+        from .monitor import FleetMonitor
+        
+        typer.echo("╔═══════════════════════════════════════════════════════════╗")
+        typer.echo("║           HOLOGRAPHIC MESH MONITOR                        ║")
+        typer.echo("╚═══════════════════════════════════════════════════════════╝")
+        typer.echo("")
+        
+        devices = find_esp32_devices()
+        if not devices:
+            typer.echo("No devices found.")
+            raise typer.Exit(1)
+        
+        ports = [d.port for d in devices]
+        fleet = FleetMonitor(ports)
+        fleet.start_all()
+        
+        import time
+        try:
+            while True:
+                time.sleep(5)
+                metrics = fleet.get_all_metrics()
+                
+                typer.echo("─" * 60)
+                for m in metrics:
+                    if m.firmware_type == "hologram":
+                        icon = "🧠" if m.neighbors > 0 else "🔴"
+                        typer.echo(
+                            f"{icon} Node {m.node_id} ({m.port}): "
+                            f"neighbors={m.neighbors} "
+                            f"conf={m.confidence:.1f}% "
+                            f"rx={m.radio_rx} "
+                            f"rssi={m.rssi}dBm"
+                        )
+                    else:
+                        typer.echo(f"📦 {m.port}: {m.status}")
+        except KeyboardInterrupt:
+            fleet.stop_all()
+            typer.echo("\nMonitor stopped.")
+    
+    elif action == "status":
+        typer.echo("Holographic Mesh Status:")
+        typer.echo("")
+        
+        devices = find_esp32_devices()
+        if not devices:
+            typer.echo("No devices found.")
+            raise typer.Exit(1)
+        
+        from .monitor import FleetMonitor
+        import time
+        
+        ports = [d.port for d in devices]
+        fleet = FleetMonitor(ports)
+        fleet.start_all()
+        time.sleep(3)  # Gather data
+        
+        metrics = fleet.get_all_metrics()
+        fleet.stop_all()
+        
+        if output == "yaml":
+            import yaml
+            typer.echo(yaml.dump({"nodes": [m.to_dict() for m in metrics]}, default_flow_style=False))
+        else:
+            typer.echo(json.dumps({"nodes": [m.to_dict() for m in metrics]}, indent=2))
+    
+    else:
+        typer.echo(f"Unknown action: {action}")
+        typer.echo("Valid actions: deploy, monitor, status")
+        raise typer.Exit(1)
+
+
+@app.command()
 def version():
     """Show version information."""
     typer.echo(f"reflex-cli v{__version__}")

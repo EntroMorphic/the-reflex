@@ -1,0 +1,41 @@
+# Holographic Intelligence Mesh Configuration
+# For 3-node distributed brain deployment
+
+device:
+  name: "hologram-node"
+  role: "holographic-intelligence"
+  description: "Distributed brain node - each node IS the brain"
+
+firmware:
+  version: "0.2.0"
+  type: "hologram_mesh"
+
+hologram:
+  # Node configuration (set per-device during install)
+  node_id: 1              # 1, 2, or 3 for mesh
+  
+  # Radio settings
+  radio_channel: 15       # IEEE 802.15.4 channel (11-26)
+  radio_pan_id: 0x4846    # "HF" = Holographic
+  radio_power: 20         # TX power in dBm
+  
+  # Hologram engine
+  broadcast_interval_ms: 10   # 100 Hz broadcast rate
+  neighbor_timeout_ms: 1000   # Neighbor considered lost after this
+  crystallization_threshold: 10  # Entropy below this = crystallized
+  
+  # Confidence thresholds for LED patterns
+  confidence_high: 0.7
+  confidence_medium: 0.3
+
+telemetry:
+  interval_ms: 5000       # Status report every 5s
+  format: "hologram"      # Custom hologram format
+
+pins:
+  led: 8                  # Status LED
+
+# Mesh topology
+mesh:
+  node_count: 3           # Total nodes in mesh
+  topology: "holographic" # All nodes equal, no master

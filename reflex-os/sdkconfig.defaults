@@ -14,6 +14,7 @@ CONFIG_COMPILER_OPTIMIZATION_PERF=y
 # FreeRTOS: Minimize overhead
 CONFIG_FREERTOS_HZ=1000
 CONFIG_FREERTOS_UNICORE=y
+CONFIG_FREERTOS_ISR_STACKSIZE=4096
 
 # Disable watchdog for benchmarking (re-enable for production)
 CONFIG_ESP_TASK_WDT_EN=n
