@@ -3,6 +3,11 @@
  *
  * Demonstrates the liquid neural network running on bare metal.
  * NO MULTIPLY - just AND, POPCOUNT, SUB, LUT.
+ *
+ * Benchmarks:
+ *   - Original: byte-wise operations
+ *   - Optimized: 64-bit operations
+ *   - DMA Pipelined: prefetch hints + cache-friendly layout
  */
 
 #include <stdint.h>
@@ -13,6 +18,8 @@
 #include "reflex.h"
 #include "reflex_gpio.h"
 #include "reflex_cfc.h"
+#include "reflex_cfc_dma.h"
+#include "reflex_cfc_turbo.h"
 
 // ============================================================
 // Configuration
@@ -26,8 +33,10 @@
 // Demo
 // ============================================================
 
-// Global CfC layer
+// Global CfC layers
 static cfc_layer_t cfc;
+static cfc_dma_layer_t cfc_dma;
+static cfc_turbo_layer_t cfc_turbo;
 
 // Simple delay
 static inline void delay_ms(uint32_t ms) {
@@ -109,56 +118,38 @@ void app_main(void) {
     printf("\n");
     fflush(stdout);
     
+    // Initialize DMA layer
+    printf("  Initializing DMA-optimized layer...\n");
+    cfc_dma_init_random(&cfc_dma, reflex_cycles() ^ 0xDEADBEEF);
+    printf("    DMA layer size: %lu bytes\n", (unsigned long)cfc_dma_memory_size());
+    
+    // Initialize TURBO layer
+    printf("  Initializing TURBO layer (transposed weights)...\n");
+    cfc_turbo_init_random(&cfc_turbo, reflex_cycles() ^ 0xCAFEBABE);
+    printf("    TURBO layer size: %lu bytes\n\n", (unsigned long)cfc_turbo_memory_size());
+    fflush(stdout);
+    
     // Benchmark
     printf("================================================================\n");
     printf("                    BENCHMARK                                   \n");
     printf("================================================================\n");
     printf("\n");
     
-    // Warm up
+    uint64_t input64 = 0x55AA55AA55AA55AAULL;
+    uint64_t output64 = 0;
+    
+    // Warm up all versions
     for (int i = 0; i < 100; i++) {
         cfc_forward(&cfc, input, output);
+        cfc_forward_original(&cfc, input, output);
+        cfc_dma_forward_pipelined(&cfc_dma, input64, &output64);
+        cfc_turbo_forward(&cfc_turbo, input64, &output64);
     }
     
-    // Benchmark OPTIMIZED forward pass
+    // Benchmark ORIGINAL forward pass
     uint32_t min_cycles = UINT32_MAX;
     uint32_t max_cycles = 0;
     uint64_t sum_cycles = 0;
-    
-    for (int i = 0; i < BENCHMARK_CYCLES; i++) {
-        input[0] = (uint8_t)i;
-        
-        uint32_t t0 = reflex_cycles();
-        cfc_forward(&cfc, input, output);
-        uint32_t cycles = reflex_cycles() - t0;
-        
-        if (cycles < min_cycles) min_cycles = cycles;
-        if (cycles > max_cycles) max_cycles = cycles;
-        sum_cycles += cycles;
-    }
-    
-    uint32_t avg_cycles = (uint32_t)(sum_cycles / BENCHMARK_CYCLES);
-    uint32_t ns_per_forward = reflex_cycles_to_ns(avg_cycles);
-    uint32_t forwards_per_sec = ns_per_forward > 0 ? 1000000000 / ns_per_forward : 0;
-    
-    printf("  OPTIMIZED forward pass (64-bit ops):\n");
-    printf("    Min: %lu cycles = %lu ns\n", 
-           (unsigned long)min_cycles, 
-           (unsigned long)reflex_cycles_to_ns(min_cycles));
-    printf("    Avg: %lu cycles = %lu ns\n",
-           (unsigned long)avg_cycles,
-           (unsigned long)ns_per_forward);
-    printf("    Max: %lu cycles = %lu ns\n",
-           (unsigned long)max_cycles,
-           (unsigned long)reflex_cycles_to_ns(max_cycles));
-    printf("    Throughput: ~%lu kHz\n", (unsigned long)(forwards_per_sec / 1000));
-    printf("\n");
-    fflush(stdout);
-    
-    // Benchmark ORIGINAL forward pass for comparison
-    min_cycles = UINT32_MAX;
-    max_cycles = 0;
-    sum_cycles = 0;
     
     for (int i = 0; i < BENCHMARK_CYCLES; i++) {
         input[0] = (uint8_t)i;
@@ -176,25 +167,169 @@ void app_main(void) {
     uint32_t ns_per_forward_orig = reflex_cycles_to_ns(avg_cycles_orig);
     uint32_t forwards_per_sec_orig = ns_per_forward_orig > 0 ? 1000000000 / ns_per_forward_orig : 0;
     
-    printf("  ORIGINAL forward pass (byte-wise):\n");
-    printf("    Min: %lu cycles = %lu ns\n", 
-           (unsigned long)min_cycles, 
-           (unsigned long)reflex_cycles_to_ns(min_cycles));
-    printf("    Avg: %lu cycles = %lu ns\n",
+    printf("  1. ORIGINAL (byte-wise):\n");
+    printf("     Avg: %lu cycles = %lu ns = %lu kHz\n",
            (unsigned long)avg_cycles_orig,
-           (unsigned long)ns_per_forward_orig);
-    printf("    Max: %lu cycles = %lu ns\n",
-           (unsigned long)max_cycles,
-           (unsigned long)reflex_cycles_to_ns(max_cycles));
-    printf("    Throughput: ~%lu kHz\n", (unsigned long)(forwards_per_sec_orig / 1000));
-    printf("\n");
+           (unsigned long)ns_per_forward_orig,
+           (unsigned long)(forwards_per_sec_orig / 1000));
+    fflush(stdout);
     
-    // Speedup
-    if (ns_per_forward > 0) {
-        printf("  SPEEDUP: %.1fx faster\n", (float)ns_per_forward_orig / (float)ns_per_forward);
+    // Benchmark OPTIMIZED forward pass (64-bit)
+    min_cycles = UINT32_MAX;
+    max_cycles = 0;
+    sum_cycles = 0;
+    
+    for (int i = 0; i < BENCHMARK_CYCLES; i++) {
+        input[0] = (uint8_t)i;
+        
+        uint32_t t0 = reflex_cycles();
+        cfc_forward(&cfc, input, output);
+        uint32_t cycles = reflex_cycles() - t0;
+        
+        if (cycles < min_cycles) min_cycles = cycles;
+        if (cycles > max_cycles) max_cycles = cycles;
+        sum_cycles += cycles;
     }
+    
+    uint32_t avg_cycles_opt = (uint32_t)(sum_cycles / BENCHMARK_CYCLES);
+    uint32_t ns_per_forward_opt = reflex_cycles_to_ns(avg_cycles_opt);
+    uint32_t forwards_per_sec_opt = ns_per_forward_opt > 0 ? 1000000000 / ns_per_forward_opt : 0;
+    
+    printf("  2. OPTIMIZED (64-bit ops):\n");
+    printf("     Avg: %lu cycles = %lu ns = %lu kHz\n",
+           (unsigned long)avg_cycles_opt,
+           (unsigned long)ns_per_forward_opt,
+           (unsigned long)(forwards_per_sec_opt / 1000));
+    fflush(stdout);
+    
+    // Benchmark DMA PIPELINED forward pass
+    min_cycles = UINT32_MAX;
+    max_cycles = 0;
+    sum_cycles = 0;
+    
+    for (int i = 0; i < BENCHMARK_CYCLES; i++) {
+        input64 = (uint64_t)i | 0x55AA000000000000ULL;
+        
+        uint32_t t0 = reflex_cycles();
+        cfc_dma_forward_pipelined(&cfc_dma, input64, &output64);
+        uint32_t cycles = reflex_cycles() - t0;
+        
+        if (cycles < min_cycles) min_cycles = cycles;
+        if (cycles > max_cycles) max_cycles = cycles;
+        sum_cycles += cycles;
+    }
+    
+    uint32_t avg_cycles_dma = (uint32_t)(sum_cycles / BENCHMARK_CYCLES);
+    uint32_t ns_per_forward_dma = reflex_cycles_to_ns(avg_cycles_dma);
+    uint32_t forwards_per_sec_dma = ns_per_forward_dma > 0 ? 1000000000 / ns_per_forward_dma : 0;
+    
+    printf("  3. DMA PIPELINED (prefetch + cache-friendly):\n");
+    printf("     Avg: %lu cycles = %lu ns = %lu kHz\n",
+           (unsigned long)avg_cycles_dma,
+           (unsigned long)ns_per_forward_dma,
+           (unsigned long)(forwards_per_sec_dma / 1000));
+    fflush(stdout);
+    
+    // Benchmark DMA with double-buffered prefetch simulation
+    min_cycles = UINT32_MAX;
+    max_cycles = 0;
+    sum_cycles = 0;
+    
+    for (int i = 0; i < BENCHMARK_CYCLES; i++) {
+        input64 = (uint64_t)i | 0x55AA000000000000ULL;
+        
+        uint32_t t0 = reflex_cycles();
+        cfc_dma_forward(&cfc_dma, input64, &output64);
+        uint32_t cycles = reflex_cycles() - t0;
+        
+        if (cycles < min_cycles) min_cycles = cycles;
+        if (cycles > max_cycles) max_cycles = cycles;
+        sum_cycles += cycles;
+    }
+    
+    uint32_t avg_cycles_dma2 = (uint32_t)(sum_cycles / BENCHMARK_CYCLES);
+    uint32_t ns_per_forward_dma2 = reflex_cycles_to_ns(avg_cycles_dma2);
+    uint32_t forwards_per_sec_dma2 = ns_per_forward_dma2 > 0 ? 1000000000 / ns_per_forward_dma2 : 0;
+    
+    printf("  4. DMA DOUBLE-BUFFERED (simulated):\n");
+    printf("     Avg: %lu cycles = %lu ns = %lu kHz\n",
+           (unsigned long)avg_cycles_dma2,
+           (unsigned long)ns_per_forward_dma2,
+           (unsigned long)(forwards_per_sec_dma2 / 1000));
+    fflush(stdout);
+    
+    // Benchmark TURBO forward pass (bit-parallel, approximate)
+    min_cycles = UINT32_MAX;
+    max_cycles = 0;
+    sum_cycles = 0;
+    
+    for (int i = 0; i < BENCHMARK_CYCLES; i++) {
+        input64 = (uint64_t)i | 0x55AA000000000000ULL;
+        
+        uint32_t t0 = reflex_cycles();
+        cfc_turbo_forward(&cfc_turbo, input64, &output64);
+        uint32_t cycles = reflex_cycles() - t0;
+        
+        if (cycles < min_cycles) min_cycles = cycles;
+        if (cycles > max_cycles) max_cycles = cycles;
+        sum_cycles += cycles;
+    }
+    
+    uint32_t avg_cycles_turbo = (uint32_t)(sum_cycles / BENCHMARK_CYCLES);
+    uint32_t ns_per_forward_turbo = reflex_cycles_to_ns(avg_cycles_turbo);
+    uint32_t forwards_per_sec_turbo = ns_per_forward_turbo > 0 ? 1000000000 / ns_per_forward_turbo : 0;
+    
+    printf("  5. TURBO (bit-parallel, approximate):\n");
+    printf("     Avg: %lu cycles = %lu ns = %lu kHz\n",
+           (unsigned long)avg_cycles_turbo,
+           (unsigned long)ns_per_forward_turbo,
+           (unsigned long)(forwards_per_sec_turbo / 1000));
+    fflush(stdout);
+    
+    // Benchmark TURBO PRECISE forward pass
+    min_cycles = UINT32_MAX;
+    max_cycles = 0;
+    sum_cycles = 0;
+    
+    for (int i = 0; i < BENCHMARK_CYCLES; i++) {
+        input64 = (uint64_t)i | 0x55AA000000000000ULL;
+        
+        uint32_t t0 = reflex_cycles();
+        cfc_turbo_forward_precise(&cfc_turbo, input64, &output64);
+        uint32_t cycles = reflex_cycles() - t0;
+        
+        if (cycles < min_cycles) min_cycles = cycles;
+        if (cycles > max_cycles) max_cycles = cycles;
+        sum_cycles += cycles;
+    }
+    
+    uint32_t avg_cycles_turbo_p = (uint32_t)(sum_cycles / BENCHMARK_CYCLES);
+    uint32_t ns_per_forward_turbo_p = reflex_cycles_to_ns(avg_cycles_turbo_p);
+    uint32_t forwards_per_sec_turbo_p = ns_per_forward_turbo_p > 0 ? 1000000000 / ns_per_forward_turbo_p : 0;
+    
+    printf("  6. TURBO PRECISE (bit-parallel, exact):\n");
+    printf("     Avg: %lu cycles = %lu ns = %lu kHz\n",
+           (unsigned long)avg_cycles_turbo_p,
+           (unsigned long)ns_per_forward_turbo_p,
+           (unsigned long)(forwards_per_sec_turbo_p / 1000));
     printf("\n");
     fflush(stdout);
+    
+    // Summary comparison
+    printf("  SPEEDUP vs Original:\n");
+    printf("    Optimized:      %.2fx\n", (float)ns_per_forward_orig / (float)ns_per_forward_opt);
+    printf("    DMA Pipelined:  %.2fx\n", (float)ns_per_forward_orig / (float)ns_per_forward_dma);
+    printf("    DMA Double-Buf: %.2fx\n", (float)ns_per_forward_orig / (float)ns_per_forward_dma2);
+    printf("    TURBO:          %.2fx\n", (float)ns_per_forward_orig / (float)ns_per_forward_turbo);
+    printf("    TURBO PRECISE:  %.2fx\n", (float)ns_per_forward_orig / (float)ns_per_forward_turbo_p);
+    printf("\n");
+    fflush(stdout);
+    
+    // Use best result for summary
+    uint32_t ns_per_forward = ns_per_forward_turbo;
+    if (ns_per_forward_opt < ns_per_forward) ns_per_forward = ns_per_forward_opt;
+    if (ns_per_forward_dma < ns_per_forward) ns_per_forward = ns_per_forward_dma;
+    uint32_t forwards_per_sec = ns_per_forward > 0 ? 1000000000 / ns_per_forward : 0;
     
     // Benchmark individual operations
     printf("  Operation breakdown:\n");
@@ -260,9 +395,8 @@ void app_main(void) {
     printf("    - %lu bytes total\n", (unsigned long)stats.total_bytes);
     printf("    - %lu neurons\n", (unsigned long)stats.num_neurons);
     printf("    - %lu%% sparse\n", (unsigned long)stats.sparsity_percent);
-    printf("    - %lu ns per forward pass (optimized)\n", (unsigned long)ns_per_forward);
+    printf("    - %lu ns per forward pass (best)\n", (unsigned long)ns_per_forward);
     printf("    - ~%lu kHz effective frequency\n", (unsigned long)(forwards_per_sec / 1000));
-    printf("    - %.1fx speedup over byte-wise\n", (float)ns_per_forward_orig / (float)ns_per_forward);
     printf("\n");
     printf("  Operations used: AND, POPCOUNT, SUB, LUT\n");
     printf("  Operations NOT used: MULTIPLY, DIVIDE, FLOAT\n");
