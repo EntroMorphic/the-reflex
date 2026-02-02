@@ -14,7 +14,7 @@
 
 idf_component_register(
     SRCS
-        "hologram_q15_demo.c"
+        "fabric_cfc_demo.c"
         "../shared/channels.c"
     INCLUDE_DIRS
         "../include"
@@ -23,4 +23,6 @@ idf_component_register(
         ieee802154
         driver
         nvs_flash
+        esp_driver_rmt
+        esp_driver_pcnt
 )
