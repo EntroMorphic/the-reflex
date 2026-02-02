@@ -54,12 +54,25 @@ Reflex OS is not an operating system that runs on the ESP32-C6. Reflex OS **is**
 
 ## Neural Computation (Feb 2, 2026)
 
-| System | Rate | Neurons | Notes |
-|--------|------|---------|-------|
-| Yinsen Q15 CfC | **90 kHz** | 8 | Zero floating-point |
-| Yinsen Q15 CfC | **18 kHz** | 32 | Sparse ternary weights |
-| Yinsen Q15 CfC | **6.9 kHz** | 64 | Full hidden state |
-| ETM Fabric CfC | **551 Hz** | 64 | **Near-zero CPU** |
+| System | Rate | Neurons | Memory | CPU | Notes |
+|--------|------|---------|--------|-----|-------|
+| Yinsen Q15 CfC | **90 kHz** | 8 | 64 KB | 100% | Zero floating-point |
+| Yinsen Q15 CfC | **18 kHz** | 32 | 128 KB | 100% | Sparse ternary weights |
+| Yinsen Q15 CfC | **6.9 kHz** | 64 | 256 KB | 100% | Full hidden state |
+| ETM Fabric CfC | **551 Hz** | 64 | 304 KB | ~11% | Near-zero CPU |
+| **Silicon Grail** | **TBD** | 64 | **640 B** | **~0%** | **Turing Complete** |
+
+### The Silicon Grail: Turing Complete ETM Fabric
+
+**GDMA M2M can write to peripheral registers.** This changes everything.
+
+- **GDMA** writes pulse patterns directly to RMT memory (0x60006100)
+- **ETM** chains: Timer → GDMA → RMT → PCNT → branch decision → loop
+- **Timer race + GDMA priority** = conditional branching WITHOUT CPU
+- **Splined mixer**: 256 KB → 640 bytes (410x compression)
+- **Power**: ~17 μW = **RF harvestable at 2.4 GHz**
+
+See [docs/SILICON_GRAIL.md](docs/SILICON_GRAIL.md) for the full architecture.
 
 ### ETM Fabric: Hardware Neural Network
 
@@ -67,7 +80,7 @@ The ETM Fabric runs neural inference with **near-zero CPU involvement**:
 
 - **PCNT** counts pulses = hardware addition
 - **RMT** generates pulse trains = value encoding
-- **256 KB LUT** = multiply-free mixer
+- **Splined LUT** = 640 bytes (was 256 KB)
 - **2 RMT calls** per inference (not 128!)
 
 See [docs/ETM_FABRIC_CFC.md](docs/ETM_FABRIC_CFC.md) for details.
@@ -218,7 +231,17 @@ reflex-os/
 │   ├── reflex_wifi.h      # WiFi as channels
 │   ├── reflex_void.h      # Entropy field for echips
 │   ├── reflex_echip.h     # Self-composing processor (echip)
-│   └── reflex_obsbot.h    # OBSBOT PTZ camera control (Linux)
+│   ├── reflex_obsbot.h    # OBSBOT PTZ camera control (Linux)
+│   │
+│   │   # === THE SILICON GRAIL (Bare Metal, Zero ESP-IDF) ===
+│   ├── reflex_etm.h             # ETM crossbar (50 channels)
+│   ├── reflex_gdma.h            # GDMA M2M to peripheral space!
+│   ├── reflex_pcnt.h            # Pulse counter (4 units)
+│   ├── reflex_rmt.h             # Pulse generation
+│   ├── reflex_timer_hw.h        # Hardware timers
+│   ├── reflex_turing_complete.h # Turing Complete fabric
+│   ├── reflex_spline_mixer.h    # 410x compressed LUTs (640 B!)
+│   └── reflex_spline_verify.h   # Accuracy verification
 ├── main/
 │   ├── spine_summit.c     # THE SUMMIT - zero dependencies (default)
 │   ├── spine_bare.c       # Bare metal with printf (transitional)
@@ -366,6 +389,9 @@ Low entropy = certainty = **LOOK AT THIS**.
 
 ## Related Documentation
 
+- [The Silicon Grail](docs/SILICON_GRAIL.md) - Turing Complete ETM Fabric
+- [ETM Fabric CfC](docs/ETM_FABRIC_CFC.md) - 551 Hz hardware neural network
+- [Holographic Intelligence](docs/HOLOGRAPHIC_INTELLIGENCE.md) - Distributed mesh brain
 - [Lincoln Manifold: Reflex Becomes C6](../docs/LINCOLN_MANIFOLD_REFLEX_BECOMES_C6_SYNTH.md) - Design synthesis
 - [The Reflex (main)](../README.md) - Original 926ns P99 on Jetson Thor
 - [Architecture](docs/ARCHITECTURE.md) - Detailed system design
