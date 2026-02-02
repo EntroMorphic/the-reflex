@@ -1,6 +1,7 @@
 # Main component for Reflex OS
 #
 # Select entry point by changing SRCS:
+#   - hologram_demo.c   : Holographic Intelligence demo
 #   - cfc_spine_demo.c  : CfC closed-loop spine demo
 #   - cfc_demo.c        : Binary Ternary CfC - liquid neural network
 #   - spine_summit.c    : THE SUMMIT - zero libc, zero ESP-IDF HAL
@@ -12,7 +13,7 @@
 
 idf_component_register(
     SRCS
-        "cfc_spine_demo.c"
+        "hologram_demo.c"
         "../shared/channels.c"
     INCLUDE_DIRS
         "../include"
