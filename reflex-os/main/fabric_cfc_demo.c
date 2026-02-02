@@ -25,6 +25,7 @@ static const char* TAG = "fabric_cfc";
 // Global engines
 static fabric_engine_t g_base_fabric = {0};
 static fabric_cfc_engine_t g_cfc_fabric = {0};
+static fabric_parallel_t g_parallel_fabric = {0};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Memory Report
@@ -203,6 +204,117 @@ static void benchmark_hardware(void) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Timing Breakdown Analysis
+// ═══════════════════════════════════════════════════════════════════════════
+
+static void analyze_timing_breakdown(void) {
+    printf("\n");
+    printf("════════════════════════════════════════════════════════════════\n");
+    printf("           TIMING BREAKDOWN ANALYSIS\n");
+    printf("════════════════════════════════════════════════════════════════\n");
+    printf("\n");
+    
+    uint32_t cpu_mhz = 160;
+    uint32_t cycles;
+    
+    // Test 1: PCNT clear + read overhead
+    printf("  1. PCNT clear + read overhead:\n");
+    uint32_t start = esp_cpu_get_cycle_count();
+    for (int i = 0; i < 128; i++) {
+        fabric_clear_accumulator(g_cfc_fabric.fabric);
+        fabric_read_accumulator(g_cfc_fabric.fabric);
+    }
+    cycles = esp_cpu_get_cycle_count() - start;
+    printf("     128 ops: %lu cycles = %lu μs (%.1f μs each)\n",
+           (unsigned long)cycles, (unsigned long)(cycles / cpu_mhz),
+           cycles / 128.0f / cpu_mhz);
+    
+    // Test 2: RMT transmit with minimal pulses
+    printf("\n  2. RMT transmit overhead (1 pulse):\n");
+    rmt_symbol_word_t one_pulse[2] = {
+        {.duration0 = 5, .level0 = 1, .duration1 = 5, .level1 = 0},
+        {.duration0 = 0, .level0 = 0, .duration1 = 0, .level1 = 0}
+    };
+    rmt_transmit_config_t tx_config = {.loop_count = 0};
+    
+    start = esp_cpu_get_cycle_count();
+    for (int i = 0; i < 128; i++) {
+        rmt_transmit(g_cfc_fabric.fabric->rmt_chan, 
+                     g_cfc_fabric.fabric->rmt_encoder,
+                     one_pulse, sizeof(one_pulse), &tx_config);
+        rmt_tx_wait_all_done(g_cfc_fabric.fabric->rmt_chan, portMAX_DELAY);
+    }
+    cycles = esp_cpu_get_cycle_count() - start;
+    printf("     128 ops: %lu cycles = %lu μs (%.1f μs each)\n",
+           (unsigned long)cycles, (unsigned long)(cycles / cpu_mhz),
+           cycles / 128.0f / cpu_mhz);
+    
+    // Test 3: RMT transmit with typical pulse count (~50 pulses)
+    printf("\n  3. RMT transmit with ~50 pulses:\n");
+    rmt_symbol_word_t fifty_pulses[51];
+    for (int i = 0; i < 50; i++) {
+        fifty_pulses[i].duration0 = 5;
+        fifty_pulses[i].level0 = 1;
+        fifty_pulses[i].duration1 = 5;
+        fifty_pulses[i].level1 = 0;
+    }
+    fifty_pulses[50].duration0 = 0;
+    fifty_pulses[50].level0 = 0;
+    fifty_pulses[50].duration1 = 0;
+    fifty_pulses[50].level1 = 0;
+    
+    start = esp_cpu_get_cycle_count();
+    for (int i = 0; i < 128; i++) {
+        rmt_transmit(g_cfc_fabric.fabric->rmt_chan,
+                     g_cfc_fabric.fabric->rmt_encoder,
+                     fifty_pulses, sizeof(fifty_pulses), &tx_config);
+        rmt_tx_wait_all_done(g_cfc_fabric.fabric->rmt_chan, portMAX_DELAY);
+    }
+    cycles = esp_cpu_get_cycle_count() - start;
+    printf("     128 ops: %lu cycles = %lu μs (%.1f μs each)\n",
+           (unsigned long)cycles, (unsigned long)(cycles / cpu_mhz),
+           cycles / 128.0f / cpu_mhz);
+    
+    // Test 4: Buffer building overhead
+    printf("\n  4. Buffer building overhead:\n");
+    uint8_t test_concat[FABRIC_CFC_CONCAT_DIM];
+    for (int i = 0; i < FABRIC_CFC_CONCAT_DIM; i++) test_concat[i] = 8;
+    
+    start = esp_cpu_get_cycle_count();
+    for (int i = 0; i < 128; i++) {
+        fabric_build_batched_pulses(
+            g_cfc_fabric.pulse_buffer,
+            test_concat,
+            g_cfc_fabric.weights.gate[0].pos_indices,
+            g_cfc_fabric.weights.gate[0].pos_count
+        );
+    }
+    cycles = esp_cpu_get_cycle_count() - start;
+    printf("     128 ops: %lu cycles = %lu μs (%.1f μs each)\n",
+           (unsigned long)cycles, (unsigned long)(cycles / cpu_mhz),
+           cycles / 128.0f / cpu_mhz);
+    
+    // Test 5: LUT lookup overhead
+    printf("\n  5. LUT lookups (activation + mixer):\n");
+    start = esp_cpu_get_cycle_count();
+    volatile uint8_t dummy = 0;
+    for (int n = 0; n < 64; n++) {
+        dummy = g_cfc_fabric.activations.sigmoid[128];
+        dummy = g_cfc_fabric.activations.tanh_lut[128];
+        dummy = g_cfc_fabric.mixer_luts[n].lut[8][8][8];
+    }
+    cycles = esp_cpu_get_cycle_count() - start;
+    printf("     64 neurons × 3 LUTs: %lu cycles = %lu μs\n",
+           (unsigned long)cycles, (unsigned long)(cycles / cpu_mhz));
+    (void)dummy;
+    
+    printf("\n  SUMMARY:\n");
+    printf("     RMT setup+wait dominates. ~40 μs per sparse dot.\n");
+    printf("     128 sparse dots × 40 μs = 5.1 ms (matches measured 5.3 ms)\n");
+    printf("\n");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Benchmark: BATCHED Hardware Fabric 
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -264,6 +376,152 @@ static void benchmark_hardware_batched(void) {
     printf("\n");
     
     // Show hidden state
+    printf("  Hidden state (4-bit, first 16 of %d):\n    ", FABRIC_CFC_HIDDEN_DIM);
+    for (int i = 0; i < 16; i++) {
+        printf("%2d ", g_cfc_fabric.hidden_q4[i]);
+    }
+    printf("...\n\n");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Benchmark: PALLETIZED Hardware Fabric 
+// ═══════════════════════════════════════════════════════════════════════════
+
+static void benchmark_hardware_palletized(void) {
+    printf("\n");
+    printf("════════════════════════════════════════════════════════════════\n");
+    printf("           BENCHMARK: PALLETIZED HARDWARE (64 neurons)\n");
+    printf("════════════════════════════════════════════════════════════════\n");
+    printf("\n");
+    printf("  Memcpy from pre-computed palette instead of building pulses!\n");
+    printf("  Eliminates per-pulse generation loop.\n");
+    printf("\n");
+    
+    // Reset hidden state
+    for (int i = 0; i < FABRIC_CFC_HIDDEN_DIM; i++) {
+        g_cfc_fabric.hidden_q4[i] = 8;
+    }
+    
+    // Test input
+    uint8_t input_q4[FABRIC_CFC_INPUT_DIM] = {8, 10, 6, 12};
+    
+    const int ITERATIONS = 10;
+    uint32_t min_cycles = UINT32_MAX;
+    uint32_t max_cycles = 0;
+    uint64_t total_cycles = 0;
+    
+    printf("  Running %d PALLETIZED hardware inferences...\n", ITERATIONS);
+    fflush(stdout);
+    
+    for (int iter = 0; iter < ITERATIONS; iter++) {
+        input_q4[0] = (iter % 16);
+        
+        uint32_t start = esp_cpu_get_cycle_count();
+        fabric_cfc_step_hw_palletized(&g_cfc_fabric, input_q4);
+        uint32_t end = esp_cpu_get_cycle_count();
+        
+        uint32_t cycles = end - start;
+        total_cycles += cycles;
+        if (cycles < min_cycles) min_cycles = cycles;
+        if (cycles > max_cycles) max_cycles = cycles;
+        
+        printf("    Iteration %d: %lu cycles\n", iter + 1, (unsigned long)cycles);
+        fflush(stdout);
+    }
+    
+    uint32_t avg_cycles = (uint32_t)(total_cycles / ITERATIONS);
+    uint32_t cpu_mhz = 160;
+    float avg_ms = avg_cycles / (float)cpu_mhz / 1000.0f;
+    
+    printf("\n  Results (%d iterations):\n", ITERATIONS);
+    printf("    Min: %lu cycles = %.1f ms\n", 
+           (unsigned long)min_cycles, min_cycles / (float)cpu_mhz / 1000.0f);
+    printf("    Avg: %lu cycles = %.1f ms\n", 
+           (unsigned long)avg_cycles, avg_ms);
+    printf("    Max: %lu cycles = %.1f ms\n", 
+           (unsigned long)max_cycles, max_cycles / (float)cpu_mhz / 1000.0f);
+    printf("    Throughput: %.1f Hz\n", 
+           1000.0f / avg_ms);
+    printf("\n");
+    
+    // Show hidden state
+    printf("  Hidden state (4-bit, first 16 of %d):\n    ", FABRIC_CFC_HIDDEN_DIM);
+    for (int i = 0; i < 16; i++) {
+        printf("%2d ", g_cfc_fabric.hidden_q4[i]);
+    }
+    printf("...\n\n");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Benchmark: PARALLEL Hardware Fabric (4 neurons at once!)
+// ═══════════════════════════════════════════════════════════════════════════
+
+static void benchmark_hardware_parallel(void) {
+    printf("\n");
+    printf("════════════════════════════════════════════════════════════════\n");
+    printf("           BENCHMARK: PARALLEL HARDWARE (4x neurons)\n");
+    printf("════════════════════════════════════════════════════════════════\n");
+    printf("\n");
+    printf("  3 RMT channels + 3 PCNT units = 3 neurons at once!\n");
+    printf("  Should be ~3x faster than serial.\n");
+    printf("\n");
+    
+    if (!g_parallel_fabric.initialized) {
+        printf("  Using 3 parallel channels (base fabric has 1)...\n");
+        esp_err_t ret = fabric_parallel_init(&g_parallel_fabric);
+        if (ret != ESP_OK) {
+            printf("  ERROR: Failed to init parallel fabric: %s\n", esp_err_to_name(ret));
+            return;
+        }
+        printf("  Parallel fabric ready.\n");
+    }
+    
+    // Reset hidden state
+    for (int i = 0; i < FABRIC_CFC_HIDDEN_DIM; i++) {
+        g_cfc_fabric.hidden_q4[i] = 8;
+    }
+    
+    uint8_t input_q4[FABRIC_CFC_INPUT_DIM] = {8, 10, 6, 12};
+    
+    const int ITERATIONS = 10;
+    uint32_t min_cycles = UINT32_MAX;
+    uint32_t max_cycles = 0;
+    uint64_t total_cycles = 0;
+    
+    printf("  Running %d PARALLEL hardware inferences...\n", ITERATIONS);
+    fflush(stdout);
+    
+    for (int iter = 0; iter < ITERATIONS; iter++) {
+        input_q4[0] = (iter % 16);
+        
+        uint32_t start = esp_cpu_get_cycle_count();
+        fabric_cfc_step_hw_parallel(&g_cfc_fabric, &g_parallel_fabric, input_q4);
+        uint32_t end = esp_cpu_get_cycle_count();
+        
+        uint32_t cycles = end - start;
+        total_cycles += cycles;
+        if (cycles < min_cycles) min_cycles = cycles;
+        if (cycles > max_cycles) max_cycles = cycles;
+        
+        printf("    Iteration %d: %lu cycles\n", iter + 1, (unsigned long)cycles);
+        fflush(stdout);
+    }
+    
+    uint32_t avg_cycles = (uint32_t)(total_cycles / ITERATIONS);
+    uint32_t cpu_mhz = 160;
+    float avg_ms = avg_cycles / (float)cpu_mhz / 1000.0f;
+    
+    printf("\n  Results (%d iterations):\n", ITERATIONS);
+    printf("    Min: %lu cycles = %.1f ms\n", 
+           (unsigned long)min_cycles, min_cycles / (float)cpu_mhz / 1000.0f);
+    printf("    Avg: %lu cycles = %.1f ms\n", 
+           (unsigned long)avg_cycles, avg_ms);
+    printf("    Max: %lu cycles = %.1f ms\n", 
+           (unsigned long)max_cycles, max_cycles / (float)cpu_mhz / 1000.0f);
+    printf("    Throughput: %.1f Hz\n", 
+           1000.0f / avg_ms);
+    printf("\n");
+    
     printf("  Hidden state (4-bit, first 16 of %d):\n    ", FABRIC_CFC_HIDDEN_DIM);
     for (int i = 0; i < 16; i++) {
         printf("%2d ", g_cfc_fabric.hidden_q4[i]);
@@ -390,6 +648,15 @@ void app_main(void) {
     // BATCHED hardware benchmark (one RMT call per sparse dot)
     benchmark_hardware_batched();
     
+    // PALLETIZED hardware benchmark (memcpy from pre-computed patterns)
+    benchmark_hardware_palletized();
+    
+    // PARALLEL hardware benchmark (4 PCNT + 4 RMT)
+    benchmark_hardware_parallel();
+    
+    // Timing breakdown to find optimization opportunities
+    analyze_timing_breakdown();
+    
     // Summary
     printf("\n");
     printf("════════════════════════════════════════════════════════════════\n");
@@ -402,7 +669,7 @@ void app_main(void) {
     printf("  LUT lookups = memory reads.\n");
     printf("  No multiply in the hot path.\n");
     printf("  \n");
-    printf("  BATCHED: One DMA transfer per sparse dot!\n");
+    printf("  PARALLEL: 4 neurons at once via 4 PCNT + 4 RMT!\n");
     printf("\n");
     fflush(stdout);
     

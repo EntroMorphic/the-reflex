@@ -130,6 +130,17 @@ extern "C" {
 #define FABRIC_CFC_PULSE_HIGH_TICKS 5       // 500ns at 10MHz
 #define FABRIC_CFC_PULSE_LOW_TICKS  5       // 500ns gap
 
+// Pulse palette: pre-computed patterns for values 0-15
+#define FABRIC_CFC_PALETTE_SIZE     16      // 16 possible 4-bit values
+#define FABRIC_CFC_MAX_PALETTE_LEN  16      // Max pulses per pattern (15 + end marker)
+
+// Parallel PCNT configuration
+// Note: Base fabric uses 1 RMT + 1 PCNT, so we can only add 3 more
+#define FABRIC_CFC_PARALLEL_UNITS   3       // Process 3 neurons at once
+#define FABRIC_CFC_PARALLEL_GPIO_0  5       // RMT1 → PCNT1
+#define FABRIC_CFC_PARALLEL_GPIO_1  6       // RMT2 → PCNT2  
+#define FABRIC_CFC_PARALLEL_GPIO_2  7       // RMT3 → PCNT3
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Quantization Functions
 // ═══════════════════════════════════════════════════════════════════════════
@@ -195,6 +206,45 @@ typedef struct {
     fabric_sparse_row_t gate[FABRIC_CFC_HIDDEN_DIM];
     fabric_sparse_row_t cand[FABRIC_CFC_HIDDEN_DIM];
 } fabric_cfc_sparse_weights_t;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Pulse Palette - PRE-COMPUTED PATTERNS FOR VALUES 0-15
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Pulse Palette: Pre-computed RMT patterns for each 4-bit value
+ * 
+ * Instead of building pulses dynamically, we index into this palette.
+ * Value N maps to pattern with N pulses.
+ * 
+ * Memory: 16 patterns × 16 symbols × 4 bytes = 1 KB
+ */
+typedef struct {
+    rmt_symbol_word_t patterns[FABRIC_CFC_PALETTE_SIZE][FABRIC_CFC_MAX_PALETTE_LEN];
+    uint8_t lengths[FABRIC_CFC_PALETTE_SIZE];  // Actual length of each pattern
+} fabric_pulse_palette_t;
+
+/**
+ * Generate pulse palette
+ */
+static inline void fabric_generate_pulse_palette(fabric_pulse_palette_t* palette) {
+    for (int val = 0; val < FABRIC_CFC_PALETTE_SIZE; val++) {
+        // Generate 'val' pulses
+        for (int p = 0; p < val; p++) {
+            palette->patterns[val][p].duration0 = FABRIC_CFC_PULSE_HIGH_TICKS;
+            palette->patterns[val][p].level0 = 1;
+            palette->patterns[val][p].duration1 = FABRIC_CFC_PULSE_LOW_TICKS;
+            palette->patterns[val][p].level1 = 0;
+        }
+        // End marker
+        palette->patterns[val][val].duration0 = 0;
+        palette->patterns[val][val].level0 = 0;
+        palette->patterns[val][val].duration1 = 0;
+        palette->patterns[val][val].level1 = 0;
+        
+        palette->lengths[val] = val + 1;  // Include end marker
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Activation LUTs (shared across all neurons)
@@ -312,6 +362,9 @@ typedef struct {
     // Batched pulse buffer for DMA
     rmt_symbol_word_t* pulse_buffer;  // Pre-allocated for batching
     
+    // Pulse palette (pre-computed patterns for values 0-15)
+    fabric_pulse_palette_t palette;
+    
     // Statistics
     uint32_t inference_count;
     bool initialized;
@@ -402,6 +455,11 @@ static inline esp_err_t fabric_cfc_init(fabric_cfc_engine_t* engine, fabric_engi
     }
     printf("  Pulse buffer ready: %d bytes\n", 
            (int)(sizeof(rmt_symbol_word_t) * FABRIC_CFC_MAX_PULSES));
+    
+    // Generate pulse palette (pre-computed patterns for 0-15)
+    fabric_generate_pulse_palette(&engine->palette);
+    printf("  Pulse palette ready: %d bytes (16 patterns)\n",
+           (int)sizeof(fabric_pulse_palette_t));
     
     engine->initialized = true;
     return ESP_OK;
@@ -680,6 +738,352 @@ static inline void fabric_cfc_step_hw_batched(
     
     memcpy(engine->hidden_q4, new_hidden, FABRIC_CFC_HIDDEN_DIM);
     engine->inference_count++;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PALLETIZED Hardware Fabric Implementation
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Build pulse buffer using PALETTE (memcpy instead of building)
+ * 
+ * Instead of generating pulses one by one, we memcpy pre-computed patterns.
+ * This eliminates the per-pulse loop overhead.
+ */
+static inline int fabric_build_palletized_pulses(
+    rmt_symbol_word_t* buffer,
+    const fabric_pulse_palette_t* palette,
+    const uint8_t* concat_q4,
+    const uint8_t* indices,
+    int count
+) {
+    int pos = 0;
+    
+    for (int i = 0; i < count && pos < FABRIC_CFC_MAX_PULSES - 16; i++) {
+        uint8_t val = concat_q4[indices[i]];
+        if (val > 0) {
+            // Memcpy the pre-computed pattern (excluding end marker)
+            memcpy(&buffer[pos], palette->patterns[val], 
+                   val * sizeof(rmt_symbol_word_t));
+            pos += val;
+        }
+    }
+    
+    // End marker
+    buffer[pos].duration0 = 0;
+    buffer[pos].level0 = 0;
+    buffer[pos].duration1 = 0;
+    buffer[pos].level1 = 0;
+    pos++;
+    
+    return pos;
+}
+
+/**
+ * Run one CfC step using PALLETIZED hardware fabric
+ * 
+ * Key difference: memcpy from pre-computed palette instead of building pulses.
+ * Eliminates the per-pulse generation loop.
+ */
+static inline void fabric_cfc_step_hw_palletized(
+    fabric_cfc_engine_t* engine,
+    const uint8_t* input_q4
+) {
+    // Build concat vector
+    uint8_t concat_q4[FABRIC_CFC_CONCAT_DIM];
+    memcpy(concat_q4, input_q4, FABRIC_CFC_INPUT_DIM);
+    memcpy(concat_q4 + FABRIC_CFC_INPUT_DIM, engine->hidden_q4, FABRIC_CFC_HIDDEN_DIM);
+    
+    uint8_t new_hidden[FABRIC_CFC_HIDDEN_DIM];
+    
+    rmt_transmit_config_t tx_config = {
+        .loop_count = 0,
+    };
+    
+    for (int n = 0; n < FABRIC_CFC_HIDDEN_DIM; n++) {
+        // === GATE SPARSE DOT via PALLETIZED PCNT ===
+        fabric_clear_accumulator(engine->fabric);
+        
+        int num_symbols = fabric_build_palletized_pulses(
+            engine->pulse_buffer,
+            &engine->palette,
+            concat_q4,
+            engine->weights.gate[n].pos_indices,
+            engine->weights.gate[n].pos_count
+        );
+        
+        if (num_symbols > 1) {
+            rmt_transmit(engine->fabric->rmt_chan, engine->fabric->rmt_encoder,
+                engine->pulse_buffer, num_symbols * sizeof(rmt_symbol_word_t),
+                &tx_config);
+            rmt_tx_wait_all_done(engine->fabric->rmt_chan, portMAX_DELAY);
+        }
+        int pos_sum = fabric_read_accumulator(engine->fabric);
+        
+        int neg_sum = 0;
+        for (int i = 0; i < engine->weights.gate[n].neg_count; i++) {
+            neg_sum += concat_q4[engine->weights.gate[n].neg_indices[i]];
+        }
+        
+        int gate_sum = pos_sum - neg_sum;
+        int gate_idx = gate_sum + 128;
+        if (gate_idx < 0) gate_idx = 0;
+        if (gate_idx > 255) gate_idx = 255;
+        uint8_t gate_q4 = engine->activations.sigmoid[gate_idx];
+        
+        // === CANDIDATE SPARSE DOT via PALLETIZED PCNT ===
+        fabric_clear_accumulator(engine->fabric);
+        
+        num_symbols = fabric_build_palletized_pulses(
+            engine->pulse_buffer,
+            &engine->palette,
+            concat_q4,
+            engine->weights.cand[n].pos_indices,
+            engine->weights.cand[n].pos_count
+        );
+        
+        if (num_symbols > 1) {
+            rmt_transmit(engine->fabric->rmt_chan, engine->fabric->rmt_encoder,
+                engine->pulse_buffer, num_symbols * sizeof(rmt_symbol_word_t),
+                &tx_config);
+            rmt_tx_wait_all_done(engine->fabric->rmt_chan, portMAX_DELAY);
+        }
+        pos_sum = fabric_read_accumulator(engine->fabric);
+        
+        neg_sum = 0;
+        for (int i = 0; i < engine->weights.cand[n].neg_count; i++) {
+            neg_sum += concat_q4[engine->weights.cand[n].neg_indices[i]];
+        }
+        
+        int cand_sum = pos_sum - neg_sum;
+        int cand_idx = cand_sum + 128;
+        if (cand_idx < 0) cand_idx = 0;
+        if (cand_idx > 255) cand_idx = 255;
+        uint8_t cand_q4 = engine->activations.tanh_lut[cand_idx];
+        
+        // === MIXER via LUT ===
+        uint8_t h_prev_q4 = engine->hidden_q4[n];
+        new_hidden[n] = engine->mixer_luts[n].lut[gate_q4][h_prev_q4][cand_q4];
+    }
+    
+    memcpy(engine->hidden_q4, new_hidden, FABRIC_CFC_HIDDEN_DIM);
+    engine->inference_count++;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PARALLEL Hardware Fabric (4 PCNT units, 4 RMT channels)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Parallel fabric engine - uses all 4 PCNT units and 4 RMT channels
+ * 
+ * This processes 4 neurons simultaneously:
+ *   RMT0 → GPIO4 → PCNT0 (neuron 0, 4, 8, ...)
+ *   RMT1 → GPIO5 → PCNT1 (neuron 1, 5, 9, ...)
+ *   RMT2 → GPIO6 → PCNT2 (neuron 2, 6, 10, ...)
+ *   RMT3 → GPIO7 → PCNT3 (neuron 3, 7, 11, ...)
+ */
+typedef struct {
+    pcnt_unit_handle_t pcnt_units[FABRIC_CFC_PARALLEL_UNITS];
+    pcnt_channel_handle_t pcnt_chans[FABRIC_CFC_PARALLEL_UNITS];
+    rmt_channel_handle_t rmt_chans[FABRIC_CFC_PARALLEL_UNITS];
+    rmt_encoder_handle_t rmt_encoders[FABRIC_CFC_PARALLEL_UNITS];
+    rmt_symbol_word_t* pulse_buffers[FABRIC_CFC_PARALLEL_UNITS];
+    bool initialized;
+} fabric_parallel_t;
+
+static const int fabric_parallel_gpios[FABRIC_CFC_PARALLEL_UNITS] = {
+    FABRIC_CFC_PARALLEL_GPIO_0,
+    FABRIC_CFC_PARALLEL_GPIO_1,
+    FABRIC_CFC_PARALLEL_GPIO_2
+};
+
+/**
+ * Initialize parallel fabric (4 RMT + 4 PCNT)
+ */
+static inline esp_err_t fabric_parallel_init(fabric_parallel_t* parallel) {
+    memset(parallel, 0, sizeof(fabric_parallel_t));
+    esp_err_t ret;
+    
+    for (int i = 0; i < FABRIC_CFC_PARALLEL_UNITS; i++) {
+        // PCNT unit
+        pcnt_unit_config_t pcnt_config = {
+            .low_limit = -32768,
+            .high_limit = 32767,
+            .flags.accum_count = true,
+        };
+        ret = pcnt_new_unit(&pcnt_config, &parallel->pcnt_units[i]);
+        if (ret != ESP_OK) return ret;
+        
+        // PCNT channel
+        pcnt_chan_config_t chan_config = {
+            .edge_gpio_num = fabric_parallel_gpios[i],
+            .level_gpio_num = -1,
+            .flags.io_loop_back = true,
+        };
+        ret = pcnt_new_channel(parallel->pcnt_units[i], &chan_config, &parallel->pcnt_chans[i]);
+        if (ret != ESP_OK) return ret;
+        
+        ret = pcnt_channel_set_edge_action(parallel->pcnt_chans[i],
+            PCNT_CHANNEL_EDGE_ACTION_INCREASE, PCNT_CHANNEL_EDGE_ACTION_HOLD);
+        if (ret != ESP_OK) return ret;
+        
+        pcnt_glitch_filter_config_t filter = {.max_glitch_ns = 100};
+        ret = pcnt_unit_set_glitch_filter(parallel->pcnt_units[i], &filter);
+        if (ret != ESP_OK) return ret;
+        
+        ret = pcnt_unit_enable(parallel->pcnt_units[i]);
+        if (ret != ESP_OK) return ret;
+        
+        ret = pcnt_unit_start(parallel->pcnt_units[i]);
+        if (ret != ESP_OK) return ret;
+        
+        // RMT channel
+        rmt_tx_channel_config_t rmt_config = {
+            .gpio_num = fabric_parallel_gpios[i],
+            .clk_src = RMT_CLK_SRC_DEFAULT,
+            .resolution_hz = 10 * 1000 * 1000,
+            .mem_block_symbols = 48,
+            .trans_queue_depth = 4,
+        };
+        ret = rmt_new_tx_channel(&rmt_config, &parallel->rmt_chans[i]);
+        if (ret != ESP_OK) return ret;
+        
+        ret = rmt_enable(parallel->rmt_chans[i]);
+        if (ret != ESP_OK) return ret;
+        
+        // RMT encoder (copy encoder)
+        rmt_copy_encoder_config_t enc_config = {};
+        ret = rmt_new_copy_encoder(&enc_config, &parallel->rmt_encoders[i]);
+        if (ret != ESP_OK) return ret;
+        
+        // Pulse buffer
+        parallel->pulse_buffers[i] = (rmt_symbol_word_t*)malloc(
+            sizeof(rmt_symbol_word_t) * FABRIC_CFC_MAX_PULSES);
+        if (!parallel->pulse_buffers[i]) return ESP_ERR_NO_MEM;
+    }
+    
+    parallel->initialized = true;
+    return ESP_OK;
+}
+
+/**
+ * Run one CfC step using PARALLEL hardware (4 neurons at once!)
+ */
+static inline void fabric_cfc_step_hw_parallel(
+    fabric_cfc_engine_t* engine,
+    fabric_parallel_t* parallel,
+    const uint8_t* input_q4
+) {
+    uint8_t concat_q4[FABRIC_CFC_CONCAT_DIM];
+    memcpy(concat_q4, input_q4, FABRIC_CFC_INPUT_DIM);
+    memcpy(concat_q4 + FABRIC_CFC_INPUT_DIM, engine->hidden_q4, FABRIC_CFC_HIDDEN_DIM);
+    
+    uint8_t new_hidden[FABRIC_CFC_HIDDEN_DIM];
+    rmt_transmit_config_t tx_config = {.loop_count = 0};
+    
+    // Process 4 neurons at a time
+    for (int batch = 0; batch < FABRIC_CFC_HIDDEN_DIM; batch += FABRIC_CFC_PARALLEL_UNITS) {
+        
+        // === GATE: Build and transmit 4 neurons in parallel ===
+        for (int i = 0; i < FABRIC_CFC_PARALLEL_UNITS && (batch + i) < FABRIC_CFC_HIDDEN_DIM; i++) {
+            int n = batch + i;
+            pcnt_unit_clear_count(parallel->pcnt_units[i]);
+            
+            int num_symbols = fabric_build_batched_pulses(
+                parallel->pulse_buffers[i], concat_q4,
+                engine->weights.gate[n].pos_indices,
+                engine->weights.gate[n].pos_count);
+            
+            if (num_symbols > 1) {
+                rmt_transmit(parallel->rmt_chans[i], parallel->rmt_encoders[i],
+                    parallel->pulse_buffers[i], num_symbols * sizeof(rmt_symbol_word_t),
+                    &tx_config);
+            }
+        }
+        
+        // Wait for all 4 RMT channels (they transmit in parallel!)
+        for (int i = 0; i < FABRIC_CFC_PARALLEL_UNITS && (batch + i) < FABRIC_CFC_HIDDEN_DIM; i++) {
+            rmt_tx_wait_all_done(parallel->rmt_chans[i], portMAX_DELAY);
+        }
+        
+        // Read 4 PCNT values and compute gates
+        int gate_q4[FABRIC_CFC_PARALLEL_UNITS];
+        for (int i = 0; i < FABRIC_CFC_PARALLEL_UNITS && (batch + i) < FABRIC_CFC_HIDDEN_DIM; i++) {
+            int n = batch + i;
+            int pos_sum;
+            pcnt_unit_get_count(parallel->pcnt_units[i], &pos_sum);
+            
+            int neg_sum = 0;
+            for (int j = 0; j < engine->weights.gate[n].neg_count; j++) {
+                neg_sum += concat_q4[engine->weights.gate[n].neg_indices[j]];
+            }
+            
+            int gate_sum = pos_sum - neg_sum;
+            int gate_idx = gate_sum + 128;
+            if (gate_idx < 0) gate_idx = 0;
+            if (gate_idx > 255) gate_idx = 255;
+            gate_q4[i] = engine->activations.sigmoid[gate_idx];
+        }
+        
+        // === CANDIDATE: Build and transmit 4 neurons in parallel ===
+        for (int i = 0; i < FABRIC_CFC_PARALLEL_UNITS && (batch + i) < FABRIC_CFC_HIDDEN_DIM; i++) {
+            int n = batch + i;
+            pcnt_unit_clear_count(parallel->pcnt_units[i]);
+            
+            int num_symbols = fabric_build_batched_pulses(
+                parallel->pulse_buffers[i], concat_q4,
+                engine->weights.cand[n].pos_indices,
+                engine->weights.cand[n].pos_count);
+            
+            if (num_symbols > 1) {
+                rmt_transmit(parallel->rmt_chans[i], parallel->rmt_encoders[i],
+                    parallel->pulse_buffers[i], num_symbols * sizeof(rmt_symbol_word_t),
+                    &tx_config);
+            }
+        }
+        
+        for (int i = 0; i < FABRIC_CFC_PARALLEL_UNITS && (batch + i) < FABRIC_CFC_HIDDEN_DIM; i++) {
+            rmt_tx_wait_all_done(parallel->rmt_chans[i], portMAX_DELAY);
+        }
+        
+        // Read 4 PCNT values and compute outputs
+        for (int i = 0; i < FABRIC_CFC_PARALLEL_UNITS && (batch + i) < FABRIC_CFC_HIDDEN_DIM; i++) {
+            int n = batch + i;
+            int pos_sum;
+            pcnt_unit_get_count(parallel->pcnt_units[i], &pos_sum);
+            
+            int neg_sum = 0;
+            for (int j = 0; j < engine->weights.cand[n].neg_count; j++) {
+                neg_sum += concat_q4[engine->weights.cand[n].neg_indices[j]];
+            }
+            
+            int cand_sum = pos_sum - neg_sum;
+            int cand_idx = cand_sum + 128;
+            if (cand_idx < 0) cand_idx = 0;
+            if (cand_idx > 255) cand_idx = 255;
+            uint8_t cand_q4 = engine->activations.tanh_lut[cand_idx];
+            
+            // Mixer via LUT
+            uint8_t h_prev_q4 = engine->hidden_q4[n];
+            new_hidden[n] = engine->mixer_luts[n].lut[gate_q4[i]][h_prev_q4][cand_q4];
+        }
+    }
+    
+    memcpy(engine->hidden_q4, new_hidden, FABRIC_CFC_HIDDEN_DIM);
+    engine->inference_count++;
+}
+
+/**
+ * Cleanup parallel fabric
+ */
+static inline void fabric_parallel_deinit(fabric_parallel_t* parallel) {
+    for (int i = 0; i < FABRIC_CFC_PARALLEL_UNITS; i++) {
+        if (parallel->pulse_buffers[i]) {
+            free(parallel->pulse_buffers[i]);
+        }
+    }
+    parallel->initialized = false;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
