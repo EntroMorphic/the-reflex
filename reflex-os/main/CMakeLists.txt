@@ -17,7 +17,7 @@
 
 idf_component_register(
     SRCS
-        "pulse_matmul_poc.c"
+        "xor_voxel_poc.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
