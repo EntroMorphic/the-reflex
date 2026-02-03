@@ -17,7 +17,7 @@
 
 idf_component_register(
     SRCS
-        "temporal_voxel.c"
+        "etm_stream_demo.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
