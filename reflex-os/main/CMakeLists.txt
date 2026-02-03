@@ -17,7 +17,7 @@
 
 idf_component_register(
     SRCS
-        "xor_voxel_poc.c"
+        "temporal_voxel.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
