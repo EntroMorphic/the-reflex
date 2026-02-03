@@ -17,7 +17,7 @@
 
 idf_component_register(
     SRCS
-        "silicon_grail_wired.c"
+        "pulse_matmul_poc.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
