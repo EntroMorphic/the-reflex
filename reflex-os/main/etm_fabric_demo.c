@@ -22,9 +22,15 @@
 #include "driver/gpio.h"
 #include "hal/gpio_ll.h"
 #include "soc/gpio_struct.h"
+#include "esp_private/gdma.h"
 
 // ============================================================
 // Configuration
+// ============================================================
+#include "reflex_gdma.h"
+
+// ============================================================
+// Hardware Handles
 // ============================================================
 
 #define FABRIC_RMT_GPIO         4       // RMT output
@@ -33,6 +39,15 @@
 
 #define FABRIC_PATTERN_SIZE     48      // RMT symbols
 #define FABRIC_TEST_CYCLES      1000    // Number of autonomous cycles to run
+
+// GDMA RX EOF callback
+static bool gdma_rx_eof_callback(gdma_channel_handle_t dma_chan, gdma_event_data_t *event_data, void *user_data)
+{
+    BaseType_t task_woken = pdFALSE;
+    SemaphoreHandle_t sem = (SemaphoreHandle_t)user_data;
+    xSemaphoreGiveFromISR(sem, &task_woken);
+    return task_woken == pdTRUE;
+}
 
 // ============================================================
 // Hardware Handles
@@ -482,6 +497,108 @@ void app_main(void) {
     init_etm();
     printf("Hardware initialized.\n\n");
     
+    vTaskDelay(pdMS_TO_TICKS(100));
+    
+    // ==========================================
+    // GDMA M2M Test - Bare Metal with ESP-IDF-style config
+    // ==========================================
+    printf("\n");
+    printf("╔═══════════════════════════════════════════════════════════════╗\n");
+    printf("║     GDMA M2M TEST - Bare Metal (Optimized)                  ║\n");
+    printf("╚═══════════════════════════════════════════════════════════════╝\n");
+
+    // Allocate DMA-capable buffers using ESP-IDF's heap_caps_calloc
+    uint8_t *src_data = heap_caps_calloc(1, 128, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    uint8_t *dst_data = heap_caps_calloc(1, 128, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+
+    if (src_data && dst_data) {
+        printf("\n1. Buffers allocated:\n");
+        printf("   src_data = 0x%08lx\n", (unsigned long)(uintptr_t)src_data);
+        printf("   dst_data = 0x%08lx\n", (unsigned long)(uintptr_t)dst_data);
+
+        // Fill source with test pattern
+        for (int i = 0; i < 128; i++) {
+            src_data[i] = i;
+        }
+
+        // Use lldesc_t from soc/lldesc.h
+        static lldesc_t out_desc __attribute__((aligned(4)));
+        static lldesc_t in_desc __attribute__((aligned(4)));
+
+        // Configure OUT descriptor (lldesc_t format - LSB bitfields!)
+        out_desc.size = 128;
+        out_desc.length = 128;
+        out_desc.offset = 0;
+        out_desc.sosf = 0;
+        out_desc.eof = 1;
+        out_desc.owner = 1;
+        out_desc.buf = src_data;
+        out_desc.qe.stqe_next = NULL;
+
+        // Configure IN descriptor
+        in_desc.size = 128;
+        in_desc.length = 128;
+        in_desc.offset = 0;
+        in_desc.sosf = 0;
+        in_desc.eof = 1;
+        in_desc.owner = 1;
+        in_desc.buf = dst_data;
+        in_desc.qe.stqe_next = NULL;
+
+        printf("\n2. Descriptors:\n");
+        printf("   &out_desc = 0x%08lx\n", (unsigned long)(uintptr_t)&out_desc);
+        printf("   &in_desc = 0x%08lx\n", (unsigned long)(uintptr_t)&in_desc);
+
+        printf("\n3. Initialize GDMA\n");
+        gdma_m2m_init(0);
+        printf("   OUT_CONF0: 0x%08lx\n", (unsigned long)GDMA_REG(GDMA_OUT_CONF0_CH(0)));
+        printf("   IN_CONF0: 0x%08lx\n", (unsigned long)GDMA_REG(GDMA_IN_CONF0_CH(0)));
+
+        printf("\n4. Start transfer\n");
+        gdma_clear_all_intr(0);
+        int64_t test_start = esp_timer_get_time();
+        gdma_m2m_start(0, &out_desc, &in_desc);
+
+        // Wait for completion (polling like ESP-IDF's semaphore wait)
+        int test_timeout = 10000;
+        while (test_timeout > 0 && !gdma_m2m_done(0)) {
+            test_timeout--;
+        }
+        int64_t test_end = esp_timer_get_time();
+
+        // Debug state
+        uint32_t out_link = GDMA_REG(GDMA_OUT_LINK_CH(0));
+        uint32_t in_link = GDMA_REG(GDMA_IN_LINK_CH(0));
+        printf("\n5. Result:\n");
+        printf("   Time: %lld us, timeout: %d\n", test_end - test_start, test_timeout);
+        printf("   PARK: OUT=%d IN=%d\n", !!(out_link & GDMA_OUTLINK_PARK), !!(in_link & GDMA_INLINK_PARK));
+
+        // Verify
+        bool success = true;
+        for (int i = 0; i < 128; i++) {
+            if (dst_data[i] != (i & 0xFF)) {
+                success = false;
+                printf("   Mismatch at %d: expected 0x%02x, got 0x%02x\n", i, i & 0xFF, dst_data[i]);
+                break;
+            }
+        }
+
+        printf("\n╔═══════════════════════════════════════════════════════════════╗\n");
+        if (test_timeout == 0) {
+            printf("║  GDMA RESULT: TIMEOUT                                        ║\n");
+        } else if (success) {
+            printf("║  GDMA RESULT: SUCCESS - Bare Metal Works!                    ║\n");
+        } else {
+            printf("║  GDMA RESULT: FAIL - Data mismatch                           ║\n");
+        }
+        printf("╚═══════════════════════════════════════════════════════════════╝\n");
+
+        free(src_data);
+        free(dst_data);
+    } else {
+        printf("\n1. FAILED to allocate DMA buffers!\n");
+    }
+
     vTaskDelay(pdMS_TO_TICKS(100));
     
     // Benchmarks

@@ -1,6 +1,9 @@
 # Main component for Reflex OS
 #
 # Select entry point by changing SRCS:
+#   - falsify_turing_completeness.c : Rigorous falsification of TC claims
+#   - liquid_ship_demo.c : Liquid Ship with Navigator and Splined Mixer
+#   - etm_fabric_demo.c  : Turing Complete ETM Fabric benchmark
 #   - hologram_mesh_demo.c : 3-node holographic mesh demo
 #   - hologram_demo.c   : Holographic Intelligence single node demo
 #   - cfc_spine_demo.c  : CfC closed-loop spine demo
@@ -24,4 +27,5 @@ idf_component_register(
         esp_driver_gptimer
         esp_driver_rmt
         esp_driver_pcnt
-)
+        esp_hw_support
+    )
