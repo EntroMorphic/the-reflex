@@ -14,11 +14,14 @@
 
 idf_component_register(
     SRCS
-        "liquid_ship_demo.c"
+        "etm_fabric_demo.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
     REQUIRES
         driver
         esp_timer
+        esp_driver_gptimer
+        esp_driver_rmt
+        esp_driver_pcnt
 )
