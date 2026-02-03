@@ -17,7 +17,7 @@
 
 idf_component_register(
     SRCS
-        "etm_fabric_demo.c"
+        "falsify_silicon_grail_v3.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
@@ -27,5 +27,6 @@ idf_component_register(
         esp_driver_gptimer
         esp_driver_rmt
         esp_driver_pcnt
+        esp_driver_parlio
         esp_hw_support
     )
