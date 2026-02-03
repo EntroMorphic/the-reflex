@@ -17,7 +17,7 @@
 
 idf_component_register(
     SRCS
-        "falsify_silicon_grail_v3.c"
+        "silicon_grail_wired.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
