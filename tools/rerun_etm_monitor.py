@@ -5,29 +5,36 @@ rerun_etm_monitor.py - Real-time ETM Fabric Visualization
 Receives structured events from ESP32-C6 via USB serial and visualizes
 the autonomous hardware computation in Rerun.
 
-Visualization Layers:
-  1. Time-series: PCNT counts, thresholds, pattern activity
-  2. State machine: Current state, transitions
-  3. Heatmap: 4x4 channel activity matrix
-  4. Event log: All ETM events as they occur
-
-Protocol (binary, little-endian):
-  Header: 0xAA 0x55 (sync)
-  Type:   1 byte (event type)
-  Len:    1 byte (payload length)
-  Payload: variable
-  CRC:    1 byte (XOR of type + len + payload)
-
-Event Types:
-  0x01: PCNT_UPDATE   - 4x int16 counts
-  0x02: THRESHOLD     - uint8 channel, uint8 threshold_id, int16 count
-  0x03: PATTERN_START - uint8 pattern_id
-  0x04: PATTERN_END   - uint8 pattern_id, uint32 duration_us
-  0x05: DMA_EOF       - uint8 channel
-  0x06: ETM_EVENT     - uint8 event_id, uint8 task_id
-  0x07: STATE_CHANGE  - uint8 old_state, uint8 new_state
-  0x08: CYCLE_COMPLETE- uint32 cycle_num, uint32 duration_us
-  0x10: HEARTBEAT     - uint32 uptime_ms, uint32 cycles
+Entity Hierarchy (each gets its own panel):
+  /pcnt
+    /channel_0, /channel_1, /channel_2, /channel_3  - Time-series counts
+    /total                                           - Sum of all channels
+  /patterns
+    /current                                         - Active pattern ID (scalar)
+    /timeline                                        - Pattern start/end events
+    /duration                                        - Pattern execution time
+  /thresholds
+    /crossings                                       - Threshold crossing events
+    /channel_0, /channel_1, ...                      - Per-channel threshold markers
+  /state_machine
+    /current                                         - Current state ID
+    /transitions                                     - State transition log
+  /dma
+    /eof                                             - DMA EOF events
+    /channel_0, /channel_1, /channel_2               - Per-channel DMA activity
+  /etm
+    /events                                          - Raw ETM event->task firings
+  /cycles
+    /count                                           - Cycle counter
+    /duration                                        - Cycle duration
+    /log                                             - Cycle completion events
+  /system
+    /uptime                                          - System uptime
+    /heartbeat                                       - Heartbeat events
+  /activity
+    /matrix                                          - 4x4 heatmap
+  /log
+    /all                                             - Combined text log
 
 Usage:
   python rerun_etm_monitor.py /dev/ttyACM0
@@ -36,7 +43,6 @@ Usage:
 
 import argparse
 import struct
-import sys
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -62,7 +68,7 @@ class EventType(IntEnum):
     STATE_CHANGE = 0x07
     CYCLE_COMPLETE = 0x08
     HEARTBEAT = 0x10
-    TEXT_LOG = 0x20  # For debug text messages
+    TEXT_LOG = 0x20
 
 
 # Pattern names
@@ -72,7 +78,7 @@ PATTERN_NAMES = {
     2: "C (dense)",
 }
 
-# State names for state machine view
+# State names
 STATE_NAMES = {
     0: "IDLE",
     1: "PATTERN_A",
@@ -88,13 +94,20 @@ THRESHOLD_NAMES = {
     2: "C (128)",
 }
 
+# Threshold values for plotting reference lines
+THRESHOLD_VALUES = {
+    0: 32,
+    1: 64,
+    2: 128,
+}
+
 
 @dataclass
 class ETMEvent:
     """Parsed ETM event from serial"""
 
     event_type: EventType
-    timestamp: float  # Host timestamp
+    timestamp: float
     payload: bytes
 
 
@@ -111,18 +124,18 @@ class ETMMonitor:
         self.current_pattern = None
         self.current_state = 0
         self.cycle_count = 0
+        self.pattern_start_time = 0
         self.start_time = time.time()
-        self.step = 0  # Sequence counter for Rerun timeline
+        self.step = 0
 
-        # History for charts
+        # History
         self.pcnt_history = [deque(maxlen=1000) for _ in range(4)]
         self.threshold_events = deque(maxlen=100)
 
-        # Activity matrix (4x4: input channels x output accumulators)
+        # Activity matrix
         self.activity_matrix = np.zeros((4, 4), dtype=np.float32)
 
     def connect(self) -> bool:
-        """Connect to serial port"""
         try:
             self.ser = serial.Serial(self.port, self.baud, timeout=0.1)
             print(f"Connected to {self.port} at {self.baud} baud")
@@ -132,12 +145,10 @@ class ETMMonitor:
             return False
 
     def close(self):
-        """Close serial connection"""
         if self.ser:
             self.ser.close()
 
     def read_event(self) -> Optional[ETMEvent]:
-        """Read and parse one event from serial"""
         if not self.ser:
             return None
 
@@ -174,7 +185,6 @@ class ETMMonitor:
             expected_crc ^= b
 
         if crc_byte[0] != expected_crc:
-            print(f"CRC mismatch: got {crc_byte[0]:02x}, expected {expected_crc:02x}")
             return None
 
         try:
@@ -184,162 +194,267 @@ class ETMMonitor:
                 payload=payload,
             )
         except ValueError:
-            # Unknown event type, skip
             return None
 
     def _set_time(self):
-        """Set Rerun timeline"""
         self.step += 1
         rr.set_time("step", sequence=self.step)
 
     def process_event(self, event: ETMEvent):
-        """Process event and log to Rerun"""
+        """Process event and log to appropriate Rerun entities"""
         self._set_time()
 
         if event.event_type == EventType.PCNT_UPDATE:
-            # 4x int16 counts
-            if len(event.payload) >= 8:
-                counts = struct.unpack("<4h", event.payload[:8])
-                self.pcnt_counts = list(counts)
-
-                # Log time-series for each PCNT channel
-                for i, count in enumerate(counts):
-                    rr.log(f"etm/pcnt/channel_{i}", rr.Scalars([count]))
-                    self.pcnt_history[i].append((event.timestamp, count))
-
-                # Log total count
-                total = sum(counts)
-                rr.log("etm/pcnt/total", rr.Scalars([total]))
-
-                # Update activity matrix (simplified: diagonal for now)
-                for i in range(4):
-                    self.activity_matrix[i, i] = min(1.0, counts[i] / 128.0)
-
-                # Log heatmap as image (scale up for visibility)
-                heatmap = np.repeat(
-                    np.repeat(self.activity_matrix, 32, axis=0), 32, axis=1
-                )
-                rr.log(
-                    "etm/activity_matrix", rr.Image((heatmap * 255).astype(np.uint8))
-                )
-
+            self._handle_pcnt_update(event)
         elif event.event_type == EventType.THRESHOLD:
-            # uint8 channel, uint8 threshold_id, int16 count
-            if len(event.payload) >= 4:
-                channel, thresh_id, count = struct.unpack("<BBh", event.payload[:4])
-
-                # Log threshold event
-                thresh_name = THRESHOLD_NAMES.get(thresh_id, f"#{thresh_id}")
-                rr.log(
-                    "etm/events/threshold",
-                    rr.TextLog(
-                        f"THRESHOLD {thresh_name} crossed on CH{channel} at count={count}"
-                    ),
-                )
-
-                self.threshold_events.append(
-                    (event.timestamp, channel, thresh_id, count)
-                )
-
+            self._handle_threshold(event)
         elif event.event_type == EventType.PATTERN_START:
-            # uint8 pattern_id
-            if len(event.payload) >= 1:
-                pattern_id = event.payload[0]
-                self.current_pattern = pattern_id
-                pattern_name = PATTERN_NAMES.get(pattern_id, f"#{pattern_id}")
-
-                rr.log("etm/pattern/current", rr.Scalars([pattern_id]))
-                rr.log(
-                    "etm/events/pattern",
-                    rr.TextLog(f"PATTERN {pattern_name} started"),
-                )
-
-                # Update state machine
-                new_state = pattern_id + 1  # 1=A, 2=B, 3=C
-                if new_state != self.current_state:
-                    self._log_state_transition(self.current_state, new_state)
-                    self.current_state = new_state
-
+            self._handle_pattern_start(event)
         elif event.event_type == EventType.PATTERN_END:
-            # uint8 pattern_id, uint32 duration_us
-            if len(event.payload) >= 5:
-                pattern_id, duration = struct.unpack("<BI", event.payload[:5])
-                pattern_name = PATTERN_NAMES.get(pattern_id, f"#{pattern_id}")
-
-                rr.log("etm/pattern/duration_us", rr.Scalars([duration]))
-                rr.log(
-                    "etm/events/pattern",
-                    rr.TextLog(f"PATTERN {pattern_name} ended ({duration} us)"),
-                )
-
-                self.current_pattern = None
-
+            self._handle_pattern_end(event)
         elif event.event_type == EventType.DMA_EOF:
-            # uint8 channel
-            if len(event.payload) >= 1:
-                channel = event.payload[0]
-                rr.log("etm/events/dma", rr.TextLog(f"DMA EOF on channel {channel}"))
-
+            self._handle_dma_eof(event)
         elif event.event_type == EventType.ETM_EVENT:
-            # uint8 event_id, uint8 task_id
-            if len(event.payload) >= 2:
-                event_id, task_id = event.payload[:2]
-                rr.log(
-                    "etm/events/etm",
-                    rr.TextLog(f"ETM: Event {event_id} -> Task {task_id}"),
+            self._handle_etm_event(event)
+        elif event.event_type == EventType.STATE_CHANGE:
+            self._handle_state_change(event)
+        elif event.event_type == EventType.CYCLE_COMPLETE:
+            self._handle_cycle_complete(event)
+        elif event.event_type == EventType.HEARTBEAT:
+            self._handle_heartbeat(event)
+        elif event.event_type == EventType.TEXT_LOG:
+            self._handle_text_log(event)
+
+    def _handle_pcnt_update(self, event: ETMEvent):
+        """PCNT counts - dedicated panel per channel"""
+        if len(event.payload) >= 8:
+            counts = struct.unpack("<4h", event.payload[:8])
+            self.pcnt_counts = list(counts)
+
+            # Log each channel to its own entity
+            for i, count in enumerate(counts):
+                rr.log(f"pcnt/channel_{i}", rr.Scalars([count]))
+                self.pcnt_history[i].append((event.timestamp, count))
+
+            # Log total
+            total = sum(counts)
+            rr.log("pcnt/total", rr.Scalars([total]))
+
+            # Calculate pulse rates (delta from last reading)
+            rates = []
+            for i in range(4):
+                if len(self.pcnt_history[i]) >= 2:
+                    # Rate = change since last sample
+                    prev = (
+                        self.pcnt_history[i][-2][1]
+                        if len(self.pcnt_history[i]) >= 2
+                        else 0
+                    )
+                    rate = max(0, counts[i] - prev)
+                else:
+                    rate = counts[i]
+                rates.append(rate)
+
+            # Create 4-channel bar chart visualization
+            # Layout: 4 vertical bars, each showing pulse rate (0-32 scale)
+            bar_width = 30
+            bar_gap = 10
+            chart_height = 128
+            chart_width = 4 * bar_width + 3 * bar_gap
+
+            chart = np.zeros((chart_height, chart_width, 3), dtype=np.uint8)
+
+            # Channel colors: Blue, Green, Yellow, Red
+            colors = [
+                (66, 133, 244),  # CH0 - Blue
+                (52, 168, 83),  # CH1 - Green
+                (251, 188, 4),  # CH2 - Yellow
+                (234, 67, 53),  # CH3 - Red
+            ]
+
+            max_rate = 32  # Expected max pulses per update
+
+            for i in range(4):
+                x_start = i * (bar_width + bar_gap)
+                x_end = x_start + bar_width
+
+                # Normalize rate to bar height
+                bar_height = min(
+                    chart_height, int((rates[i] / max_rate) * chart_height)
                 )
 
-        elif event.event_type == EventType.STATE_CHANGE:
-            # uint8 old_state, uint8 new_state
-            if len(event.payload) >= 2:
-                old_state, new_state = event.payload[:2]
-                self._log_state_transition(old_state, new_state)
+                if bar_height > 0:
+                    # Draw bar from bottom up
+                    y_start = chart_height - bar_height
+                    chart[y_start:chart_height, x_start:x_end] = colors[i]
+
+                # Draw channel label area at bottom (dim background)
+                chart[chart_height - 12 : chart_height, x_start:x_end] = (40, 40, 40)
+
+            rr.log("activity/pulse_rates", rr.Image(chart))
+
+            # Also log individual rates as scalars for time-series
+            for i, rate in enumerate(rates):
+                rr.log(f"activity/rate_ch{i}", rr.Scalars([rate]))
+
+    def _handle_threshold(self, event: ETMEvent):
+        """Threshold crossings - dedicated threshold panel"""
+        if len(event.payload) >= 4:
+            channel, thresh_id, count = struct.unpack("<BBh", event.payload[:4])
+            thresh_name = THRESHOLD_NAMES.get(thresh_id, f"#{thresh_id}")
+            thresh_val = THRESHOLD_VALUES.get(thresh_id, 0)
+
+            # Log to threshold panel
+            rr.log(
+                "thresholds/crossings",
+                rr.TextLog(f"CH{channel}: {thresh_name} crossed at {count}"),
+            )
+
+            # Log threshold marker value for this channel
+            rr.log(f"thresholds/channel_{channel}", rr.Scalars([thresh_val]))
+
+            # Also log to combined log
+            rr.log(
+                "log/all",
+                rr.TextLog(f"[THRESHOLD] CH{channel} crossed {thresh_name} at {count}"),
+            )
+
+            self.threshold_events.append((event.timestamp, channel, thresh_id, count))
+
+    def _handle_pattern_start(self, event: ETMEvent):
+        """Pattern start - dedicated patterns panel"""
+        if len(event.payload) >= 1:
+            pattern_id = event.payload[0]
+            self.current_pattern = pattern_id
+            self.pattern_start_time = event.timestamp
+            pattern_name = PATTERN_NAMES.get(pattern_id, f"#{pattern_id}")
+
+            # Log to patterns panel
+            rr.log("patterns/current", rr.Scalars([pattern_id]))
+            rr.log("patterns/timeline", rr.TextLog(f"START: {pattern_name}"))
+
+            # Log to combined log
+            rr.log("log/all", rr.TextLog(f"[PATTERN] {pattern_name} started"))
+
+            # Trigger state change
+            new_state = pattern_id + 1
+            if new_state != self.current_state:
+                self._log_state_transition(self.current_state, new_state)
                 self.current_state = new_state
 
-        elif event.event_type == EventType.CYCLE_COMPLETE:
-            # uint32 cycle_num, uint32 duration_us
-            if len(event.payload) >= 8:
-                cycle_num, duration = struct.unpack("<II", event.payload[:8])
-                self.cycle_count = cycle_num
+    def _handle_pattern_end(self, event: ETMEvent):
+        """Pattern end - log duration"""
+        if len(event.payload) >= 5:
+            pattern_id, duration = struct.unpack("<BI", event.payload[:5])
+            pattern_name = PATTERN_NAMES.get(pattern_id, f"#{pattern_id}")
 
-                rr.log("etm/cycle/count", rr.Scalars([cycle_num]))
-                rr.log("etm/cycle/duration_us", rr.Scalars([duration]))
-                rr.log(
-                    "etm/events/cycle",
-                    rr.TextLog(f"Cycle {cycle_num} complete ({duration} us)"),
-                )
+            # Log to patterns panel
+            rr.log("patterns/duration", rr.Scalars([duration]))
+            rr.log(
+                "patterns/timeline", rr.TextLog(f"END: {pattern_name} ({duration} us)")
+            )
 
-        elif event.event_type == EventType.HEARTBEAT:
-            # uint32 uptime_ms, uint32 cycles
-            if len(event.payload) >= 8:
-                uptime_ms, cycles = struct.unpack("<II", event.payload[:8])
+            # Log to combined log
+            rr.log(
+                "log/all", rr.TextLog(f"[PATTERN] {pattern_name} ended ({duration} us)")
+            )
 
-                rr.log("etm/system/uptime_ms", rr.Scalars([uptime_ms]))
-                rr.log("etm/system/total_cycles", rr.Scalars([cycles]))
+            self.current_pattern = None
 
-        elif event.event_type == EventType.TEXT_LOG:
-            # Variable length text
-            try:
-                text = event.payload.decode("utf-8", errors="replace")
-                rr.log("etm/log", rr.TextLog(text))
-            except:
-                pass
+    def _handle_dma_eof(self, event: ETMEvent):
+        """DMA EOF - dedicated DMA panel"""
+        if len(event.payload) >= 1:
+            channel = event.payload[0]
+
+            # Log to DMA panel
+            rr.log("dma/eof", rr.TextLog(f"EOF on channel {channel}"))
+            rr.log(f"dma/channel_{channel}", rr.Scalars([1]))  # Pulse indicator
+
+            # Log to combined log
+            rr.log("log/all", rr.TextLog(f"[DMA] EOF on channel {channel}"))
+
+    def _handle_etm_event(self, event: ETMEvent):
+        """ETM event->task - dedicated ETM panel"""
+        if len(event.payload) >= 2:
+            event_id, task_id = event.payload[:2]
+
+            # Log to ETM panel
+            rr.log("etm/events", rr.TextLog(f"Event {event_id} -> Task {task_id}"))
+
+            # Log to combined log
+            rr.log("log/all", rr.TextLog(f"[ETM] Event {event_id} -> Task {task_id}"))
+
+    def _handle_state_change(self, event: ETMEvent):
+        """State change - handled via _log_state_transition"""
+        if len(event.payload) >= 2:
+            old_state, new_state = event.payload[:2]
+            self._log_state_transition(old_state, new_state)
+            self.current_state = new_state
 
     def _log_state_transition(self, old_state: int, new_state: int):
-        """Log a state machine transition"""
+        """Log state machine transition to dedicated panel"""
         old_name = STATE_NAMES.get(old_state, f"S{old_state}")
         new_name = STATE_NAMES.get(new_state, f"S{new_state}")
 
-        rr.log("etm/state/current", rr.Scalars([new_state]))
-        rr.log("etm/events/state", rr.TextLog(f"STATE: {old_name} -> {new_name}"))
+        # Log to state machine panel
+        rr.log("state_machine/current", rr.Scalars([new_state]))
+        rr.log("state_machine/transitions", rr.TextLog(f"{old_name} -> {new_name}"))
+
+        # Log to combined log
+        rr.log("log/all", rr.TextLog(f"[STATE] {old_name} -> {new_name}"))
+
+    def _handle_cycle_complete(self, event: ETMEvent):
+        """Cycle complete - dedicated cycles panel"""
+        if len(event.payload) >= 8:
+            cycle_num, duration = struct.unpack("<II", event.payload[:8])
+            self.cycle_count = cycle_num
+
+            # Log to cycles panel
+            rr.log("cycles/count", rr.Scalars([cycle_num]))
+            rr.log("cycles/duration", rr.Scalars([duration]))
+            rr.log("cycles/log", rr.TextLog(f"Cycle {cycle_num} ({duration} us)"))
+
+            # Log to combined log
+            rr.log(
+                "log/all", rr.TextLog(f"[CYCLE] #{cycle_num} complete ({duration} us)")
+            )
+
+    def _handle_heartbeat(self, event: ETMEvent):
+        """Heartbeat - dedicated system panel"""
+        if len(event.payload) >= 8:
+            uptime_ms, cycles = struct.unpack("<II", event.payload[:8])
+
+            # Log to system panel
+            rr.log("system/uptime", rr.Scalars([uptime_ms]))
+            rr.log(
+                "system/heartbeat",
+                rr.TextLog(f"Uptime: {uptime_ms}ms, Cycles: {cycles}"),
+            )
+
+    def _handle_text_log(self, event: ETMEvent):
+        """Text log"""
+        try:
+            text = event.payload.decode("utf-8", errors="replace")
+            rr.log("log/all", rr.TextLog(f"[LOG] {text}"))
+        except:
+            pass
 
     def setup_rerun(self):
-        """Initialize Rerun recording"""
+        """Initialize Rerun with entity hierarchy"""
         rr.init("ETM Fabric Monitor", spawn=True)
-
-        # Log static threshold reference lines
         rr.set_time("step", sequence=0)
-        rr.log("etm", rr.TextLog("ETM Fabric Visualization Root"))
+
+        # Log static descriptions for each panel
+        rr.log("pcnt", rr.TextLog("Pulse Counter Channels"), static=True)
+        rr.log("patterns", rr.TextLog("DMA Pattern Execution"), static=True)
+        rr.log("thresholds", rr.TextLog("PCNT Threshold Crossings"), static=True)
+        rr.log("state_machine", rr.TextLog("Compute State Machine"), static=True)
+        rr.log("dma", rr.TextLog("DMA Transfer Events"), static=True)
+        rr.log("etm", rr.TextLog("ETM Event->Task Firings"), static=True)
+        rr.log("cycles", rr.TextLog("Compute Cycles"), static=True)
+        rr.log("system", rr.TextLog("System Status"), static=True)
+        rr.log("activity", rr.TextLog("Channel Pulse Rates (bar chart)"), static=True)
+        rr.log("log", rr.TextLog("Combined Event Log"), static=True)
 
     def run(self):
         """Main event loop"""
@@ -351,6 +466,17 @@ class ETMMonitor:
 
         print("Monitoring ETM events... (Ctrl+C to stop)")
         print("Rerun viewer should open automatically")
+        print("\nEntity panels available:")
+        print("  /pcnt          - PCNT channel counts (time-series)")
+        print("  /patterns      - Pattern execution timeline")
+        print("  /thresholds    - Threshold crossing events")
+        print("  /state_machine - State transitions")
+        print("  /dma           - DMA EOF events")
+        print("  /etm           - ETM event->task firings")
+        print("  /cycles        - Compute cycle stats")
+        print("  /system        - Heartbeat and uptime")
+        print("  /activity      - 4x4 channel heatmap")
+        print("  /log           - Combined text log")
 
         try:
             while True:
@@ -358,9 +484,7 @@ class ETMMonitor:
                 if event:
                     self.process_event(event)
                 else:
-                    # No event, small sleep to avoid busy loop
                     time.sleep(0.001)
-
         except KeyboardInterrupt:
             print("\nStopping monitor...")
         finally:
@@ -373,9 +497,21 @@ def run_demo_mode():
 
     rr.init("ETM Fabric Monitor (Demo)", spawn=True)
 
+    # Log static panel descriptions
+    rr.set_time("step", sequence=0)
+    rr.log("pcnt", rr.TextLog("Pulse Counter Channels"), static=True)
+    rr.log("patterns", rr.TextLog("DMA Pattern Execution"), static=True)
+    rr.log("thresholds", rr.TextLog("PCNT Threshold Crossings"), static=True)
+    rr.log("state_machine", rr.TextLog("Compute State Machine"), static=True)
+    rr.log("dma", rr.TextLog("DMA Transfer Events"), static=True)
+    rr.log("cycles", rr.TextLog("Compute Cycles"), static=True)
+    rr.log("activity", rr.TextLog("Channel Activity Matrix"), static=True)
+    rr.log("log", rr.TextLog("Combined Event Log"), static=True)
+
     step = 0
     cycle = 0
     pcnt_counts = [0, 0, 0, 0]
+    current_state = 0
 
     try:
         while True:
@@ -383,22 +519,38 @@ def run_demo_mode():
             pattern = cycle % 3
             pattern_name = PATTERN_NAMES.get(pattern, f"#{pattern}")
 
-            # Log pattern start
+            # Pattern start
             step += 1
             rr.set_time("step", sequence=step)
-            rr.log("etm/pattern/current", rr.Scalars([pattern]))
-            rr.log("etm/events/pattern", rr.TextLog(f"PATTERN {pattern_name} started"))
-            rr.log("etm/state/current", rr.Scalars([pattern + 1]))
+
+            new_state = pattern + 1
+            old_state_name = STATE_NAMES.get(current_state, f"S{current_state}")
+            new_state_name = STATE_NAMES.get(new_state, f"S{new_state}")
+
+            rr.log("patterns/current", rr.Scalars([pattern]))
+            rr.log("patterns/timeline", rr.TextLog(f"START: {pattern_name}"))
+            rr.log("state_machine/current", rr.Scalars([new_state]))
+            rr.log(
+                "state_machine/transitions",
+                rr.TextLog(f"{old_state_name} -> {new_state_name}"),
+            )
+            rr.log("log/all", rr.TextLog(f"[PATTERN] {pattern_name} started"))
+            rr.log(
+                "log/all", rr.TextLog(f"[STATE] {old_state_name} -> {new_state_name}")
+            )
+
+            current_state = new_state
 
             # Simulate pulse accumulation
             pulses_per_pattern = [8, 32, 128][pattern]
             steps = 20
+            pattern_start = time.time()
 
             for sim_step in range(steps):
                 step += 1
                 rr.set_time("step", sequence=step)
 
-                # Update counts
+                # Update counts based on pattern
                 for i in range(4):
                     if pattern == 0:  # Sparse - only channel 0
                         if i == 0:
@@ -409,45 +561,116 @@ def run_demo_mode():
                     else:  # Dense - all channels
                         pcnt_counts[i] += pulses_per_pattern // steps // 4
 
-                # Log counts
+                # Log PCNT to dedicated channels
                 for i, count in enumerate(pcnt_counts):
-                    rr.log(f"etm/pcnt/channel_{i}", rr.Scalars([count]))
-                rr.log("etm/pcnt/total", rr.Scalars([sum(pcnt_counts)]))
+                    rr.log(f"pcnt/channel_{i}", rr.Scalars([count]))
+                rr.log("pcnt/total", rr.Scalars([sum(pcnt_counts)]))
 
                 # Check thresholds
-                thresholds = [(32, "A"), (64, "B"), (128, "C")]
+                thresholds = [(32, 0, "A"), (64, 1, "B"), (128, 2, "C")]
                 for i, count in enumerate(pcnt_counts):
-                    for thresh_val, thresh_name in thresholds:
+                    for thresh_val, thresh_id, thresh_name in thresholds:
                         if count >= thresh_val and count < thresh_val + 2:
                             rr.log(
-                                "etm/events/threshold",
-                                rr.TextLog(f"THRESHOLD {thresh_name} crossed on CH{i}"),
+                                "thresholds/crossings",
+                                rr.TextLog(
+                                    f"CH{i}: {thresh_name} ({thresh_val}) crossed at {count}"
+                                ),
+                            )
+                            rr.log(f"thresholds/channel_{i}", rr.Scalars([thresh_val]))
+                            rr.log(
+                                "log/all",
+                                rr.TextLog(
+                                    f"[THRESHOLD] CH{i} crossed {thresh_name} at {count}"
+                                ),
                             )
 
-                # Update activity matrix
-                matrix = np.zeros((4, 4), dtype=np.float32)
+                # Calculate pulse rates for bar chart
+                rates = []
                 for i in range(4):
-                    matrix[i, i] = min(1.0, pcnt_counts[i] / 128.0)
-                heatmap = np.repeat(np.repeat(matrix, 32, axis=0), 32, axis=1)
-                rr.log(
-                    "etm/activity_matrix", rr.Image((heatmap * 255).astype(np.uint8))
-                )
+                    if pattern == 0:  # Sparse - only channel 0
+                        rate = pulses_per_pattern // steps if i == 0 else 0
+                    elif pattern == 1:  # Medium - channels 0,1
+                        rate = pulses_per_pattern // steps // 2 if i < 2 else 0
+                    else:  # Dense - all channels
+                        rate = pulses_per_pattern // steps // 4
+                    rates.append(rate)
+
+                # Create 4-channel bar chart visualization
+                bar_width = 30
+                bar_gap = 10
+                chart_height = 128
+                chart_width = 4 * bar_width + 3 * bar_gap
+
+                chart = np.zeros((chart_height, chart_width, 3), dtype=np.uint8)
+
+                colors = [
+                    (66, 133, 244),  # CH0 - Blue
+                    (52, 168, 83),  # CH1 - Green
+                    (251, 188, 4),  # CH2 - Yellow
+                    (234, 67, 53),  # CH3 - Red
+                ]
+
+                max_rate = 32
+
+                for i in range(4):
+                    x_start = i * (bar_width + bar_gap)
+                    x_end = x_start + bar_width
+
+                    bar_height = min(
+                        chart_height, int((rates[i] / max_rate) * chart_height)
+                    )
+
+                    if bar_height > 0:
+                        y_start = chart_height - bar_height
+                        chart[y_start:chart_height, x_start:x_end] = colors[i]
+
+                    chart[chart_height - 12 : chart_height, x_start:x_end] = (
+                        40,
+                        40,
+                        40,
+                    )
+
+                rr.log("activity/pulse_rates", rr.Image(chart))
+
+                for i, rate in enumerate(rates):
+                    rr.log(f"activity/rate_ch{i}", rr.Scalars([rate]))
 
                 time.sleep(0.02)
 
-            # Log pattern end and DMA EOF
+            # Pattern end
             step += 1
             rr.set_time("step", sequence=step)
-            rr.log("etm/events/pattern", rr.TextLog(f"PATTERN {pattern_name} ended"))
-            rr.log("etm/events/dma", rr.TextLog("DMA EOF - PCNT reset"))
+            duration = int((time.time() - pattern_start) * 1000000)
 
-            # Reset PCNT (simulating ETM reset)
+            rr.log("patterns/duration", rr.Scalars([duration]))
+            rr.log(
+                "patterns/timeline", rr.TextLog(f"END: {pattern_name} ({duration} us)")
+            )
+            rr.log(
+                "log/all", rr.TextLog(f"[PATTERN] {pattern_name} ended ({duration} us)")
+            )
+
+            # DMA EOF
+            rr.log("dma/eof", rr.TextLog(f"EOF on channel 0"))
+            rr.log("dma/channel_0", rr.Scalars([1]))
+            rr.log("log/all", rr.TextLog(f"[DMA] EOF on channel 0 - PCNT reset"))
+
+            # Reset PCNT
             pcnt_counts = [0, 0, 0, 0]
 
-            # Log cycle complete
+            # Cycle complete
             cycle += 1
-            rr.log("etm/cycle/count", rr.Scalars([cycle]))
-            rr.log("etm/events/cycle", rr.TextLog(f"Cycle {cycle} complete"))
+            rr.log("cycles/count", rr.Scalars([cycle]))
+            rr.log("cycles/duration", rr.Scalars([duration]))
+            rr.log("cycles/log", rr.TextLog(f"Cycle {cycle} ({duration} us)"))
+            rr.log("log/all", rr.TextLog(f"[CYCLE] #{cycle} complete ({duration} us)"))
+
+            # Return to idle
+            step += 1
+            rr.set_time("step", sequence=step)
+            rr.log("state_machine/current", rr.Scalars([0]))
+            rr.log("state_machine/transitions", rr.TextLog(f"{new_state_name} -> IDLE"))
 
             time.sleep(0.1)
 
