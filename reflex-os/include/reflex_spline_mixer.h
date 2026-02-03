@@ -46,6 +46,7 @@
 #define REFLEX_SPLINE_MIXER_H
 
 #include <stdint.h>
+#include <math.h>
 
 #ifdef __cplusplus
 extern "C" {
