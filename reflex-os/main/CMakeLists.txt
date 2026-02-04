@@ -17,7 +17,7 @@
 
 idf_component_register(
     SRCS
-        "etm_stream_demo.c"
+        "state_machine_fabric.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
@@ -28,5 +28,6 @@ idf_component_register(
         esp_driver_rmt
         esp_driver_pcnt
         esp_driver_parlio
+        esp_driver_ledc
         esp_hw_support
     )
