@@ -17,7 +17,7 @@
 
 idf_component_register(
     SRCS
-        "state_machine_fabric.c"
+        "sleep_fabric.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
