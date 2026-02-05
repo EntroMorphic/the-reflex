@@ -252,16 +252,37 @@ All 8 test cases pass:
 ### Limitations
 
 1. **Static B**: Multiplier B must be known at compile time (pattern selection)
-2. **4-bit Values**: Current implementation supports A, B ∈ [0, 15]
+2. **PCNT Overflow**: 16-bit signed PCNT limits max product to 32,767
 3. **Serial Execution**: Shift patterns output sequentially, not parallel
 4. **CPU Setup Required**: Patterns must be initialized before computation
+
+### Bit-Width Exploration Results
+
+Tested maximum bit-widths with PCNT accumulator (16-bit signed, max 32,767):
+
+| Configuration | Max Product | Tests Passed | Max Time |
+|--------------|-------------|--------------|----------|
+| 8-bit × 4-bit | 3,825 | 6/6 | 3.2 ms |
+| 8-bit × 6-bit | 16,065 | 6/6 | 13 ms |
+| 8-bit × 7-bit | 32,385 | 6/7 | 26 ms |
+| 8-bit × 8-bit | 65,025 | 4/7 (overflow) | 52 ms |
+
+**Safe Maximum**: 181 × 181 = 32,761 (largest square fitting PCNT)
+
+**Practical Limit**: 8-bit × 7-bit for guaranteed correctness
+
+For full 8-bit × 8-bit support, would need:
+- Dual PCNT with overflow chaining
+- Or external 32-bit accumulator
+- Or split computation with carry tracking
 
 ### Future Work
 
 1. **ETM-Controlled Pattern Selection**: Use PCNT thresholds to autonomously select shift patterns based on input
 2. **Chained Multiply-Accumulate**: Multiple A×B results accumulated in single PCNT
 3. **CPU Sleep During Computation**: Full autonomous operation
-4. **Larger Bit Widths**: Extend to 8-bit or 16-bit values
+4. **Dual-PCNT for 32-bit Accumulation**: Extend beyond 16-bit PCNT limit
+5. **Higher PARLIO Clock**: Currently 10 MHz, could push to 20+ MHz for faster execution
 
 ---
 

@@ -17,7 +17,7 @@
 
 idf_component_register(
     SRCS
-        "shift_add_multiply.c"
+        "shift_add_8bit.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
