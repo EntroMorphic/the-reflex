@@ -17,7 +17,7 @@
 
 idf_component_register(
     SRCS
-        "spectral_double_cfc.c"
+        "spectral_ffn.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
