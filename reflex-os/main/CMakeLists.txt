@@ -17,7 +17,7 @@
 
 idf_component_register(
     SRCS
-        "etm_chained_multiply.c"
+        "parallel_dot_product.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
