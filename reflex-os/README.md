@@ -52,7 +52,29 @@ Reflex OS is not an operating system that runs on the ESP32-C6. Reflex OS **is**
 
 ---
 
-## Neural Computation (Feb 2, 2026)
+## Neural Computation (Feb 4, 2026)
+
+### Pulse Arithmetic Engine (Latest)
+
+The breakthrough: PCNT counts pulses = hardware addition. PARLIO transmits in parallel = parallel computation.
+
+| Implementation | Rate | Key Innovation |
+|----------------|------|----------------|
+| cfc_parallel_dot | 1249 Hz | Parallel 8-bit PARLIO + 4 PCNT units |
+| cfc_dual_channel | 964 Hz | True hardware pos/neg via dual PCNT channels |
+| spectral_double_cfc | 1100 Hz | Dual timescale (fast + slow networks) |
+| spectral_ffn | **5679 Hz** | Self-modifying coupling via coherence |
+| spectral_eqprop | 580 Hz / 274 Hz learn | **Equilibrium propagation learning** |
+
+**Equilibrium Propagation:** The backward pass IS the forward dynamics, perturbed. No separate gradient computation. Learning emerges from contrastive perturbation.
+
+**Learning Results:**
+- 2-pattern task: 21.5/256 avg error (94.5% of target separation)
+- Coupling matrix evolves from uniform 0.2 to asymmetric 0.01-0.98
+
+See [docs/PULSE_ARITHMETIC_ENGINE.md](docs/PULSE_ARITHMETIC_ENGINE.md) for full details.
+
+### Earlier Approaches
 
 | System | Rate | Neurons | Memory | CPU | Notes |
 |--------|------|---------|--------|-----|-------|
@@ -389,6 +411,7 @@ Low entropy = certainty = **LOOK AT THIS**.
 
 ## Related Documentation
 
+- [Pulse Arithmetic Engine](docs/PULSE_ARITHMETIC_ENGINE.md) - **5679 Hz inference, equilibrium propagation learning**
 - [The Silicon Grail](docs/SILICON_GRAIL.md) - Turing Complete ETM Fabric
 - [ETM Fabric CfC](docs/ETM_FABRIC_CFC.md) - 551 Hz hardware neural network
 - [Holographic Intelligence](docs/HOLOGRAPHIC_INTELLIGENCE.md) - Distributed mesh brain

@@ -1,6 +1,6 @@
 # The Reflex: Current Status
 
-**Last Updated:** February 1, 2026
+**Last Updated:** February 4, 2026
 
 ---
 
@@ -8,9 +8,9 @@
 
 The Reflex is a sub-microsecond coordination primitive for robotics. We've proven **926ns P99 latency** on Jetson AGX Thor, enabling 10kHz control loops that are **255x faster than baseline Linux**.
 
-**Current Focus:** Valentine's Day Demo (February 14, 2026) - 13 days remaining.
+**Current Focus:** Pulse Arithmetic Engine - hardware neural computation on ESP32-C6.
 
-**Latest:** THE SUMMIT - Zero external dependencies achieved. 12ns pure decision using only direct register access.
+**Latest:** Equilibrium propagation learning achieved on spectral oscillator network. 5679 Hz inference, 274 Hz learning. The backward pass IS the forward dynamics, perturbed.
 
 ---
 
@@ -34,6 +34,27 @@ The Reflex is a sub-microsecond coordination primitive for robotics. We've prove
 | stdio.h / printf | Direct USB Serial JTAG (0x6000F000) |
 
 **Result:** Zero libc functions. Zero ESP-IDF HAL. Just silicon.
+
+### Pulse Arithmetic Engine ✅ (Feb 3-4)
+
+Hardware neural computation using PCNT + PARLIO as computational substrate:
+
+| Implementation | Rate | Key Innovation |
+|----------------|------|----------------|
+| cfc_parallel_dot | 1249 Hz | Parallel 8-bit PARLIO + 4 PCNT units |
+| cfc_dual_channel | 964 Hz | True hardware pos/neg via dual PCNT channels |
+| spectral_double_cfc | 1100 Hz | Dual timescale (fast + slow networks) |
+| spectral_ffn | **5679 Hz** | Self-modifying coupling via coherence |
+| spectral_eqprop | 580 Hz / 274 Hz learn | **Equilibrium propagation learning** |
+
+**Key Discovery:** The hardware already does the math. PCNT counts pulses = addition. PARLIO transmits in parallel = parallel computation. Ternary weights eliminate multiply.
+
+**Learning Results:**
+- 2-pattern task: 21.5/256 avg error (94.5% of target separation)
+- 4-pattern task: 47.5/256 avg error
+- Coupling matrix evolves from uniform 0.2 to asymmetric 0.01-0.98
+
+See: [PULSE_ARITHMETIC_ENGINE.md](../reflex-os/docs/PULSE_ARITHMETIC_ENGINE.md)
 
 ### ROS2 Integration ✅ (NEW - Day 1)
 
@@ -199,7 +220,7 @@ All devices pass 6/6 pre-flight checks. C6 #1 running **spine_summit** (bare met
 
 ## Next Milestones
 
-1. **Feb 14, 2026:** Valentine's Day demo video
+1. **Pulse Arithmetic Engine:** Tune equilibrium propagation, test on temporal tasks
 2. **Q1 2026:** First robotics partner integration
 3. **Q2 2026:** Open source release (reflex-core)
 
