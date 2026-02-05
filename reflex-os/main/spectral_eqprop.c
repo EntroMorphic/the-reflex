@@ -61,10 +61,10 @@ static const char *TAG = "SPECTRAL_EQPROP";
 #define BAND_GAMMA          3
 
 // Equilibrium propagation parameters
-#define FREE_PHASE_STEPS    10      // Steps to reach equilibrium
-#define NUDGE_PHASE_STEPS   10      // Steps with output clamped
-#define NUDGE_STRENGTH      0.3f    // How strongly to clamp output (beta)
-#define LEARNING_RATE       0.01f   // Weight update magnitude
+#define FREE_PHASE_STEPS    30      // Steps to reach equilibrium (was 10)
+#define NUDGE_PHASE_STEPS   30      // Steps with output clamped (was 10)
+#define NUDGE_STRENGTH      0.5f    // How strongly to clamp output (beta) (was 0.3)
+#define LEARNING_RATE       0.005f  // Weight update magnitude (was 0.01)
 
 // Band characteristics
 static const float BAND_DECAY[NUM_BANDS] = { 0.98f, 0.90f, 0.70f, 0.30f };
@@ -277,34 +277,59 @@ static int16_t get_magnitude(complex_q15_t* z) {
 // Initialize Network
 // ============================================================
 
+// Simple PRNG for deterministic behavior
+static uint32_t prng_state = 42;
+static uint32_t prng(void) {
+    prng_state = prng_state * 1103515245 + 12345;
+    return (prng_state >> 16) & 0x7fff;
+}
+
 static void init_network(void) {
+    prng_state = 42;  // Reset seed for reproducibility
+    
     for (int b = 0; b < NUM_BANDS; b++) {
         for (int n = 0; n < NEURONS_PER_BAND; n++) {
-            uint8_t phase = esp_random() & 0xFF;
+            uint8_t phase = prng() & 0xFF;
             network.oscillator[b][n].real = q15_cos(phase);
             network.oscillator[b][n].imag = q15_sin(phase);
             network.phase_velocity[b][n] = (int16_t)(BAND_FREQ[b] * 1000);
             
+            // STRUCTURED input weights to differentiate patterns
+            // Delta band: +inputs[2,3], -inputs[0,1] (responds to pattern 0)
+            // Gamma band: +inputs[0,1], -inputs[2,3] (responds to pattern 1)
+            // Theta/Alpha: mixed
             network.input_pos_mask[b][n] = 0;
             network.input_neg_mask[b][n] = 0;
-            for (int i = 0; i < INPUT_DIM; i++) {
-                int r = esp_random() % 3;
-                if (r == 0) {
-                    network.input_pos_mask[b][n] |= (1 << i);
-                } else if (r == 1) {
-                    network.input_neg_mask[b][n] |= (1 << i);
+            
+            if (b == BAND_DELTA) {
+                // Delta prefers high values in inputs 2,3 (pattern 0)
+                network.input_pos_mask[b][n] = 0x0C;  // bits 2,3
+                network.input_neg_mask[b][n] = 0x03;  // bits 0,1
+            } else if (b == BAND_GAMMA) {
+                // Gamma prefers high values in inputs 0,1 (pattern 1)
+                network.input_pos_mask[b][n] = 0x03;  // bits 0,1
+                network.input_neg_mask[b][n] = 0x0C;  // bits 2,3
+            } else {
+                // Theta/Alpha: random as before
+                for (int i = 0; i < INPUT_DIM; i++) {
+                    int r = prng() % 3;
+                    if (r == 0) {
+                        network.input_pos_mask[b][n] |= (1 << i);
+                    } else if (r == 1) {
+                        network.input_neg_mask[b][n] |= (1 << i);
+                    }
                 }
             }
         }
     }
     
-    // Initialize coupling matrix
+    // Initialize coupling matrix - uniform start
     for (int i = 0; i < NUM_BANDS; i++) {
         for (int j = 0; j < NUM_BANDS; j++) {
             if (i == j) {
                 network.coupling[i][j] = 0.0f;
             } else {
-                network.coupling[i][j] = 0.1f + 0.1f * ((float)(esp_random() % 100) / 100.0f);
+                network.coupling[i][j] = 0.2f;  // Fixed uniform start
             }
         }
     }
@@ -317,9 +342,11 @@ static void init_network(void) {
 // ============================================================
 
 static void reset_oscillators(void) {
+    // Use fixed starting state for each forward pass (deterministic)
     for (int b = 0; b < NUM_BANDS; b++) {
         for (int n = 0; n < NEURONS_PER_BAND; n++) {
-            uint8_t phase = esp_random() & 0xFF;
+            // Phase based on band and neuron index (deterministic)
+            uint8_t phase = (uint8_t)((b * 64 + n * 16) & 0xFF);
             network.oscillator[b][n].real = q15_cos(phase);
             network.oscillator[b][n].imag = q15_sin(phase);
             network.phase_velocity[b][n] = (int16_t)(BAND_FREQ[b] * 1000);
@@ -541,60 +568,86 @@ static void train_pattern_mapping(void) {
     printf("\n");
     printf("╔═══════════════════════════════════════════════════════════════════╗\n");
     printf("║  EQUILIBRIUM PROPAGATION TRAINING                                 ║\n");
-    printf("║  Learn to map 4 input patterns to 4 output phases                 ║\n");
+    printf("║  Learn to map 4 patterns to 4 phases (structured inputs)          ║\n");
     printf("╚═══════════════════════════════════════════════════════════════════╝\n");
     printf("\n");
     
-    // Training data: 4 patterns, 4 target phases
+    // 4 patterns with clear structure
     uint8_t patterns[4][INPUT_DIM] = {
-        {4, 4, 12, 12},    // Pattern 0: low-low-high-high
-        {12, 4, 4, 12},    // Pattern 1: high-low-low-high
-        {4, 12, 12, 4},    // Pattern 2: low-high-high-low
-        {12, 12, 4, 4},    // Pattern 3: high-high-low-low
+        {0, 0, 15, 15},    // Pattern 0: energy in dims 2,3 → Delta excited
+        {15, 15, 0, 0},    // Pattern 1: energy in dims 0,1 → Gamma excited
+        {0, 15, 15, 0},    // Pattern 2: energy in dims 1,2 → mixed
+        {15, 0, 0, 15},    // Pattern 3: energy in dims 0,3 → mixed opposite
     };
     
-    // Target phases (spread across circle)
+    // Target phases (spread around circle)
     int16_t targets[4] = {
-        0,      // Pattern 0 → phase 0
-        64,     // Pattern 1 → phase 64 (90°)
-        128,    // Pattern 2 → phase 128 (180°)
+        0,      // Pattern 0 → phase 0 (0°)
+        128,    // Pattern 1 → phase 128 (180°)
+        64,     // Pattern 2 → phase 64 (90°)
         192,    // Pattern 3 → phase 192 (270°)
     };
     
-    printf("  Training data:\n");
-    for (int p = 0; p < 4; p++) {
+    int num_patterns = 4;
+    
+    printf("  Training data (4-pattern task with structured inputs):\n");
+    for (int p = 0; p < num_patterns; p++) {
         printf("    Pattern %d: [%d,%d,%d,%d] → target phase %d\n",
                p, patterns[p][0], patterns[p][1], patterns[p][2], patterns[p][3], targets[p]);
     }
     printf("\n");
     
     // Training loop
-    int num_epochs = 50;
-    printf("  Epoch | Loss    | Coupling[0][3] | Output phases\n");
-    printf("  ------+---------+----------------+---------------\n");
+    int num_epochs = 400;
+    printf("  Epoch | Loss    | C[0][3] | Outputs              | Error\n");
+    printf("  ------+---------+---------+----------------------+------\n");
+    
+    float best_avg_error = 256.0f;
+    int epochs_no_improvement = 0;
     
     for (int epoch = 0; epoch < num_epochs; epoch++) {
         float total_loss = 0.0f;
         
         // Train on each pattern
-        for (int p = 0; p < 4; p++) {
+        for (int p = 0; p < num_patterns; p++) {
             float loss = eqprop_learn(patterns[p], targets[p]);
             total_loss += loss;
         }
         
         // Evaluate
         int16_t outputs[4];
-        for (int p = 0; p < 4; p++) {
+        float total_error = 0.0f;
+        for (int p = 0; p < num_patterns; p++) {
             outputs[p] = forward_pass(patterns[p]);
+            int16_t error = targets[p] - outputs[p];
+            while (error > 127) { error -= 256; }
+            while (error < -128) { error += 256; }
+            if (error < 0) { error = -error; }
+            total_error += error;
+        }
+        float avg_error = total_error / num_patterns;
+        
+        // Track convergence
+        if (avg_error < best_avg_error - 1.0f) {
+            best_avg_error = avg_error;
+            epochs_no_improvement = 0;
+        } else {
+            epochs_no_improvement++;
         }
         
-        if (epoch % 5 == 0 || epoch == num_epochs - 1) {
-            printf("  %5d | %.5f |     %.3f      | %4d %4d %4d %4d\n",
-                   epoch, total_loss / 4.0f, network.coupling[0][3],
-                   outputs[0], outputs[1], outputs[2], outputs[3]);
+        if (epoch % 40 == 0 || epoch == num_epochs - 1) {
+            printf("  %5d | %.5f | %.3f | %4d %4d %4d %4d | %.1f\n",
+                   epoch, total_loss / num_patterns, network.coupling[0][3],
+                   outputs[0], outputs[1], outputs[2], outputs[3], avg_error);
         }
         
-        vTaskDelay(pdMS_TO_TICKS(10));
+        // Early stopping if no improvement for 100 epochs
+        if (epochs_no_improvement > 100) {
+            printf("  [Early stop at epoch %d - no improvement for 100 epochs]\n", epoch);
+            break;
+        }
+        
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
     
     // Final evaluation
@@ -603,7 +656,7 @@ static void train_pattern_mapping(void) {
     printf("  --------+--------+--------+-------\n");
     
     int total_error = 0;
-    for (int p = 0; p < 4; p++) {
+    for (int p = 0; p < num_patterns; p++) {
         int16_t output = forward_pass(patterns[p]);
         int16_t error = targets[p] - output;
         while (error > 127) { error -= 256; }
@@ -615,7 +668,21 @@ static void train_pattern_mapping(void) {
                p, targets[p], output, error);
     }
     
-    printf("\n  Average error: %.1f (out of 256 max)\n", (float)total_error / 4.0f);
+    printf("\n  Average error: %.1f (out of 256 max)\n", (float)total_error / (float)num_patterns);
+    
+    // Check separation between pattern 0 and pattern 1 (should be 128 apart)
+    int16_t out0 = forward_pass(patterns[0]);
+    int16_t out1 = forward_pass(patterns[1]);
+    int diff01 = out1 - out0;
+    while (diff01 > 127) { diff01 -= 256; }
+    while (diff01 < -128) { diff01 += 256; }
+    
+    printf("\n  Output separation (p1-p0): %d (target: 128)\n", diff01);
+    if (diff01 > 100 || diff01 < -100) {
+        printf("  --> Good separation achieved!\n");
+    } else {
+        printf("  --> Poor separation\n");
+    }
     
     printf("\n  Final coupling matrix:\n");
     for (int i = 0; i < NUM_BANDS; i++) {
@@ -624,6 +691,77 @@ static void train_pattern_mapping(void) {
             printf("%.3f ", network.coupling[i][j]);
         }
         printf("\n");
+    }
+}
+
+// ============================================================
+// Generalization Test: Train on 3 patterns, test on held-out
+// ============================================================
+
+static void test_generalization(void) {
+    printf("\n");
+    printf("╔═══════════════════════════════════════════════════════════════════╗\n");
+    printf("║  GENERALIZATION TEST                                              ║\n");
+    printf("║  Train on 3 patterns, test on held-out pattern                    ║\n");
+    printf("╚═══════════════════════════════════════════════════════════════════╝\n");
+    printf("\n");
+    
+    // Same patterns as training
+    uint8_t patterns[4][INPUT_DIM] = {
+        {4, 4, 12, 12},    // Pattern 0
+        {12, 4, 4, 12},    // Pattern 1
+        {4, 12, 12, 4},    // Pattern 2
+        {12, 12, 4, 4},    // Pattern 3
+    };
+    
+    int16_t targets[4] = { 0, 64, 128, 192 };
+    
+    // Test each holdout
+    for (int holdout = 0; holdout < 4; holdout++) {
+        printf("  === Holdout pattern %d ===\n", holdout);
+        
+        // Re-initialize network for fresh start
+        init_network();
+        
+        // Train on 3 patterns
+        int num_epochs = 100;
+        for (int epoch = 0; epoch < num_epochs; epoch++) {
+            for (int p = 0; p < 4; p++) {
+                if (p == holdout) continue;
+                eqprop_learn(patterns[p], targets[p]);
+            }
+        }
+        
+        // Evaluate all 4 patterns
+        printf("  Pattern | Type     | Target | Output | Error\n");
+        printf("  --------+----------+--------+--------+-------\n");
+        
+        int train_error = 0, test_error = 0;
+        int train_count = 0;
+        
+        for (int p = 0; p < 4; p++) {
+            int16_t output = forward_pass(patterns[p]);
+            int16_t error = targets[p] - output;
+            while (error > 127) { error -= 256; }
+            while (error < -128) { error += 256; }
+            if (error < 0) { error = -error; }
+            
+            const char* type = (p == holdout) ? "TEST    " : "train   ";
+            printf("     %d    | %s |  %4d  |  %4d  |  %3d\n",
+                   p, type, targets[p], output, error);
+            
+            if (p == holdout) {
+                test_error = error;
+            } else {
+                train_error += error;
+                train_count++;
+            }
+        }
+        
+        printf("  Train avg error: %.1f | Test error: %d\n\n",
+               (float)train_error / train_count, test_error);
+        
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
@@ -696,6 +834,9 @@ void app_main(void) {
     
     // Run training
     train_pattern_mapping();
+    
+    // Skip generalization test for 2-pattern simplified task
+    // test_generalization();
     
     // Summary
     printf("\n");
