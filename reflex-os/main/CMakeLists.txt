@@ -17,7 +17,7 @@
 
 idf_component_register(
     SRCS
-        "cfc_parallel_dot.c"
+        "falsify_cfc_parallel.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
