@@ -17,7 +17,7 @@
 
 idf_component_register(
     SRCS
-        "sleep_fabric.c"
+        "shift_add_multiply.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
