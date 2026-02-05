@@ -17,7 +17,7 @@
 
 idf_component_register(
     SRCS
-        "shift_add_overflow.c"
+        "etm_chained_multiply.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
