@@ -18,7 +18,7 @@
 
 idf_component_register(
     SRCS
-        "ternary_alu.c"
+        "geometry_layer.c"
     INCLUDE_DIRS
         "../include"
         "../shared"

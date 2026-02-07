@@ -24,4 +24,15 @@ __pycache__/
 
 # ESP-IDF build artifacts
 reflex-os/build/
+reflex-os/.cache/
 .coverage
+
+# Transient logs and captures
+esp32_monitor_output.txt
+reflex_*.txt
+
+# Firmware backups (binary blobs)
+backups/
+
+# Deploy scripts (local-only)
+silicon_grail_deploy.sh
