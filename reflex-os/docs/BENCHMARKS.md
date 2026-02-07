@@ -515,4 +515,39 @@ Network inference rate: ~46 inferences/second.
 
 ---
 
-*12ns GPIO. 118ns signals. 137ns splines. 108.8K trit-MACs/s. The hardware is fast. We just stopped slowing it down.*
+### Ternary CfC (Milestone 7)
+
+Fully-ternary CfC liquid neural network: 32 hidden neurons, 128-dim input, 160-dim concat. All {-1, 0, +1}.
+
+| Metric | Value |
+|--------|-------|
+| Inference rate | 6.7 Hz |
+| Time per step | 149,177 us |
+| Dot products per step | 64 (32 f-pathway + 32 g-pathway) |
+| Trits per dot product | 160 |
+| Hardware time per step | 97,619 us |
+| CPU blend time per step | ~51,558 us (overhead + inter-neuron gaps) |
+| Hardware utilization | 65% |
+| f-pathway accuracy | 32/32 (100% match CPU) |
+| g-pathway accuracy | 32/32 (100% match CPU) |
+
+### Ternary CfC Performance Projection
+
+| PARLIO Clock | Time/step | Inference Rate | Notes |
+|--------------|-----------|----------------|-------|
+| 1 MHz (current) | 149 ms | 6.7 Hz | Verified on silicon |
+| 10 MHz | ~15 ms | ~67 Hz | PCNT rated for 40 MHz |
+| 20 MHz | ~7.5 ms | ~134 Hz | Overhead-dominated |
+
+### Ternary CfC Temporal Dynamics
+
+| Property | Observed | Binary CfC comparison |
+|----------|----------|-----------------------|
+| Convergence with constant input | Still evolving at step 15 | Converges to fixed point quickly |
+| Blend mode distribution (8 steps) | 125 update, 14 hold, 117 invert | Update + hold only (no invert) |
+| Oscillation | Period-2 cycle confirmed | No intrinsic oscillation |
+| State energy (non-zero neurons) | 28-32 / 32 sustained | Tends toward sparse fixed point |
+
+---
+
+*12ns GPIO. 118ns signals. 137ns splines. 108.8K trit-MACs/s. 6.7 Hz ternary CfC. The hardware is fast. We just stopped slowing it down.*

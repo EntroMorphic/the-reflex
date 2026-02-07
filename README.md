@@ -21,6 +21,7 @@
 | **ESP32-C6** | Ternary TMUL | **9/9 tests** (ternary multiply via PCNT gating) |
 | **ESP32-C6** | 256-Trit Dot Product | **10/10 tests** (descriptor chain accumulation) |
 | **ESP32-C6** | Multi-Neuron Layer | **6/6 tests** (2-layer network, 108.8K trit-MACs/s) |
+| **ESP32-C6** | Ternary CfC | **6/6 tests** (liquid neural network, 3 blend modes, oscillation confirmed) |
 | **ESP32-C6** | Signal Path | GDMA → PARLIO(2-bit) → GPIO 4,5 → PCNT(agree/disagree) |
 
 ## What is The Reflex?
@@ -236,7 +237,7 @@ All numbers verified under adversarial testing with 100K+ samples. Zero catastro
 
 The deepest layer of The Reflex: **boolean logic gates evaluated entirely by peripheral hardware** while the CPU sits in a NOP loop.
 
-### Six Milestones Verified on Silicon
+### Seven Milestones Verified on Silicon
 
 Each milestone built on the last. Each was verified on a physical ESP32-C6FH4 (QFN32) rev v0.2 board. See [`docs/MILESTONE_PROGRESSION.md`](docs/MILESTONE_PROGRESSION.md) for the full narrative.
 
@@ -275,7 +276,20 @@ Throughput (32 neurons, dim=256):
 
 **File:** `reflex-os/main/geometry_layer.c`
 
-### The Signal Path (Current: Milestone 6)
+#### Milestone 7: Ternary CfC (6/6 tests)
+
+The first **fully-ternary CfC** (Closed-form Continuous-time) liquid neural network. Everything is {-1, 0, +1}: weights, inputs, hidden state, activations. Three blend modes: UPDATE (f=+1), HOLD (f=0), INVERT (f=-1). The inversion mode is unique — it creates natural inhibition and oscillatory dynamics that binary CfC cannot express.
+
+**Key finding:** Under constant input, the ternary CfC resists convergence (still evolving at step 15), unlike binary CfC which converges to a fixed point quickly. The sustained high-energy, uncommitted state resembles biological pluripotency — the stem cell analogy.
+
+```
+CfC update: h_new = (f==0) ? h_old : f * g    (ternary multiply)
+Performance: 6.7 Hz at 1MHz PARLIO, ~67 Hz projected at 10MHz
+```
+
+**File:** `reflex-os/main/geometry_cfc.c`
+
+### The Signal Path (Current: Milestone 7)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -332,7 +346,8 @@ The zero-interleave guarantees exactly one clean rising edge per non-zero trit, 
 
 ```
 reflex-os/main/
-├── geometry_layer.c       # M6: Multi-neuron layer (6/6 verified, current)
+├── geometry_cfc.c         # M7: Ternary CfC liquid network (6/6 verified, current)
+├── geometry_layer.c       # M6: Multi-neuron layer (6/6 verified)
 ├── geometry_dot.c         # M5: 256-trit dot product (10/10 verified)
 ├── ternary_alu.c          # M4: Ternary TMUL (9/9 verified)
 ├── autonomous_alu.c       # M3: Autonomous ALU (9/9 verified)

@@ -303,3 +303,25 @@ esp_rom_delay_us(10);
 This gives the same result as ETM-triggered DMA but with full descriptor chain support.
 
 **Discovered:** Milestone 5.
+
+## FreeRTOS / Memory (Milestone 7)
+
+### Large structs on FreeRTOS task stack cause Load access fault
+
+**Symptom:** `Guru Meditation Error: Core 0 panic'ed (Load access fault)` immediately on entering `app_main`. Stack dump shows all zeros.
+
+**Root cause:** The `ternary_cfc_t` struct (~16,450 bytes: `2 × 32 × 256` weight arrays + biases + hidden state) was allocated on the `app_main` task stack. The default ESP-IDF main task stack is 3,584 bytes. Stack overflow corrupts memory and triggers a load access fault.
+
+**Workaround:** Declare large structs as `static` so they go in BSS (SRAM) instead of the task stack. This costs nothing — BSS is zero-initialized at boot and persists for the lifetime of the program.
+
+```c
+// BAD: 16KB on the 3.5KB task stack → crash
+ternary_cfc_t cfc;
+
+// GOOD: 16KB in BSS (SRAM) → zero stack cost
+static ternary_cfc_t cfc;
+```
+
+**Alternative:** Increase main task stack via `CONFIG_ESP_MAIN_TASK_STACK_SIZE` in sdkconfig. But `static` is simpler and doesn't waste stack space.
+
+**Discovered:** Milestone 7.

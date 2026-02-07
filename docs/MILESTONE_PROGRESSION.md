@@ -106,17 +106,63 @@ Six milestones verified on silicon. Each built on the last. Each was verified on
 
 ---
 
+## Milestone 7: Ternary CfC — Closed-form Continuous-time Liquid Network
+
+**Tests:** 6/6 | **File:** `reflex-os/main/geometry_cfc.c`
+
+**What it proved:** The first fully-ternary CfC (Closed-form Continuous-time) liquid neural network. Everything is {-1, 0, +1}: weights, inputs, hidden state, activations. No binary activations. No floating point. No sigmoid LUTs.
+
+**CfC update equation (ternary):**
+```
+concat = [input | hidden]                      // implicit in weight layout
+f[n]   = sign(dot(concat, W_f[n]) + b_f[n])   // gate trit:      {-1, 0, +1}
+g[n]   = sign(dot(concat, W_g[n]) + b_g[n])   // candidate trit: {-1, 0, +1}
+h_new  = (f == 0) ? h_old : f * g             // ternary blend
+```
+
+**Three blend modes (the key novelty):**
+- **f = +1 (UPDATE):** Accept candidate. Excitatory — follow the evidence.
+- **f =  0 (HOLD):** Keep current state. Memory — maintain belief.
+- **f = -1 (INVERT):** Negate candidate. Inhibitory — actively oppose the evidence.
+
+The inversion mode is unique to ternary CfC. Binary CfC (Hasani et al.) has only update and hold. The third mode creates natural inhibition and oscillatory dynamics that binary CfC cannot express as a first-class operation.
+
+**Zero-copy concatenation:** The weight matrix layout `W[0..input_dim-1]` maps to input, `W[input_dim..concat_dim-1]` maps to hidden state. No concat buffer is allocated or copied. The pre-multiply loop walks input[] and hidden[] directly from their permanent SRAM locations. The "concatenation" is a compile-time convention, not a runtime operation.
+
+**Hardware mapping:**
+- GIE computes all dot products (64 per step: 32 for f-pathway, 32 for g-pathway)
+- CPU does blend: `tmul(f, g)` + conditional store (~3 instructions per neuron)
+- Dimensions: input=128, hidden=32, concat=160 (2 DMA buffers)
+
+**Novel findings verified on silicon:**
+1. **Inversion creates oscillation:** Test 6 confirmed period-2 limit cycles from inhibitory neurons. 32 inversions across 8 steps with constant input. Binary CfC converges to a fixed point; ternary CfC oscillates.
+2. **Convergence resistance:** Test 5 showed the network still evolving at step 15 with constant input (delta=5, energy=32/32). The inversion mode prevents collapse into a static attractor.
+3. **Stem cell analogy:** The sustained high-energy, uncommitted state under constant stimulus resembles biological pluripotency. The three modes map to differentiation (update), quiescence (hold), and self-renewal (invert). See `notes/lmm/ternary_cfc_stem_cell.md`.
+
+**Performance at 1MHz PARLIO:**
+- 6.7 Hz inference (149ms/step, 64 dot products × 160 trits each)
+- Projected at 10MHz: ~67 Hz
+- Projected at 20MHz: ~134 Hz
+
+**Errata:** `ternary_cfc_t` struct (~16KB) causes stack overflow when allocated on the default FreeRTOS task stack (3.5KB). Resolution: declare as `static` (BSS segment).
+
+---
+
 ## What's Next
 
-### Milestone 7: Self-Sequencing Fabric
+### Milestone 8: Self-Sequencing Fabric
 
 REGDMA advances descriptor chain pointers between neuron evaluations. ETM topology reconfigures between phases. LP core manages inter-layer sequencing. Main CPU sleeps during inference.
 
 **Blocking unknown:** Can REGDMA target GDMA descriptor pointer registers? Can it be triggered by ETM?
 
-### Milestone 8: Performance Optimization
+### Milestone 9: Performance Optimization
 
-Increase PARLIO clock to 10-20 MHz. Verify PCNT edge counting at higher rates. Target: 1M+ trit-MACs/s.
+Increase PARLIO clock to 10-20 MHz. Verify PCNT edge counting at higher rates. Target: 1M+ trit-MACs/s. At 10MHz, ternary CfC reaches ~67 Hz — useful for real-time sensor fusion.
+
+### Milestone 10: Differentiation Experiment
+
+Test the stem cell hypothesis: run ternary CfC with constant input until it reaches its "stem" regime (sustained dynamics), then hit it with a sharp input change and measure convergence time to a new attractor. This would be the in-silico analog of applying a differentiation factor to a stem cell culture.
 
 ---
 
@@ -132,10 +178,11 @@ Increase PARLIO clock to 10-20 MHz. Verify PCNT edge counting at higher rates. T
 | M3 | LEDC timer unresumable after ETM pause | Use PCNT ISR instead of LEDC for result detection |
 | M5 | GDMA LINK_START leaks to PARLIO FIFO | Triple PCNT clear with delays |
 | M6 | ESP32-C6 RMT has no DMA support | Keep Y static; pre-multiply W×X on CPU |
+| M7 | `ternary_cfc_t` stack overflow (~16KB on 3.5KB stack) | Declare structs as `static` (BSS segment) |
 
 ---
 
-## GPIO Pin Map (Milestone 6)
+## GPIO Pin Map (Milestone 7 — unchanged from M6)
 
 | GPIO | Function | Direction |
 |------|----------|-----------|
@@ -146,7 +193,7 @@ Increase PARLIO clock to 10-20 MHz. Verify PCNT edge counting at higher rates. T
 | 8 | Classification: positive | Output |
 | 9 | Classification: negative | Output |
 
-## Peripheral Allocation (Milestone 6)
+## Peripheral Allocation (Milestone 7 — unchanged from M6)
 
 | Peripheral | Usage |
 |------------|-------|

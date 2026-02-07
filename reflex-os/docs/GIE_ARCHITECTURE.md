@@ -12,7 +12,7 @@ Level 2: CHANNELS    — DMA, PARLIO, GPIO (move/transform shapes)
 Level 1: MANIFOLDS   — PCNT units (measure intersections)
 ```
 
-### Level 1: Single-Unit Pipeline (Milestones 4-6, verified)
+### Level 1: Single-Unit Pipeline (Milestones 4-7, verified)
 
 PARLIO(X) + static Y → PCNT → result. Single dot product per evaluation. CPU pre-multiplies W×X and encodes the product into DMA buffers.
 
@@ -23,11 +23,19 @@ PARLIO(X) + static Y → PCNT → result. Single dot product per evaluation. CPU
 - GDMA CH0: PARLIO data
 - GPTimer 0: kickoff (ETM-enabled)
 
-### Level 2: Dual-Channel Engine (planned, Milestone 7)
+### Level 1.5: Ternary CfC Layer (Milestone 7, verified)
+
+GIE dot products + CfC temporal dynamics. The GIE computes 2N dot products per step (N for gate pathway, N for candidate pathway). The CPU applies the ternary CfC blend: `h_new = (f==0) ? h_old : f*g`. Three blend modes: UPDATE (f=+1), HOLD (f=0), INVERT (f=-1).
+
+**Zero-copy concatenation:** Weight layout encodes concatenation statically. `W[0..input_dim-1]` pairs with input, `W[input_dim..concat_dim-1]` pairs with hidden state. No runtime buffer copy.
+
+**Novel dynamics:** The inversion mode (f=-1) creates natural oscillation and convergence resistance — the network maintains a high-energy uncommitted state under constant stimulus (analogous to biological pluripotency).
+
+### Level 2: Dual-Channel Engine (planned, Milestone 8)
 
 REGDMA advances descriptor pointers between neuron evaluations. ETM auto-restart loop: GDMA EOF → Timer reload → GDMA start (next neuron). Multiple neurons sequence without CPU.
 
-### Level 3: Self-Sequencing Fabric (planned, Milestone 7-8)
+### Level 3: Self-Sequencing Fabric (planned, Milestone 8-9)
 
 LP core manages inter-layer logic. Main CPU sleeps. REGDMA advances descriptor tables. ETM topology reconfigures between phases.
 
@@ -51,7 +59,11 @@ Each trit occupies 2 dibit slots: (value, then 00). This guarantees one clean ri
 
 ### 5. 1 MHz clock (conservative, upgradeable)
 
-PARLIO runs at 1 MHz. PCNT is rated for 40 MHz. Increasing to 10-20 MHz gives 10-20x throughput with no architectural change. This is deferred to Milestone 8.
+PARLIO runs at 1 MHz. PCNT is rated for 40 MHz. Increasing to 10-20 MHz gives 10-20x throughput with no architectural change. This is deferred to Milestone 9.
+
+### 6. Zero-copy concatenation (Milestone 7)
+
+CfC networks concatenate input and hidden state as `[input | hidden]` before computing dot products. Rather than copying into a temporary buffer (~160 bytes memcpy), the weight matrix layout encodes the concatenation: `W[0..127]` multiplies with `input[0..127]`, `W[128..159]` multiplies with `hidden[0..31]`. The pre-multiply loop walks both arrays directly from their permanent SRAM locations. The "concatenation" is a compile-time convention, not a runtime operation.
 
 ## Encoding Detail
 
@@ -106,3 +118,5 @@ The real win at higher clock rates is for large vectors (1024+ trits).
 | 256-neuron layer weights | 16 KB | 256 × 64 bytes |
 | 8 DMA buffers | 512 bytes | Reused across neurons |
 | SRAM available | 512 KB | Fits ~30 layers of 256×256 |
+| CfC layer (32 hidden, 160 concat) | ~16 KB | 2 × 32 × 256 weights + biases + hidden |
+| CfC step working memory | 0 bytes | Zero-copy concat; product buffer on stack (~256B) |

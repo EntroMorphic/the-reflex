@@ -8,9 +8,9 @@
 
 The Reflex is a sub-microsecond coordination primitive for robotics. We've proven **926ns P99 latency** on Jetson AGX Thor, enabling 10kHz control loops that are **255x faster than baseline Linux**.
 
-**Current Focus:** Geometry Intersection Engine — ternary dot product neural computation on ESP32-C6 peripheral fabric.
+**Current Focus:** Ternary CfC — the first fully-ternary liquid neural network on the Geometry Intersection Engine.
 
-**Latest:** Milestone 6 verified on silicon (Feb 7, 2026). Multi-neuron layer evaluation: 2-layer feedforward network (8→4 neurons) runs end-to-end. 108.8K trit-MACs/s at 1MHz PARLIO. 6/6 tests pass, all matching CPU reference.
+**Latest:** Milestone 7 verified on silicon (Feb 7, 2026). Ternary CfC: 32-neuron liquid network with three blend modes (UPDATE, HOLD, INVERT). 6/6 tests pass. All 64 dot products per step match CPU reference exactly across 4 consecutive temporal steps. Inversion mode creates oscillation and convergence resistance — a novel dynamical property absent from binary CfC. The "stem cell analogy": the network maintains pluripotent uncommitted state under constant stimulus.
 
 ---
 
@@ -47,8 +47,9 @@ Six milestones verified on silicon, progressing from boolean gates to multi-neur
 | M4: Ternary TMUL | 9/9 | 2-bit PARLIO + dual PCNT = ternary multiply |
 | M5: 256-Trit Dot Product | 10/10 | Descriptor chain accumulation, zero-interleave encoding |
 | M6: Multi-Neuron Layer | 6/6 | 2-layer feedforward network, 108.8K trit-MACs/s |
+| M7: Ternary CfC | 6/6 | Fully-ternary liquid network, 3 blend modes, oscillation confirmed |
 
-**Key Discovery:** The peripheral fabric computes ternary dot products — the fundamental operation of neural network inference — while the CPU does almost nothing. 20+ hardware errata discovered and documented.
+**Key Discovery:** The peripheral fabric computes ternary dot products — the fundamental operation of neural network inference — while the CPU does almost nothing. The ternary CfC adds a third blend mode (INVERT) that creates natural inhibition, oscillation, and convergence resistance — properties absent from binary CfC. 20+ hardware errata discovered and documented.
 
 See: [MILESTONE_PROGRESSION.md](MILESTONE_PROGRESSION.md)
 
@@ -222,8 +223,9 @@ All devices pass 6/6 pre-flight checks. C6 #1 running **spine_summit** (bare met
 
 ## Next Milestones
 
-1. **GIE Milestone 7:** Self-sequencing fabric — REGDMA + LP core for autonomous multi-layer inference
-2. **GIE Milestone 8:** Performance — increase PARLIO clock to 10-20 MHz, target 1M+ trit-MACs/s
+1. **GIE Milestone 8:** Self-sequencing fabric — REGDMA + LP core for autonomous multi-layer inference
+2. **GIE Milestone 9:** Performance — increase PARLIO clock to 10-20 MHz, target 1M+ trit-MACs/s, ternary CfC at ~67-134 Hz
+3. **Differentiation experiment:** Test stem cell hypothesis — constant input → "stem" regime → sharp input change → measure commitment speed
 3. **Q1 2026:** First robotics partner integration
 4. **Q2 2026:** Open source release (reflex-core)
 
