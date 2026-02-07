@@ -16,8 +16,9 @@
 |----------|--------|--------|
 | **Jetson Thor** | P99 Latency | **926 ns** (255x improvement over baseline) |
 | **Jetson Thor** | Control Rate | **10 kHz** sustained |
-| **ESP32-C6** | Autonomous State Transitions | **5004 in 500ms** (CPU idle) |
-| **ESP32-C6** | Peripherals Used | ETM + GDMA + PARLIO + PCNT + LEDC (no CPU) |
+| **ESP32-C6** | Sub-CPU ALU | **59/59 tests** (CPU-orchestrated gates) |
+| **ESP32-C6** | Autonomous ALU | **9/9 tests** (CPU in NOP loop during evaluation) |
+| **ESP32-C6** | Signal Path | Timer → ETM → GDMA → PARLIO → GPIO → PCNT → LEDC |
 
 ## What is The Reflex?
 
@@ -58,7 +59,9 @@ the-reflex/
 │
 ├── reflex-os/                # THE REFLEX BECOMES THE ESP32-C6
 │   ├── main/
-│   │   └── raid_etm_fabric.c # Autonomous computation fabric (5/5 verified)
+│   │   ├── autonomous_alu.c  # Autonomous ALU (9/9 verified, CPU in NOP loop)
+│   │   ├── alu_fabric.c      # Sub-CPU ALU (59/59 verified, CPU-orchestrated)
+│   │   └── raid_etm_fabric.c # Autonomous fabric (5/5, ETM addrs wrong)
 │   ├── include/
 │   │   ├── reflex.h          # Core primitive (50 lines)
 │   │   ├── reflex_gpio.h     # GPIO channels (12ns)
@@ -215,7 +218,7 @@ The hardware already maintains cache coherency. We're just using it.
 | Platform | Architecture | Processing Time | Under Stress | 10kHz Control |
 |----------|--------------|-----------------|--------------|---------------|
 | **Jetson AGX Thor** | 14-core ARM | 309 ns | 366 ns (+18%) | ✅ 926ns P99 |
-| **ESP32-C6** | RISC-V | 87 ns (ideal) / 187 ns (realistic) | 5.5 μs max | ✅ 10kHz verified |
+| **ESP32-C6** | RISC-V | 87 ns (ideal) / 187 ns (realistic) | 5.5 μs max | ✅ 10kHz + autonomous ALU (9/9) |
 | Raspberry Pi 4 | 4-core ARM | 167 ns | - | ✅ (untested) |
 | x86_64 Linux | Intel/AMD | ✅ works | - | ⚠️ (no isolcpus test) |
 
@@ -225,34 +228,109 @@ All numbers verified under adversarial testing with 100K+ samples. Zero catastro
 
 ## The Silicon Grail: Autonomous Hardware Computation
 
-The deepest layer of The Reflex: **Turing-complete computation in the peripheral fabric** while the CPU sleeps.
+The deepest layer of The Reflex: **boolean logic gates evaluated entirely by peripheral hardware** while the CPU sits in a NOP loop.
 
-### The Discovery
+### Three Milestones Verified on Silicon
 
-The ESP32-C6's ETM (Event Task Matrix) + PCNT (Pulse Counter) + GDMA + PARLIO form a **computational substrate** that runs autonomously:
+Each milestone built on the last. Each was verified on a physical ESP32-C6FH4 (QFN32) rev v0.2 board.
+
+#### Milestone 1: Sub-CPU ALU (59/59 tests)
+
+CPU orchestrates peripherals to implement logic gates. PCNT level-gated edge counting implements AND, OR, XOR, NOT, SHL/SHR, 2-bit ADD, 2-bit MUL, NAND/NOR. The CPU triggers each operation and reads the result — but the *computation* happens in PCNT hardware.
+
+```
+CPU triggers → PARLIO TX → GPIO 4,5 → PCNT counts edges → CPU reads result
+```
+
+**File:** `reflex-os/main/alu_fabric.c` | **Commit:** `f41d5ea`
+
+#### Milestone 2: Autonomous Computation Fabric (5/5 tests)
+
+First proof that the peripheral loop can run without CPU intervention. ETM crossbar wires Timer → GDMA → PARLIO → GPIO → PCNT → ETM feedback. 5004 state transitions in 500ms with CPU in NOP loop.
+
+**File:** `reflex-os/main/raid_etm_fabric.c` | **Commit:** `5b2f62d`
+
+**Note:** This milestone used incorrect ETM register addresses (0x600B8000 instead of 0x60013000). The "autonomous" transitions actually came from PCNT ISR callbacks, not true ETM crossbar routing. Discovered and corrected in Milestone 3.
+
+#### Milestone 3: Autonomous ALU (9/9 tests)
+
+The real thing. CPU configures peripherals, loads pattern buffers into SRAM as DMA descriptors, kicks a timer, and enters a NOP loop. All gate evaluation runs in hardware:
+
+```
+Timer alarm → ETM → GDMA start → PARLIO TX → GPIO 4,5 →
+PCNT level-gated counting → PCNT threshold → ISR callback (result)
+```
+
+**9 tests verified:**
+
+| Test | Input | Expected | Result |
+|------|-------|----------|--------|
+| AND(1,1) | A toggles, B=HIGH | TRUE | and=63, trans=1 |
+| AND(1,0) | A toggles, B=LOW | FALSE | and=10, trans=0 |
+| AND(0,1) | A=LOW, B toggles | FALSE | and=0, trans=0 |
+| AND(0,0) | Both LOW | FALSE | and=0, trans=0 |
+| XOR(1,0) | A toggles, B=LOW | TRUE | xor=32, trans=1 |
+| XOR(0,1) | A=LOW, B toggles | TRUE | xor=38, trans=1 |
+| XOR(1,1) | Both toggle (packed) | FALSE | xor=7, trans=0 |
+| XOR(0,0) | Both LOW | FALSE | xor=0, trans=0 |
+| **Chain** | **XOR(1,0) → AND(1,1)** | **Both fire** | **xor=34, and=63, trans=2** |
+
+The chain test proves autonomous instruction sequencing: GDMA follows a linked list of two descriptors, executing XOR then AND evaluation without any CPU involvement.
+
+**File:** `reflex-os/main/autonomous_alu.c` | **Commit:** `59d0bba`
+
+### The Signal Path
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    THE PUNCHCARD COMPUTER                       │
+│                    AUTONOMOUS ALU                                │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│   DMA Buffer 0 ──┐                                              │
-│   DMA Buffer 1 ──┼──► PARLIO ──► GPIO ──► PCNT ──► Thresholds   │
-│   DMA Buffer 2 ──┘                           │          │       │
-│        ▲                                     │          │       │
-│        │                                     ▼          ▼       │
-│        └──────────────── ETM ◄───────────────┴──────────┘       │
-│                                                                 │
-│   Each DMA buffer is a PUNCHCARD (frozen instruction)           │
-│   PCNT accumulates state                                        │
-│   Thresholds SELECT which card runs next                        │
-│   THE CARDS SELECT THE NEXT CARD                                │
-│                                                                 │
-│   CPU: Configure once → Start → SLEEP                           │
-│   Hardware: Compute indefinitely                                │
+│   SRAM patterns ──► GDMA ──► PARLIO TX ──► GPIO 4,5            │
+│   (DMA descriptors)              │              │               │
+│                                  │              ▼               │
+│                                  │         PCNT units           │
+│                                  │         (level-gated         │
+│                                  │          edge counting)      │
+│                                  │              │               │
+│   Timer alarm ──► ETM ──────────►│         threshold ──► ISR    │
+│   (kickoff)       (crossbar)     │         (gate = TRUE)        │
+│                                  │                              │
+│   CPU: configure → start timer → NOP loop → read results       │
+│   Hardware: everything between start and read                   │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+### What We Learned the Hard Way
+
+Building this required fighting the hardware at every step. Six new errata were discovered and documented in `reflex-os/docs/HARDWARE_ERRATA.md`:
+
+**ETM register addresses were wrong everywhere.** The base is `0x60013000`, not `0x600B8000`. The CLK_EN register is at `+0x1A8`, not `+0x00`. The PCR ETM conf is at `PCR_BASE+0x98`, not `+0x90`. These were wrong in ESP-IDF examples and cost days of debugging.
+
+**IDF startup disables the ETM bus clock.** `clk.c` line 270 calls `etm_ll_enable_bus_clock(0, false)`. You must re-enable via PCR before touching any ETM register, or reads return garbage and writes are silently dropped.
+
+**GDMA LINK_START leaks data despite ETM_EN.** Setting `GDMA_LINK_START_BIT` with `ETM_EN_BIT` causes immediate data transfer, not deferred. ~10-17 stray PCNT edges appear before the ETM-triggered start. Fix: defer PARLIO `TX_START` until after PCNT is cleared, so leaked FIFO data doesn't drive GPIOs.
+
+**PARLIO nibble boundaries create PCNT glitch counts.** When PARLIO shifts between 4-bit nibbles within a byte, GPIO transitions create brief glitch states that PCNT registers as real edges (~6-17 counts). Fix: set PCNT watch threshold to 25 (above noise floor, below real counts of 32/63).
+
+**GDMA with ETM_EN won't auto-follow linked list descriptors.** Each `TASK_GDMA_START` processes one descriptor then stops. The linked list `next` pointer is ignored. Fix: for descriptor chaining, use normal GDMA mode (no `ETM_EN`) where GDMA auto-follows the linked list.
+
+**LEDC timer cannot be resumed after ETM-triggered pause.** Once ETM fires `TASK_LEDC_T0_PAUSE`, the timer stays frozen permanently. Neither `ledc_timer_resume()` nor full reconfiguration restarts it. Workaround: use PCNT ISR callbacks instead of LEDC for result detection.
+
+### Pattern Encoding
+
+PARLIO 4-bit mode packs 2 nibbles per byte. Lower nibble (bits 3:0) maps to GPIO 4-7 first, upper nibble (bits 7:4) second.
+
+| Pattern | Encoding | Purpose |
+|---------|----------|---------|
+| `pat_and_11` | all `0x23` | B=HIGH stable, A toggles → AND=63 |
+| `pat_and_10` | alt `0x01/0x00` | A toggles, B=0 → AND=0 |
+| `pat_xor_10` | alt `0x01/0x00` | A toggles, B=0 → XOR=32 |
+| `pat_xor_01` | alt `0x02/0x00` | B toggles, A=0 → XOR=38 |
+| `pat_null` | all `0x00` | Both LOW → all gates=0 |
+
+PCNT AND unit: count A edges when B=HIGH (level-gate). PCNT XOR unit: 2 channels — (A edges when B=LOW) + (B edges when A=LOW).
 
 ### What Makes This Different
 
@@ -261,70 +339,28 @@ The ESP32-C6's ETM (Event Task Matrix) + PCNT (Pulse Counter) + GDMA + PARLIO fo
 | Neuromorphic (Loihi, TrueNorth) | Spiking NN | Custom ASIC, $$$$ |
 | FPGA | Reconfigurable | Expensive, power hungry |
 | TinyML | Edge AI | Still CPU-centric |
-| **The Silicon Grail** | **Ours** | **$3 commodity MCU, CPU sleeps** |
+| **Autonomous ALU** | **Ours** | **$3 commodity MCU, CPU in NOP loop** |
 
-### Verified Results
+### Key Insight
 
-| Test | Status | Details |
-|------|--------|---------|
-| Pulse Matmul | ✓ PASS | 4×4 ternary weights, 100% accuracy |
-| XOR Voxel Cube | ✓ PASS | 64 voxels, interference detection |
-| Temporal State Machine | ✓ PASS | 3-layer NN, CPU-free, 2.8× faster |
-| Turing Completeness | ✓ PROVEN | Conditional branching in pure silicon |
-
-### The 4³ Temporal Voxel Architecture
-
-```
-         Time (Layer)
-              ↑
-              │   Layer 2: Output classification
-              │   Layer 1: Hidden transformation
-              │   Layer 0: Input encoding
-              │
-    Input ────┼────► Output
-   (GPIO)     │     (PCNT)
-              │
-         4 channels × 4 accumulators × 4 phases = 64 voxels
-```
-
-**State is encoded in TIME, not registers.** When thresholds cross defines computation. The order of crossings encodes state transitions.
-
-### The Punchcard Model
-
-Each DMA buffer is a **shape** - a frozen instruction:
-
-| Shape | Effect | Purpose |
-|-------|--------|---------|
-| `shape_input` | +N counts | Encode sensor data |
-| `shape_amplify` | +2N counts | Boost signal |
-| `shape_inhibit` | +0 counts | Suppress pathway |
-| `shape_invert` | -N counts | Negate via channel 2 |
-| `shape_compare` | Sparse pulses | Test threshold |
-
-**The SEQUENCE of shapes is the PROGRAM.**
-**The THRESHOLDS are the CONTROL FLOW.**
-**The ACCUMULATED COUNT selects the next shape.**
-
-Unlike Jacquard looms, unlike Hollerith machines, unlike ENIAC:
-> **The cards select the next card. That's computation.**
+> *"We found computation hiding in the peripheral fabric."*
+>
+> PCNT was designed to count encoder pulses. PARLIO was designed for LCD interfaces. GDMA was designed for data transfer. ETM was designed to reduce interrupt latency.
+>
+> Together, they form a boolean ALU that runs while the CPU sleeps.
 
 ### Files
 
 ```
 reflex-os/main/
-├── silicon_grail_wired.c    # ETM Turing completeness proof
-├── pulse_matmul_poc.c       # Pulse-mode matrix multiplication
-├── xor_voxel_poc.c          # XOR interference detection
-└── temporal_voxel.c         # 3-layer temporal state machine
+├── autonomous_alu.c      # Autonomous ALU (9/9 verified) — the current milestone
+├── alu_fabric.c           # Sub-CPU ALU (59/59 verified) — reference implementation
+└── raid_etm_fabric.c      # Autonomous fabric (5/5 verified, ETM addrs wrong)
+
+reflex-os/docs/
+├── HARDWARE_ERRATA.md     # 15+ errata discovered during development
+└── REGISTER_REFERENCE.md  # Correct bare-metal register addresses
 ```
-
-### Key Insight
-
-> *"We found computation hiding in the interrupt controller."*
->
-> Everyone uses ETM to connect peripherals. No one uses it as a computer.
-
-See [`docs/THE_REFLEX.md`](docs/THE_REFLEX.md) for the full manifesto.
 
 ---
 
