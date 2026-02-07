@@ -456,4 +456,63 @@ The benchmark suite runs automatically on boot.
 
 ---
 
-*12ns GPIO. 118ns signals. 137ns splines. The hardware is fast. We just stopped slowing it down.*
+---
+
+## Geometry Intersection Engine (Milestones 5-6)
+
+Ternary dot product computation via peripheral fabric: GDMA → PARLIO(2-bit, 1MHz) → GPIO → PCNT.
+
+### Dot Product Latency (Milestone 5)
+
+| Vector Size | Buffers | Hardware Time | Throughput |
+|-------------|---------|---------------|------------|
+| 128 trits | 1 × 64B | 1013 us | 126K trits/s |
+| 256 trits | 2 × 64B | 1525 us | 168K trits/s |
+| 512 trits | 4 × 64B | 2550 us | 201K trits/s |
+
+**Note:** Larger vectors are more efficient due to amortized DMA setup overhead.
+
+### Layer Evaluation (Milestone 6)
+
+| Configuration | HW Time/Neuron | Total Time/Neuron | Throughput |
+|---------------|----------------|-------------------|------------|
+| 8 neurons, dim=128 | 1013 us | 1818 us | 550 neurons/s |
+| 16 neurons, dim=256 | 1525 us | 2353 us | 425 neurons/s |
+| 32 neurons, dim=256 | 1525 us | 2353 us | 425 neurons/s |
+
+### Aggregate Throughput (32 neurons, dim=256)
+
+| Metric | Value |
+|--------|-------|
+| Neurons per second | 425 |
+| Trit-MACs per second | 108,800 (108.8K) |
+| Hardware utilization | 65% (1525/2353 us) |
+| CPU prep per neuron | ~828 us (pre-multiply + encode) |
+
+### Time Breakdown (single neuron, dim=256)
+
+| Phase | Time | % |
+|-------|------|---|
+| CPU pre-multiply W×X | ~1 us | <0.1% |
+| CPU encode to DMA buffer | ~50 us | 2.1% |
+| GDMA setup + PARLIO reset | ~500 us | 21.3% |
+| PCNT clear (triple) | ~300 us | 12.8% |
+| PARLIO TX (data on wire) | ~1025 us | 43.5% |
+| PCNT read + cleanup | ~477 us | 20.3% |
+| **Total** | **~2353 us** | **100%** |
+
+**Bottleneck:** PARLIO clock speed (1 MHz). At 10 MHz, the TX phase drops from 1025 us to ~103 us, and total neuron time drops to ~1430 us — a 1.6x improvement. At 20 MHz, ~1380 us. The DMA setup and PCNT clear overhead become dominant at higher clock rates.
+
+### 2-Layer Network (8→4 neurons, dim=128)
+
+| Layer | Neurons | HW Time | Total Time |
+|-------|---------|---------|------------|
+| Layer 1 | 8 × dim=128 | 8105 us | ~14.5 ms |
+| Layer 2 | 4 × dim=8 | 4053 us | ~7.2 ms |
+| **Network** | **12 total** | **12158 us** | **~21.7 ms** |
+
+Network inference rate: ~46 inferences/second.
+
+---
+
+*12ns GPIO. 118ns signals. 137ns splines. 108.8K trit-MACs/s. The hardware is fast. We just stopped slowing it down.*

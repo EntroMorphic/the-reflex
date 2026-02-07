@@ -1,6 +1,6 @@
 # The Reflex: Current Status
 
-**Last Updated:** February 4, 2026
+**Last Updated:** February 7, 2026
 
 ---
 
@@ -8,9 +8,9 @@
 
 The Reflex is a sub-microsecond coordination primitive for robotics. We've proven **926ns P99 latency** on Jetson AGX Thor, enabling 10kHz control loops that are **255x faster than baseline Linux**.
 
-**Current Focus:** Pulse Arithmetic Engine - hardware neural computation on ESP32-C6.
+**Current Focus:** Geometry Intersection Engine — ternary dot product neural computation on ESP32-C6 peripheral fabric.
 
-**Latest:** Equilibrium propagation learning achieved on spectral oscillator network. 5679 Hz inference, 274 Hz learning. The backward pass IS the forward dynamics, perturbed.
+**Latest:** Milestone 6 verified on silicon (Feb 7, 2026). Multi-neuron layer evaluation: 2-layer feedforward network (8→4 neurons) runs end-to-end. 108.8K trit-MACs/s at 1MHz PARLIO. 6/6 tests pass, all matching CPU reference.
 
 ---
 
@@ -35,24 +35,26 @@ The Reflex is a sub-microsecond coordination primitive for robotics. We've prove
 
 **Result:** Zero libc functions. Zero ESP-IDF HAL. Just silicon.
 
-### Pulse Arithmetic Engine ✅ (Feb 3-4)
+### Geometry Intersection Engine ✅ (Feb 5-7)
 
-Hardware neural computation using PCNT + PARLIO as computational substrate:
+Six milestones verified on silicon, progressing from boolean gates to multi-neuron neural network layers:
 
-| Implementation | Rate | Key Innovation |
-|----------------|------|----------------|
-| cfc_parallel_dot | 1249 Hz | Parallel 8-bit PARLIO + 4 PCNT units |
-| cfc_dual_channel | 964 Hz | True hardware pos/neg via dual PCNT channels |
-| spectral_double_cfc | 1100 Hz | Dual timescale (fast + slow networks) |
-| spectral_ffn | **5679 Hz** | Self-modifying coupling via coherence |
-| spectral_eqprop | 580 Hz / 274 Hz learn | **Equilibrium propagation learning** |
+| Milestone | Tests | What It Proved |
+|-----------|-------|----------------|
+| M1: Sub-CPU ALU | 59/59 | PCNT level-gated edge counting = boolean gates |
+| M2: Autonomous Fabric | 5/5 | Peripheral loop without CPU (ETM crossbar) |
+| M3: Autonomous ALU | 9/9 | GDMA descriptor chains = instruction sequencing |
+| M4: Ternary TMUL | 9/9 | 2-bit PARLIO + dual PCNT = ternary multiply |
+| M5: 256-Trit Dot Product | 10/10 | Descriptor chain accumulation, zero-interleave encoding |
+| M6: Multi-Neuron Layer | 6/6 | 2-layer feedforward network, 108.8K trit-MACs/s |
 
-**Key Discovery:** The hardware already does the math. PCNT counts pulses = addition. PARLIO transmits in parallel = parallel computation. Ternary weights eliminate multiply.
+**Key Discovery:** The peripheral fabric computes ternary dot products — the fundamental operation of neural network inference — while the CPU does almost nothing. 20+ hardware errata discovered and documented.
 
-**Learning Results:**
-- 2-pattern task: 21.5/256 avg error (94.5% of target separation)
-- 4-pattern task: 47.5/256 avg error
-- Coupling matrix evolves from uniform 0.2 to asymmetric 0.01-0.98
+See: [MILESTONE_PROGRESSION.md](MILESTONE_PROGRESSION.md)
+
+### Pulse Arithmetic Engine (Feb 3-4, precursor to GIE)
+
+Earlier exploration of PCNT + PARLIO as computational substrate. Achieved 5679 Hz inference and 274 Hz equilibrium propagation learning. This work led directly to the Geometry Intersection Engine milestones.
 
 See: [PULSE_ARITHMETIC_ENGINE.md](../reflex-os/docs/PULSE_ARITHMETIC_ENGINE.md)
 
@@ -220,9 +222,10 @@ All devices pass 6/6 pre-flight checks. C6 #1 running **spine_summit** (bare met
 
 ## Next Milestones
 
-1. **Pulse Arithmetic Engine:** Tune equilibrium propagation, test on temporal tasks
-2. **Q1 2026:** First robotics partner integration
-3. **Q2 2026:** Open source release (reflex-core)
+1. **GIE Milestone 7:** Self-sequencing fabric — REGDMA + LP core for autonomous multi-layer inference
+2. **GIE Milestone 8:** Performance — increase PARLIO clock to 10-20 MHz, target 1M+ trit-MACs/s
+3. **Q1 2026:** First robotics partner integration
+4. **Q2 2026:** Open source release (reflex-core)
 
 ---
 

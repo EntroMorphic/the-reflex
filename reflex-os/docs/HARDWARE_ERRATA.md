@@ -218,3 +218,88 @@ except serial.SerialException:
 **Impact:** If test patterns send exactly `high_limit` pulses, the counter reads 0 (looks like no pulses were received).
 
 **Workaround:** Set `high_limit` well above the maximum expected count for the test scenario.
+
+### Triple PCNT clear required after GDMA arm
+
+**Symptom:** After `GDMA_LINK_START`, some data leaks through PARLIO FIFO to GPIOs before `TX_START` is set, creating stray PCNT counts. A single `pcnt_unit_clear_count()` may not catch all of them due to timing.
+
+**Workaround:** Three consecutive PCNT clears with delays:
+```c
+clear_all_pcnt();
+esp_rom_delay_us(100);
+clear_all_pcnt();
+esp_rom_delay_us(100);
+clear_all_pcnt();
+```
+
+**Discovered:** Milestone 5.
+
+## RMT
+
+### ESP32-C6 RMT has no DMA support
+
+**Symptom:** Setting `.flags.with_dma = 1` in `rmt_tx_channel_config_t` returns `ESP_ERR_NOT_SUPPORTED`.
+
+**Root cause:** `soc_caps.h` for ESP32-C6 does not define `SOC_RMT_SUPPORT_DMA`. The driver guards all DMA code behind `#if SOC_RMT_SUPPORT_DMA`. Unlike ESP32-S3, the C6's RMT uses ping-pong mode with 48-word internal memory, refilled by CPU ISR.
+
+**Impact:** RMT cannot be used for DMA-driven waveform generation. This prevents the originally planned dual-DMA architecture (PARLIO for X, RMT for Y) in the Geometry Intersection Engine.
+
+**Workaround:** Use PARLIO for all DMA-driven waveform generation. For Y geometry, use CPU-driven static GPIO levels and pre-multiply W×X on CPU before encoding into PARLIO buffers.
+
+**Reference:** `soc/esp32c6/include/soc/soc_caps.h` — no `SOC_RMT_SUPPORT_DMA` defined.
+
+**Discovered:** Milestone 6 design phase.
+
+## PARLIO (Milestones 4-6)
+
+### PARLIO 2-bit mode eliminates nibble-boundary glitches
+
+**Context:** In 4-bit PARLIO mode (Milestones 1-3), transitions between nibbles within a byte create brief glitch states on GPIOs that PCNT registers as spurious edges (~6-17 counts). This required threshold workarounds.
+
+**Resolution:** PARLIO 2-bit mode (Milestones 4-6) drives only GPIO 4 and GPIO 5. Each dibit maps directly to one (X_pos, X_neg) state. No cross-nibble transitions occur. The nibble-boundary glitch problem is completely eliminated.
+
+**Configuration:**
+```c
+parlio_tx_unit_config_t cfg = {
+    .data_width = 2,
+    .output_clk_freq_hz = 1000000,
+    .flags = { .io_loop_back = 1 },
+};
+cfg.data_gpio_nums[0] = 4;  // X_pos
+cfg.data_gpio_nums[1] = 5;  // X_neg
+```
+
+### PARLIO FIFO reset sequence
+
+**Requirement:** Before each dot product evaluation, the PARLIO FIFO must be reset to prevent stale data from a previous transfer from reaching the GPIOs.
+
+**Correct sequence:**
+```c
+uint32_t tx_cfg0 = REG32(0x60015008);  // PARLIO_TX_CFG0
+tx_cfg0 |= (1 << 30);                   // FIFO_RST = 1
+REG32(0x60015008) = tx_cfg0;
+esp_rom_delay_us(10);
+tx_cfg0 &= ~(1 << 30);                  // FIFO_RST = 0
+REG32(0x60015008) = tx_cfg0;
+esp_rom_delay_us(10);
+```
+
+**Discovered:** Milestone 5.
+
+## GDMA (Milestones 5-6)
+
+### GDMA descriptor chains work correctly without ETM_EN
+
+**Context:** With `ETM_EN` set, GDMA processes only one descriptor per `TASK_GDMA_START` trigger (Milestone 3 errata). Without `ETM_EN`, GDMA auto-follows the linked list `next` pointer, processing all chained descriptors in sequence.
+
+**Architecture implication:** For multi-buffer dot products (Milestones 5-6), use normal GDMA mode. Gate the output with PARLIO `TX_START` instead of ETM-triggered GDMA start:
+
+1. Set GDMA `LINK_START` (DMA begins immediately, fills PARLIO FIFO)
+2. Clear PCNT (remove any leaked counts)
+3. Set PARLIO `TX_START` (data flows from FIFO to GPIOs)
+4. Wait for DMA EOF
+5. Read PCNT
+
+This gives the same result as ETM-triggered DMA but with full descriptor chain support.
+
+**Discovered:** Milestone 5.
