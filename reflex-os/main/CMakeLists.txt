@@ -18,7 +18,7 @@
 
 idf_component_register(
     SRCS
-        "alu_fabric.c"
+        "autonomous_alu.c"
     INCLUDE_DIRS
         "../include"
         "../shared"

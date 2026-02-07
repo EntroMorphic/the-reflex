@@ -28,7 +28,50 @@ volatile uint32_t *t0cfg = (volatile uint32_t*)0x60008000;
 *t0cfg &= ~(1U << 31);  // TIMG0 T0CONFIG, bit 31 = EN
 ```
 
+### ETM base address is 0x60013000, not 0x600B8000
+
+**Symptom:** All ETM register reads/writes return 0 or have no effect.
+
+**Root cause:** The ETM base address in early documentation and some code examples is wrong. The correct address is `DR_REG_SOC_ETM_BASE = 0x60013000` (from `soc/reg_base.h`). CLK_EN is at `ETM_BASE + 0x1A8`, not `+0x00`.
+
+**Also:** PCR ETM conf register is at `PCR_BASE + 0x98`, not `+0x90` (0x90 is INTMTX).
+
+### IDF startup disables ETM bus clock
+
+**Symptom:** ETM registers are unreadable/unwritable after IDF boot despite correct base address.
+
+**Root cause:** `esp_system/port/soc/esp32c6/clk.c` line 270 calls `etm_ll_enable_bus_clock(0, false)` during startup, disabling the ETM bus clock.
+
+**Workaround:** Re-enable via PCR before any ETM register access:
+```c
+volatile uint32_t *conf = (volatile uint32_t*)0x60096098;  // PCR_SOC_ETM_CONF
+*conf = (*conf & ~(1 << 1)) | (1 << 0);  // clk_en=1, rst=0
+REG32(0x600131A8) = 1;  // ETM internal clock gate
+```
+
+### LEDC timer cannot be resumed after ETM-triggered pause
+
+**Symptom:** After ETM task `TASK_LEDC_T0_PAUSE` fires, the LEDC timer stays frozen. Neither `ledc_timer_resume()`, clearing bit 23 of `LEDC_TIMER0_CONF_REG`, nor full `ledc_timer_config()` reconfigure restarts it.
+
+**Workaround:** Don't use LEDC timer pause/resume for result latching. Use PCNT ISR callbacks instead.
+
 ## GDMA
+
+### GDMA LINK_START may transmit immediately despite ETM_EN
+
+**Symptom:** Setting `GDMA_LINK_START_BIT` with `ETM_EN_BIT` active causes ~10-17 stray PCNT counts before the ETM-triggered GDMA start fires.
+
+**Root cause:** `LINK_START` appears to begin DMA transfer immediately, ignoring `ETM_EN`. The data reaches PARLIO and drives GPIOs, creating PCNT edges before the intended start.
+
+**Workaround:** Defer PARLIO `TX_START` until after GDMA is armed and PCNT is cleared. Set `TX_START` right before starting the ETM trigger timer, so any leaked GDMA data sits in the PARLIO FIFO without driving GPIOs.
+
+### GDMA with ETM_EN does not auto-follow linked list descriptors
+
+**Symptom:** With `ETM_EN` set, GDMA processes only the first descriptor in a linked list chain. After EOF, the `TASK_GDMA_START` ETM task does not cause the second descriptor to transmit.
+
+**Root cause:** Each ETM `TASK_GDMA_START` processes one descriptor then stops. The GDMA internal pointer advances but re-triggering doesn't work reliably.
+
+**Workaround:** For descriptor chaining, use normal GDMA mode (without `ETM_EN`). Set `LINK_START` to begin the chain, and GDMA will auto-follow the linked list. Use ETM only for PCNT threshold detection and LEDC latching, not for GDMA flow control.
 
 ### PARLIO driver claims a GDMA OUT channel silently
 
@@ -159,6 +202,14 @@ except serial.SerialException:
 **Workaround:** Always use hardware reset button. Flash with `--before=no_reset --after=no_reset`.
 
 ## PCNT
+
+### PARLIO nibble boundaries produce PCNT glitch counts
+
+**Symptom:** PCNT registers ~6-17 stray counts even for patterns that should produce 0 counts (e.g., AND(1,0) or XOR(1,1)).
+
+**Root cause:** When PARLIO shifts between 4-bit nibbles within a byte, GPIO transitions may produce brief glitch states. For packed byte `0x23` (lower=0x3, upper=0x2), the transition from nibble 0x3 to 0x2 causes GPIO_A to go 1→0 while GPIO_B momentarily appears LOW, creating a spurious XOR edge.
+
+**Workaround:** Set PCNT watch threshold above the noise floor (25 works well) but below the minimum real count (32 for XOR, 63 for AND). The threshold of 8 used initially was too low.
 
 ### high_limit causes automatic counter reset
 

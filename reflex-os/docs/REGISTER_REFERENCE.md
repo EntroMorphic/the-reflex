@@ -6,7 +6,7 @@ Bare-metal register addresses and ETM IDs discovered and verified during develop
 
 | Peripheral | Base | Notes |
 |-----------|------|-------|
-| ETM | `0x600B8000` | Event Task Matrix crossbar |
+| ETM | `0x60013000` | Event Task Matrix crossbar (NOT 0x600B8000!) |
 | PCR | `0x60096000` | Peripheral Clock Register |
 | GDMA | `0x60080000` | General DMA controller |
 | LEDC | `0x60007000` | LED PWM controller |
@@ -18,7 +18,7 @@ Bare-metal register addresses and ETM IDs discovered and verified during develop
 
 | Register | Address | Purpose |
 |----------|---------|---------|
-| CLK_EN | `ETM + 0x00` | Clock enable (write 1) |
+| CLK_EN | `ETM + 0x1A8` | Internal register clock gate (write 1) |
 | CH_ENA_AD0_SET | `ETM + 0x04` | Enable channels 0-31 (write 1 to set) |
 | CH_ENA_AD0_CLR | `ETM + 0x08` | Disable channels 0-31 (write 1 to clear) |
 | CH_ENA_AD1_SET | `ETM + 0x10` | Enable channels 32-49 |
@@ -136,7 +136,7 @@ Write 1 to clear corresponding INT_RAW bit.
 
 | Register | Address | Purpose |
 |----------|---------|---------|
-| SOC_ETM_CONF | `0x60096090` | bit 0: ETM clock enable, bit 1: ETM reset |
+| SOC_ETM_CONF | `0x60096098` | bit 0: ETM clock enable, bit 1: ETM reset (NOT 0x90!) |
 | GDMA_CONF | `0x600960BC` | bit 0: GDMA clock enable, bit 1: GDMA reset |
 
 ## Timer Group Registers
