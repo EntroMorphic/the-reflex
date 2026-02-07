@@ -36,3 +36,6 @@ backups/
 
 # Deploy scripts (local-only)
 silicon_grail_deploy.sh
+
+# Separate git repo (local-only)
+pulse-arithmetic-lab/

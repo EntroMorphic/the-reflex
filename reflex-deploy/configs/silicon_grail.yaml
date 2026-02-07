@@ -1,0 +1,71 @@
+# Silicon Grail Configuration
+# CPU-Free Turing Complete ETM Fabric
+# Zero CPU involvement after initialization
+
+device:
+  name: "silicon-grail"
+  role: "cpu-free-fabric"
+  description: "Turing Complete hardware neural fabric - CPU sleeps, silicon thinks"
+
+firmware:
+  version: "1.0.0"
+  type: "silicon_grail"
+  entry_point: "silicon_grail_cpu_free.c"
+
+reflex:
+  inference_rate_hz: 100
+  timer_period_us: 10000
+  timer_timeout_us: 12000
+  pcnt_threshold: 50
+  gdma_ch_fast: 0
+  gdma_ch_default: 1
+  rmt_channel: 0
+  rmt_gpio: 4
+  pcnt_unit: 0
+  pcnt_gpio: 4
+  pattern_words: 48
+  target_power_uw: 17
+
+silicon_grail:
+  # ETM Fabric Configuration
+  inference_rate_hz: 100          # 100 Hz autonomous cycles
+  
+  # Timer configuration
+  timer_period_us: 10000          # 10ms period
+  timer_timeout_us: 12000         # 12ms timeout (20% margin)
+  
+  # PCNT threshold for branching
+  pcnt_threshold: 50              # Decision boundary
+  
+  # GDMA channels for timer race
+  gdma_ch_fast: 0                 # High priority (threshold path)
+  gdma_ch_default: 1              # Low priority (timeout path)
+  
+  # Hardware resources
+  rmt_channel: 0
+  rmt_gpio: 4
+  pcnt_unit: 0
+  pcnt_gpio: 4                    # Same as RMT (internal loopback)
+  
+  # Pattern buffers
+  pattern_words: 48               # RMT memory size
+  
+  # Power target
+  target_power_uw: 17             # 17 μW (5 μA @ 3.3V)
+  
+telemetry:
+  interval_ms: 10000              # Status every 10s (CPU wakes briefly)
+  format: "silicon_grail"
+  report_cycles: true             # Report total cycles
+  report_branches: true           # Report branch statistics
+
+pins:
+  # No GPIOs needed - everything internal
+  status_led: 8                   # Optional status LED
+
+# Test configuration
+test:
+  autonomous_cycles: 1000         # Target: 1000 cycles CPU-free
+  verify_branching: true          # Test both fast/default paths
+  measure_power: true             # Current measurement
+  duration_seconds: 30            # Test duration
