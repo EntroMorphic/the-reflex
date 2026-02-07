@@ -8,6 +8,7 @@
 #   - hologram_mesh_demo.c : 3-node holographic mesh demo
 #   - hologram_demo.c   : Holographic Intelligence single node demo
 #   - cfc_spine_demo.c  : CfC closed-loop spine demo
+#   - geometry_cfc.c    : Ternary CfC - liquid neural network on GIE
 #   - cfc_demo.c        : Binary Ternary CfC - liquid neural network
 #   - spine_summit.c    : THE SUMMIT - zero libc, zero ESP-IDF HAL
 #   - spine_bare.c      : Bare metal (uses printf transitionally)
@@ -18,7 +19,7 @@
 
 idf_component_register(
     SRCS
-        "geometry_layer.c"
+        "geometry_cfc.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
