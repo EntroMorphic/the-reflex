@@ -12,11 +12,12 @@
 
 ## Headline Results
 
-| Metric | Baseline Linux | With Reflex | Improvement |
-|--------|----------------|-------------|-------------|
-| **P99 Latency** | 236 μs | **926 ns** | **255x** |
-| Sub-μs cycles | 91.3% | **99.64%** | +8.3% |
-| Control Rate | Limited | **10 kHz** | Achieved |
+| Platform | Metric | Result |
+|----------|--------|--------|
+| **Jetson Thor** | P99 Latency | **926 ns** (255x improvement over baseline) |
+| **Jetson Thor** | Control Rate | **10 kHz** sustained |
+| **ESP32-C6** | Autonomous State Transitions | **5004 in 500ms** (CPU idle) |
+| **ESP32-C6** | Peripherals Used | ETM + GDMA + PARLIO + PCNT + LEDC (no CPU) |
 
 ## What is The Reflex?
 
@@ -56,6 +57,8 @@ the-reflex/
 │   └── README.md             # Integration guide
 │
 ├── reflex-os/                # THE REFLEX BECOMES THE ESP32-C6
+│   ├── main/
+│   │   └── raid_etm_fabric.c # Autonomous computation fabric (5/5 verified)
 │   ├── include/
 │   │   ├── reflex.h          # Core primitive (50 lines)
 │   │   ├── reflex_gpio.h     # GPIO channels (12ns)
@@ -69,9 +72,18 @@ the-reflex/
 │   │   ├── obsbot_test.c     # Camera test utility
 │   │   └── stereo_demo.c     # Synchronized stereo vision
 │   └── docs/
-│       ├── ARCHITECTURE.md   # Channel model + entropy field
-│       ├── API.md            # Complete API reference
-│       └── BENCHMARKS.md     # Performance measurements
+│       ├── ARCHITECTURE.md       # Channel model + entropy field
+│       ├── API.md                # Complete API reference
+│       ├── BENCHMARKS.md         # Performance measurements
+│       ├── RAID_ETM_FABRIC.md    # Autonomous fabric architecture
+│       ├── HARDWARE_ERRATA.md    # C6 constraints & workarounds
+│       ├── FLASH_GUIDE.md        # Flash & serial procedure
+│       └── REGISTER_REFERENCE.md # Bare-metal register addresses
+│
+├── pulse-arithmetic-lab/     # TEACHING LAB: PCNT + PARLIO neural computation
+│   ├── firmware/01-05/       # 5 progressive demos
+│   ├── docs/                 # Theory, hardware, ETM formalization
+│   └── CLAIMS.md             # 7 falsifiable scientific claims
 │
 ├── src/                      # RESEARCH EXPERIMENTS (the science)
 │   ├── e3_latency_comparison.c   # Stigmergy vs Futex benchmark
