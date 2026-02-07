@@ -18,7 +18,7 @@
 
 idf_component_register(
     SRCS
-        "raid_etm_fabric.c"
+        "alu_fabric.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
