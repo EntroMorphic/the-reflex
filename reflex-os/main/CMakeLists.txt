@@ -1,6 +1,7 @@
 # Main component for Reflex OS
 #
 # Select entry point by changing SRCS:
+#   - raid_etm_fabric.c : RAID ETM Fabric - multi-way branch via fan-out
 #   - falsify_turing_completeness.c : Rigorous falsification of TC claims
 #   - liquid_ship_demo.c : Liquid Ship with Navigator and Splined Mixer
 #   - etm_fabric_demo.c  : Turing Complete ETM Fabric benchmark
@@ -17,7 +18,7 @@
 
 idf_component_register(
     SRCS
-        "spectral_ffn.c"
+        "raid_etm_fabric.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
