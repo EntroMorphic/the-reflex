@@ -30,3 +30,7 @@ CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
 # Logging: Minimal for performance
 CONFIG_LOG_DEFAULT_LEVEL_WARN=y
 CONFIG_LOG_DEFAULT_LEVEL=2
+
+# PCNT: Place control functions in IRAM for ISR safety
+# Required because pcnt_unit_clear_count() is called from LEVEL3 ISR
+CONFIG_PCNT_CTRL_FUNC_IN_IRAM=y
