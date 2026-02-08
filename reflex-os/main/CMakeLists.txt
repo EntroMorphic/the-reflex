@@ -24,7 +24,7 @@
 
 idf_component_register(
     SRCS
-        "geometry_cfc_m8.c"
+        "geometry_cfc_m8_etm.c"
     INCLUDE_DIRS
         "../include"
         "../shared"

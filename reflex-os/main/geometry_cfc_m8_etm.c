@@ -1,17 +1,20 @@
 /*
- * geometry_cfc_m8_etm.c — M8: Self-Sequencing with ETM + ISR Capture
+ * geometry_cfc_m8_etm.c — M8 v2: Per-Neuron ISR Capture
  *
- * Milestone 8 v2: Wire ETM for autonomous chain, use minimal ISR for
- * per-neuron result capture.
+ * Milestone 8 v2: Chain all neurons as one GDMA linked list, fire a
+ * GDMA EOF interrupt after each descriptor, capture cumulative PCNT
+ * counts in the ISR.  Per-neuron dots decoded by differencing.
  *
  * Architecture:
- *   - 1 descriptor per neuron (80 bytes = 160 trits)
- *   - GDMA EOF interrupt after each neuron
- *   - ISR captures cumulative PCNT counts (~10 cycles)
- *   - ETM wiring: GDMA EOF event available for future REGDMA trigger
+ *   - 1 descriptor per neuron (80 bytes = 160 trits), each with eof=1
+ *   - GDMA EOF interrupt fires after each descriptor is read from memory
+ *   - ISR reads cumulative PCNT via direct register access (~10 cycles)
+ *   - Per-neuron dot = cum[n] - cum[n-1]
  *
- * Target: ~3,000 us for 64 neurons with per-neuron results
- * (vs 13,185 us in M8 v1 per-neuron mode)
+ * Tests:
+ *   TEST 1: Chain without ISR (cumulative sum, sanity check)
+ *   TEST 2: Chain with ISR (per-neuron capture, verify vs CPU)
+ *   TEST 3: Throughput comparison (ISR chain vs M8 v1 per-neuron)
  *
  * Board: ESP32-C6FH4 (QFN32) rev v0.2
  * ESP-IDF: v5.4
@@ -34,53 +37,47 @@
 #include "soc/interrupts.h"
 #include "rom/lldesc.h"
 
-/* ── Register addresses ── */
+/* ── Register addresses (verified on silicon, M5-M8) ── */
 #define ETM_BASE            0x60013000
 #define ETM_CLK_EN_REG      (ETM_BASE + 0x1A8)
-#define ETM_CH_ENA_SET_REG  (ETM_BASE + 0x08)
-#define ETM_CH_EVT_ID_REG(n)  (ETM_BASE + 0x18 + (n) * 8)
-#define ETM_CH_TASK_ID_REG(n) (ETM_BASE + 0x1C + (n) * 8)
-
 #define PCR_BASE             0x60096000
 #define PCR_SOC_ETM_CONF     (PCR_BASE + 0x98)
 
 #define GDMA_BASE            0x60080000
 #define GDMA_OUT_BASE(ch)    (GDMA_BASE + 0xD0 + (ch)*0xC0)
 #define GDMA_OUT_CONF0       0x00
-#define GDMA_OUT_CONF1       0x04
 #define GDMA_OUT_LINK        0x10
 #define GDMA_OUT_PERI_SEL    0x30
-
-/* OUT interrupt registers are at fixed addresses, not per-channel offsets */
-#define GDMA_OUT_INT_RAW_CH(ch)  (GDMA_BASE + 0x30 + (ch) * 0x10)
-#define GDMA_OUT_INT_ST_CH(ch)   (GDMA_BASE + 0x34 + (ch) * 0x10)
-#define GDMA_OUT_INT_ENA_CH(ch)  (GDMA_BASE + 0x38 + (ch) * 0x10)
-#define GDMA_OUT_INT_CLR_CH(ch)  (GDMA_BASE + 0x3C + (ch) * 0x10)
 #define GDMA_RST_BIT         (1 << 0)
 #define GDMA_EOF_MODE_BIT    (1 << 3)
 #define GDMA_LINK_START_BIT  (1 << 21)
 #define GDMA_LINK_ADDR_MASK  0x000FFFFF
 #define GDMA_PERI_PARLIO     9
 
-/* GDMA interrupt bits */
-#define GDMA_OUT_EOF_INT_BIT (1 << 1)
-#define GDMA_OUT_DONE_INT_BIT (1 << 0)
+/* GDMA OUT interrupt registers — fixed addresses near base, NOT per-channel struct.
+ * Verified against soc/gdma_reg.h: OUT CH0 starts at 0x30, stride 0x10 per channel. */
+#define GDMA_OUT_INT_RAW_CH(ch)  (GDMA_BASE + 0x30 + (ch) * 0x10)
+#define GDMA_OUT_INT_ST_CH(ch)   (GDMA_BASE + 0x34 + (ch) * 0x10)
+#define GDMA_OUT_INT_ENA_CH(ch)  (GDMA_BASE + 0x38 + (ch) * 0x10)
+#define GDMA_OUT_INT_CLR_CH(ch)  (GDMA_BASE + 0x3C + (ch) * 0x10)
+
+/* GDMA OUT interrupt bits (from gdma_struct.h):
+ *   bit 0 = out_done (last data from one outlink desc transmitted to peripheral)
+ *   bit 1 = out_eof  (last data from one outlink desc read from memory)
+ *   bit 2 = out_dscr_err
+ *   bit 3 = out_total_eof (entire chain finished)
+ */
+#define GDMA_OUT_DONE_BIT       (1 << 0)
+#define GDMA_OUT_EOF_BIT        (1 << 1)
+#define GDMA_OUT_TOTAL_EOF_BIT  (1 << 3)
 
 #define PARLIO_TX_CFG0       0x60015008
 #define REG32(addr)  (*(volatile uint32_t*)(addr))
 
-/* PCNT direct register access (for fast ISR) */
+/* PCNT direct register access (for fast ISR reads) */
 #define PCNT_BASE            0x60012000
 #define PCNT_U0_CNT_REG      (PCNT_BASE + 0x30)
 #define PCNT_U1_CNT_REG      (PCNT_BASE + 0x34)
-#define PCNT_U2_CNT_REG      (PCNT_BASE + 0x38)
-#define PCNT_U3_CNT_REG      (PCNT_BASE + 0x3C)
-
-/* ETM event/task IDs (from soc_etm_reg.h) */
-#define GDMA_EVT_OUT_EOF_CH0    153
-#define GDMA_EVT_OUT_DONE_CH0   156
-#define PCNT_TASK_CNT_RST       87
-#define TIMER0_TASK_CNT_CAP     69
 
 /* ── GPIO mapping ── */
 #define GPIO_X_POS   4
@@ -99,21 +96,25 @@
 #define CFC_CONCAT_DIM  (CFC_INPUT_DIM + CFC_HIDDEN_DIM)   /* 160 */
 #define CFC_MAX_DIM     256
 
-/* Number of neurons (64 total: 32 f + 32 g pathways) */
-#define NUM_NEURONS     64
+#define NUM_NEURONS     64   /* 32 f + 32 g pathways */
+#define NEURON_BUF_SIZE 80   /* 160 trits = 80 bytes (2 trits per byte) */
+#define SEP_SIZE        64   /* separator: all zeros, no PCNT edges. */
 
-/* Buffer size: 160 trits = 80 bytes (2 trits per byte) */
-#define NEURON_BUF_SIZE 80
+/* Total descriptors: 1 dummy + 1 sep + (1 data + 1 separator) per neuron */
+#define TOTAL_DESCS     (2 + NUM_NEURONS * 2)
 
-/* ── Static allocations ── */
+/* ── Static allocations (BSS) ── */
 static uint8_t __attribute__((aligned(4))) neuron_bufs[NUM_NEURONS][NEURON_BUF_SIZE];
-static lldesc_t __attribute__((aligned(4))) neuron_descs[NUM_NEURONS];
+static uint8_t __attribute__((aligned(4))) sep_buf[SEP_SIZE];    /* shared, all zeros */
+static uint8_t __attribute__((aligned(4))) dummy_buf[NEURON_BUF_SIZE]; /* dummy neuron 0 */
+static lldesc_t __attribute__((aligned(4))) neuron_descs[TOTAL_DESCS];
 
-/* Cumulative capture arrays - filled by ISR */
-static volatile int32_t cum_agree[NUM_NEURONS + 1];
-static volatile int32_t cum_disagree[NUM_NEURONS + 1];
-static volatile int capture_idx;
-static volatile int chain_complete;
+/* ISR capture arrays — index 0 is dummy, 1..64 are real neurons */
+#define ISR_CAPTURES    (NUM_NEURONS + 1)
+static volatile int32_t isr_agree[ISR_CAPTURES];
+static volatile int32_t isr_disagree[ISR_CAPTURES];
+static volatile int32_t isr_count;
+static volatile int32_t chain_done;
 
 /* Peripheral handles */
 static gptimer_handle_t timer0 = NULL;
@@ -139,28 +140,44 @@ static int cpu_dots[NUM_NEURONS];
 /* ══════════════════════════════════════════════════════════════════
  *  GDMA EOF ISR — Minimal, runs in IRAM
  *
- *  Captures cumulative PCNT counts after each neuron.
- *  ~10-15 cycles per invocation.
+ *  Captures cumulative PCNT counts after each descriptor EOF.
+ *  At 20MHz, each 80-byte descriptor takes ~16us to stream.
+ *  ISR body is ~10 register reads/writes = well under 1us.
  * ══════════════════════════════════════════════════════════════════ */
 
 static void IRAM_ATTR gdma_eof_isr(void *arg) {
-    uint32_t status = REG32(GDMA_OUT_INT_RAW_CH(bare_ch));
+    /* Read masked status (INT_ST), not raw */
+    uint32_t status = REG32(GDMA_OUT_INT_ST_CH(bare_ch));
 
-    if (status & GDMA_OUT_EOF_INT_BIT) {
-        /* Clear interrupt */
-        REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = GDMA_OUT_EOF_INT_BIT;
+    if (status & GDMA_OUT_EOF_BIT) {
+        /* out_eof fires when separator is read from memory. */
+        REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = GDMA_OUT_EOF_BIT;
 
-        /* Capture cumulative PCNT values */
-        if (capture_idx < NUM_NEURONS) {
-            cum_agree[capture_idx] = (int16_t)(REG32(PCNT_U0_CNT_REG) & 0xFFFF);
-            cum_disagree[capture_idx] = (int16_t)(REG32(PCNT_U1_CNT_REG) & 0xFFFF);
-            capture_idx++;
+        /* Capture per-neuron PCNT values, then clear PCNT.
+         * Each neuron's count is independent — no cascading errors. */
+        int idx = isr_count;
+        if (idx < ISR_CAPTURES) {
+            isr_agree[idx] = (int16_t)(REG32(PCNT_U0_CNT_REG) & 0xFFFF);
+            isr_disagree[idx] = (int16_t)(REG32(PCNT_U1_CNT_REG) & 0xFFFF);
+            isr_count = idx + 1;
+
+            /* Clear PCNT for next neuron — direct register write for speed.
+             * PCNT_CTRL_REG bit 0 = pulse_cnt_rst_u0, bit 2 = pulse_cnt_rst_u1 */
+            #define PCNT_CTRL_REG (PCNT_BASE + 0x60)
+            REG32(PCNT_CTRL_REG) |= (1 << 0) | (1 << 2);  /* assert reset */
+            REG32(PCNT_CTRL_REG) &= ~((1 << 0) | (1 << 2));  /* deassert reset */
         }
     }
 
-    if (status & GDMA_OUT_DONE_INT_BIT) {
-        REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = GDMA_OUT_DONE_INT_BIT;
-        chain_complete = 1;
+    if (status & GDMA_OUT_TOTAL_EOF_BIT) {
+        REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = GDMA_OUT_TOTAL_EOF_BIT;
+        chain_done = 1;
+    }
+
+    /* Clear anything else (DONE, errors) */
+    uint32_t others = status & ~(GDMA_OUT_EOF_BIT | GDMA_OUT_TOTAL_EOF_BIT);
+    if (others) {
+        REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = others;
     }
 }
 
@@ -194,16 +211,6 @@ static void etm_force_clk(void) {
     esp_rom_delay_us(1);
     REG32(ETM_CLK_EN_REG) = 1;
     esp_rom_delay_us(1);
-}
-
-static void init_desc(lldesc_t *d, uint8_t *buf, int len, lldesc_t *next) {
-    memset(d, 0, sizeof(lldesc_t));
-    d->size = len;
-    d->length = len;
-    d->buf = buf;
-    d->owner = 1;
-    d->eof = 1;  /* EOF after each neuron! */
-    d->empty = next ? ((uint32_t)next) : 0;
 }
 
 /* ── Peripheral init ── */
@@ -306,39 +313,29 @@ static void detect_gdma_channel(void) {
 }
 
 static void init_gdma_isr(void) {
-    printf("[GDMA ISR] Skipping ISR for debug\n");
-    /* Temporarily disabled to isolate crash
-    REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0xFF;
-    REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = GDMA_OUT_EOF_INT_BIT | GDMA_OUT_DONE_INT_BIT;
-    esp_err_t err = esp_intr_alloc(ETS_DMA_OUT_CH0_INTR_SOURCE + bare_ch,
+    /* Clear all pending OUT interrupts for our channel */
+    REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0x3F;
+
+    /* Enable EOF (fires on separator eof=1) and TOTAL_EOF interrupts */
+    REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = GDMA_OUT_EOF_BIT | GDMA_OUT_TOTAL_EOF_BIT;
+
+    /* Allocate ISR.
+     * PARLIO driver claims ETS_PARL_IO_INTR_SOURCE (PARLIO peripheral interrupt).
+     * The GDMA channel interrupt (ETS_DMA_OUT_CHn_INTR_SOURCE) is NOT claimed
+     * by the PARLIO driver — it's free for us to use. */
+    int intr_source = ETS_DMA_OUT_CH0_INTR_SOURCE + bare_ch;
+    esp_err_t err = esp_intr_alloc(intr_source,
                                    ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_LEVEL1,
                                    gdma_eof_isr, NULL, &gdma_isr_handle);
     if (err != ESP_OK) {
-        printf("[GDMA ISR] Failed to allocate: %d\n", err);
+        printf("[GDMA ISR] FAILED to allocate (source=%d, err=%d)\n", intr_source, err);
+        printf("[GDMA ISR] Will fall back to polling mode\n");
+        gdma_isr_handle = NULL;
+        /* Disable interrupts since ISR isn't installed */
+        REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = 0;
     } else {
-        printf("[GDMA ISR] Registered on CH%d\n", bare_ch);
+        printf("[GDMA ISR] OK — allocated on CH%d (source=%d)\n", bare_ch, intr_source);
     }
-    */
-}
-
-/* ══════════════════════════════════════════════════════════════════
- *  ETM WIRING
- *
- *  Wire GDMA EOF → (available for future REGDMA trigger)
- *  For now, we use ISR, but ETM is ready.
- * ══════════════════════════════════════════════════════════════════ */
-
-static void setup_etm(void) {
-    /* ETM Channel 0: GDMA EOF → (placeholder - could trigger REGDMA) */
-    /* For now, just demonstrate the wiring is possible */
-
-    /* Enable ETM channel 0 */
-    /* REG32(ETM_CH_EVT_ID_REG(0)) = GDMA_EVT_OUT_EOF_CH0;
-       REG32(ETM_CH_TASK_ID_REG(0)) = ... (REGDMA task would go here)
-       REG32(ETM_CH_ENA_SET_REG) = (1 << 0); */
-
-    printf("[ETM] 50 channels available, ISR captures for now\n");
-    printf("[ETM] Future: GDMA_EOF → REGDMA backup for true autonomy\n");
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -418,10 +415,66 @@ static void encode_all_neurons(void) {
     }
 }
 
+/* Build chain: [dummy] → [sep] → [data0] → [sep] → ... → [data63] → [sep] → end
+ *
+ * The dummy neuron (all zeros) absorbs any startup transient from GDMA/PARLIO.
+ * Its separator EOF fires first — ISR capture index 0 is the dummy (discarded).
+ * Real neurons start at ISR capture index 1.
+ *
+ * eof=1 goes on the SEPARATOR, not the data descriptor.
+ * When the separator's eof fires (memory-side read), the neuron's data
+ * has already been fully transmitted through PARLIO. */
 static void build_neuron_chain(void) {
+    memset(sep_buf, 0, SEP_SIZE);
+    memset(dummy_buf, 0, NEURON_BUF_SIZE);
+
+    int d = 0;
+
+    /* Dummy neuron (all zeros — absorbs startup transient) */
+    memset(&neuron_descs[d], 0, sizeof(lldesc_t));
+    neuron_descs[d].size = NEURON_BUF_SIZE;
+    neuron_descs[d].length = NEURON_BUF_SIZE;
+    neuron_descs[d].buf = dummy_buf;
+    neuron_descs[d].owner = 1;
+    neuron_descs[d].eof = 0;
+    neuron_descs[d].empty = (uint32_t)&neuron_descs[d + 1];
+    d++;
+
+    /* Dummy separator (eof=1 — ISR fires, capture index 0 = dummy) */
+    memset(&neuron_descs[d], 0, sizeof(lldesc_t));
+    neuron_descs[d].size = SEP_SIZE;
+    neuron_descs[d].length = SEP_SIZE;
+    neuron_descs[d].buf = sep_buf;
+    neuron_descs[d].owner = 1;
+    neuron_descs[d].eof = 1;
+    neuron_descs[d].empty = (uint32_t)&neuron_descs[d + 1];
+    d++;
+
+    /* Real neurons */
     for (int n = 0; n < NUM_NEURONS; n++) {
-        lldesc_t *next = (n < NUM_NEURONS - 1) ? &neuron_descs[n + 1] : NULL;
-        init_desc(&neuron_descs[n], neuron_bufs[n], NEURON_BUF_SIZE, next);
+        /* Data descriptor */
+        memset(&neuron_descs[d], 0, sizeof(lldesc_t));
+        neuron_descs[d].size = NEURON_BUF_SIZE;
+        neuron_descs[d].length = NEURON_BUF_SIZE;
+        neuron_descs[d].buf = neuron_bufs[n];
+        neuron_descs[d].owner = 1;
+        neuron_descs[d].eof = 0;
+        neuron_descs[d].empty = (uint32_t)&neuron_descs[d + 1];
+        d++;
+
+        /* Separator — eof=1 triggers ISR */
+        memset(&neuron_descs[d], 0, sizeof(lldesc_t));
+        neuron_descs[d].size = SEP_SIZE;
+        neuron_descs[d].length = SEP_SIZE;
+        neuron_descs[d].buf = sep_buf;
+        neuron_descs[d].owner = 1;
+        neuron_descs[d].eof = 1;
+        if (n < NUM_NEURONS - 1) {
+            neuron_descs[d].empty = (uint32_t)&neuron_descs[d + 1];
+        } else {
+            neuron_descs[d].empty = 0;
+        }
+        d++;
     }
 }
 
@@ -436,7 +489,7 @@ static void cpu_compute_all_dots(void) {
 }
 
 /* ══════════════════════════════════════════════════════════════════
- *  RUN CHAIN WITH ISR CAPTURE
+ *  DMA ENGINE CONTROL
  * ══════════════════════════════════════════════════════════════════ */
 
 static void clear_all_pcnt(void) {
@@ -462,8 +515,8 @@ static void setup_gdma(lldesc_t *first_desc, int total_bytes) {
     REG32(base + GDMA_OUT_CONF0) = 0;
     esp_rom_delay_us(10);
 
-    /* Clear pending interrupts */
-    REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0xFF;
+    /* Clear all pending interrupts */
+    REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0x3F;
 
     REG32(base + GDMA_OUT_CONF0) = GDMA_EOF_MODE_BIT;
     REG32(base + GDMA_OUT_PERI_SEL) = GDMA_PERI_PARLIO;
@@ -490,42 +543,44 @@ static void parlio_stop_and_reset(void) {
     REG32(PARLIO_TX_CFG0) = tx_cfg0;
 }
 
+/* ══════════════════════════════════════════════════════════════════
+ *  RUN CHAIN — no ISR (cumulative sum only, like M8 v1)
+ * ══════════════════════════════════════════════════════════════════ */
+
 typedef struct {
-    int dots[NUM_NEURONS];
-    int matches;
+    int agree;
+    int disagree;
+    int dot;
     int64_t elapsed_us;
-    int isr_count;
-} chain_result_t;
+} chain_sum_result_t;
 
-static chain_result_t run_chain_with_isr(void) {
-    chain_result_t r = {0};
+static chain_sum_result_t run_chain_sum(void) {
+    chain_sum_result_t r = {0};
+    /* dummy(80) + sep(64) + 64*(80+64) = 144 + 9216 = 9360 bytes */
+    int total_bytes = (NEURON_BUF_SIZE + SEP_SIZE) + NUM_NEURONS * (NEURON_BUF_SIZE + SEP_SIZE);
 
-    int total_bytes = NUM_NEURONS * NEURON_BUF_SIZE;
+    /* Reset descriptor owner bits — GDMA clears these after processing */
+    for (int d = 0; d < TOTAL_DESCS; d++) {
+        neuron_descs[d].owner = 1;
+    }
 
-    /* Reset capture state */
-    capture_idx = 0;
-    chain_complete = 0;
-    memset((void*)cum_agree, 0, sizeof(cum_agree));
-    memset((void*)cum_disagree, 0, sizeof(cum_disagree));
+    /* Disable GDMA interrupts for this test */
+    uint32_t saved_ena = REG32(GDMA_OUT_INT_ENA_CH(bare_ch));
+    REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = 0;
 
-    /* Drive Y = +1 */
     gpio_set_level(GPIO_X_POS, 0);
     gpio_set_level(GPIO_X_NEG, 0);
     gpio_set_level(GPIO_Y_POS, 1);
     gpio_set_level(GPIO_Y_NEG, 0);
     esp_rom_delay_us(50);
 
-    /* Clear PCNT */
     clear_all_pcnt();
-    esp_rom_delay_us(100);
-    clear_all_pcnt();
-
-    /* Setup GDMA */
     setup_gdma(&neuron_descs[0], total_bytes);
+    esp_rom_delay_us(500);
+    clear_all_pcnt();
     esp_rom_delay_us(100);
     clear_all_pcnt();
 
-    /* Fire PARLIO */
     int64_t t_start = esp_timer_get_time();
     {
         uint32_t tx_cfg0 = REG32(PARLIO_TX_CFG0);
@@ -533,33 +588,125 @@ static chain_result_t run_chain_with_isr(void) {
         REG32(PARLIO_TX_CFG0) = tx_cfg0;
     }
 
-    /* Wait for chain complete (with timeout) */
-    int timeout = 10000;  /* 10ms max */
-    while (!chain_complete && timeout > 0) {
-        esp_rom_delay_us(10);
-        timeout -= 10;
-    }
-
+    /* 80 bytes * 64 neurons = 5120 bytes, * 4 symbols/byte = 20480 symbols
+     * At 20 MHz: 20480 * 0.05us = 1024us + margin */
+    int wait_us = (total_bytes * 4) / 20 + 500;
+    esp_rom_delay_us(wait_us);
     int64_t t_end = esp_timer_get_time();
-    r.elapsed_us = t_end - t_start;
-    r.isr_count = capture_idx;
 
     parlio_stop_and_reset();
+
+    pcnt_unit_get_count(pcnt_agree, &r.agree);
+    pcnt_unit_get_count(pcnt_disagree, &r.disagree);
+    r.dot = r.agree - r.disagree;
+    r.elapsed_us = t_end - t_start;
 
     gpio_set_level(GPIO_Y_POS, 0);
     gpio_set_level(GPIO_Y_NEG, 0);
 
-    /* Decode per-neuron dots from cumulative values */
-    /* cum_agree[n] is cumulative AFTER neuron n completes */
-    /* dot[0] = cum[0] - 0 */
-    /* dot[n] = cum[n] - cum[n-1] */
-    for (int n = 0; n < NUM_NEURONS; n++) {
-        int prev_agree = (n == 0) ? 0 : cum_agree[n - 1];
-        int prev_disagree = (n == 0) ? 0 : cum_disagree[n - 1];
-        int agree = cum_agree[n] - prev_agree;
-        int disagree = cum_disagree[n] - prev_disagree;
-        r.dots[n] = agree - disagree;
+    /* Restore interrupt enable */
+    REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = saved_ena;
 
+    return r;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ *  RUN CHAIN — with ISR capture (per-neuron results)
+ * ══════════════════════════════════════════════════════════════════ */
+
+typedef struct {
+    int dots[NUM_NEURONS];
+    int matches;
+    int64_t elapsed_us;
+    int isr_fires;
+} chain_isr_result_t;
+
+static chain_isr_result_t run_chain_with_isr(void) {
+    chain_isr_result_t r = {0};
+    int total_bytes = (NEURON_BUF_SIZE + SEP_SIZE) + NUM_NEURONS * (NEURON_BUF_SIZE + SEP_SIZE);
+
+    /* Full reset sequence: disable interrupts, reset GDMA, rebuild state */
+    REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = 0;
+    REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0x3F;
+    {
+        uint32_t base = GDMA_OUT_BASE(bare_ch);
+        REG32(base + GDMA_OUT_CONF0) = GDMA_RST_BIT;
+        esp_rom_delay_us(5);
+        REG32(base + GDMA_OUT_CONF0) = 0;
+        esp_rom_delay_us(5);
+    }
+
+    /* Reset descriptor owner bits — GDMA clears these after processing */
+    for (int d = 0; d < TOTAL_DESCS; d++) {
+        neuron_descs[d].owner = 1;
+    }
+
+    /* Reset ISR state */
+    isr_count = 0;
+    chain_done = 0;
+    memset((void*)isr_agree, 0, sizeof(isr_agree));
+    memset((void*)isr_disagree, 0, sizeof(isr_disagree));
+
+    /* Clear all pending interrupts, then enable EOF + TOTAL_EOF */
+    REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0x3F;
+    REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = GDMA_OUT_EOF_BIT | GDMA_OUT_TOTAL_EOF_BIT;
+
+    gpio_set_level(GPIO_X_POS, 0);
+    gpio_set_level(GPIO_X_NEG, 0);
+    gpio_set_level(GPIO_Y_POS, 1);
+    gpio_set_level(GPIO_Y_NEG, 0);
+    esp_rom_delay_us(50);
+
+    clear_all_pcnt();
+    setup_gdma(&neuron_descs[0], total_bytes);
+    esp_rom_delay_us(500);
+    clear_all_pcnt();
+    esp_rom_delay_us(100);
+    clear_all_pcnt();
+
+    /* Clear any interrupts that fired during setup */
+    REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0x3F;
+    isr_count = 0;
+    chain_done = 0;
+
+    int64_t t_start = esp_timer_get_time();
+    {
+        uint32_t tx_cfg0 = REG32(PARLIO_TX_CFG0);
+        tx_cfg0 |= (1 << 19);
+        REG32(PARLIO_TX_CFG0) = tx_cfg0;
+    }
+
+    /* Wait for chain to complete via ISR flag, or timeout */
+    int timeout_us = 20000;  /* 20ms generous timeout */
+    while (!chain_done && timeout_us > 0) {
+        esp_rom_delay_us(10);
+        timeout_us -= 10;
+    }
+
+    /* If ISR never set chain_done, fall back to polling wait */
+    if (!chain_done) {
+        int wait_us = (total_bytes * 4) / 20 + 500;
+        esp_rom_delay_us(wait_us);
+    }
+
+    int64_t t_end = esp_timer_get_time();
+
+    parlio_stop_and_reset();
+
+    /* Disable interrupts until next run */
+    REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = 0;
+
+    gpio_set_level(GPIO_Y_POS, 0);
+    gpio_set_level(GPIO_Y_NEG, 0);
+
+    r.elapsed_us = t_end - t_start;
+    /* ISR captures: index 0 = dummy, index 1..64 = real neurons */
+    r.isr_fires = (isr_count > 0) ? isr_count - 1 : 0;  /* subtract dummy */
+
+    /* Per-neuron dots — ISR clears PCNT after each capture,
+     * so each capture is independent. Skip index 0 (dummy). */
+    for (int n = 0; n < NUM_NEURONS && (n + 1) < isr_count; n++) {
+        r.dots[n] = isr_agree[n + 1] - isr_disagree[n + 1];
         if (r.dots[n] == cpu_dots[n]) r.matches++;
     }
 
@@ -567,25 +714,317 @@ static chain_result_t run_chain_with_isr(void) {
 }
 
 /* ══════════════════════════════════════════════════════════════════
- *  MAIN
+ *  PIPELINE PRIME
+ * ══════════════════════════════════════════════════════════════════ */
+
+static void prime_pipeline(void) {
+    printf("[PRIME] Warming pipeline...\n");
+    int8_t zeros[CFC_MAX_DIM];
+    memset(zeros, 0, sizeof(zeros));
+    encode_neuron_buffer(neuron_bufs[0], zeros, 128);
+
+    memset(&neuron_descs[0], 0, sizeof(lldesc_t));
+    neuron_descs[0].size = NEURON_BUF_SIZE;
+    neuron_descs[0].length = NEURON_BUF_SIZE;
+    neuron_descs[0].buf = neuron_bufs[0];
+    neuron_descs[0].owner = 1;
+    neuron_descs[0].eof = 1;
+
+    /* Disable ISR during prime */
+    REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = 0;
+
+    gpio_set_level(GPIO_Y_POS, 1);
+    gpio_set_level(GPIO_Y_NEG, 0);
+    clear_all_pcnt();
+    setup_gdma(&neuron_descs[0], NEURON_BUF_SIZE);
+    esp_rom_delay_us(500);
+    clear_all_pcnt();
+    {
+        uint32_t tx_cfg0 = REG32(PARLIO_TX_CFG0);
+        tx_cfg0 |= (1 << 19);
+        REG32(PARLIO_TX_CFG0) = tx_cfg0;
+    }
+    esp_rom_delay_us(1500);
+    parlio_stop_and_reset();
+    for (int i = 4; i <= 7; i++) gpio_set_level(i, 0);
+
+    /* Clear any pending interrupts from prime */
+    REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0x3F;
+
+    printf("[PRIME] Done.\n\n");
+    fflush(stdout);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ *  MAIN — TEST SUITE
  * ══════════════════════════════════════════════════════════════════ */
 
 void app_main(void) {
-    /* ULTRA MINIMAL BOOT TEST - NO INIT */
-    printf("\n\n=== M8 v2 BOOT TEST ===\n");
-    fflush(stdout);
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    printf("ALIVE!\n");
+    vTaskDelay(pdMS_TO_TICKS(8000));
+
+    printf("\n");
+    printf("============================================================\n");
+    printf("  M8 v2: Per-Neuron ISR Capture\n");
+    printf("  64 neurons × 80 bytes, GDMA EOF after each descriptor\n");
+    printf("  PARLIO: 20 MHz | ISR captures cumulative PCNT\n");
+    printf("============================================================\n\n");
+
+    printf("[INIT] GPIO 4-7...\n");
+    init_gpio();
+    printf("[INIT] ETM clock...\n");
+    etm_force_clk();
+    printf("[INIT] PARLIO TX (2-bit, 20MHz, loopback)...\n");
+    init_parlio();
+    printf("[INIT] PCNT (2 units)...\n");
+    init_pcnt();
+    printf("[INIT] Timer...\n");
+    init_timer();
+    printf("[INIT] GDMA channel detection...\n");
+    detect_gdma_channel();
+    printf("[GDMA] PARLIO owns CH%d\n", bare_ch);
+    printf("[INIT] GDMA ISR...\n");
+    init_gdma_isr();
+    printf("[INIT] Done.\n\n");
     fflush(stdout);
 
-    while (1) {
-        printf(".");
+    prime_pipeline();
+
+    int test_count = 0, pass_count = 0;
+
+    /* ══════════════════════════════════════════════════════════════
+     *  TEST 1: Chain without ISR (cumulative sum sanity check)
+     *
+     *  Same as M8 v1 TEST 1 — verify the 80-byte-per-neuron chain
+     *  produces correct cumulative sum. No ISR involved.
+     * ══════════════════════════════════════════════════════════════ */
+    printf("-- TEST 1: Chain without ISR (cumulative sum) --\n");
+    fflush(stdout);
+    {
+        cfc_init(42, 50);
+        premultiply_all();
+        encode_all_neurons();
+        build_neuron_chain();
+        cpu_compute_all_dots();
+
+        int cpu_sum = 0;
+        for (int n = 0; n < NUM_NEURONS; n++) cpu_sum += cpu_dots[n];
+
+        chain_sum_result_t r = run_chain_sum();
+
+        printf("  HW: agree=%d disagree=%d dot=%d\n", r.agree, r.disagree, r.dot);
+        printf("  CPU: sum_all_dots=%d\n", cpu_sum);
+        printf("  Elapsed: %lld us\n", r.elapsed_us);
+
+        int ok = (r.dot == cpu_sum);
+        test_count++;
+        if (ok) pass_count++;
+        printf("  %s\n\n", ok ? "OK" : "FAIL");
         fflush(stdout);
-        vTaskDelay(pdMS_TO_TICKS(1000));
     }
-}
 
-/* TESTS TEMPORARILY DISABLED FOR DEBUG */
-#if 0
-// ... all the test code would be here ...
-#endif
+    /* ══════════════════════════════════════════════════════════════
+     *  TEST 2: Chain with ISR (per-neuron capture)
+     *
+     *  The main event. Fire the chain, ISR captures cumulative PCNT
+     *  after each descriptor EOF, decode per-neuron dots.
+     * ══════════════════════════════════════════════════════════════ */
+    printf("-- TEST 2: Chain with ISR (per-neuron capture) --\n");
+    fflush(stdout);
+    if (gdma_isr_handle == NULL) {
+        printf("  SKIPPED — ISR allocation failed\n\n");
+        test_count++;
+        fflush(stdout);
+    } else {
+        cfc_init(42, 50);
+        premultiply_all();
+        encode_all_neurons();
+        build_neuron_chain();
+        cpu_compute_all_dots();
+
+        chain_isr_result_t r = run_chain_with_isr();
+
+        printf("  ISR fires: %d / %d expected\n", r.isr_fires, NUM_NEURONS);
+        printf("  Matches: %d / %d\n", r.matches, NUM_NEURONS);
+        printf("  Elapsed: %lld us\n", r.elapsed_us);
+        printf("  chain_done: %d\n", (int)chain_done);
+
+        /* Show first few and last few */
+        printf("  Sample results (HW vs CPU):\n");
+        for (int i = 0; i < 4 && i < r.isr_fires; i++) {
+            printf("    n[%2d]: hw=%+4d cpu=%+4d %s\n",
+                   i, r.dots[i], cpu_dots[i],
+                   (r.dots[i] == cpu_dots[i]) ? "OK" : "MISMATCH");
+        }
+        if (r.isr_fires > 8) printf("    ...\n");
+        for (int i = (r.isr_fires > 4 ? r.isr_fires - 4 : 4); i < r.isr_fires; i++) {
+            printf("    n[%2d]: hw=%+4d cpu=%+4d %s\n",
+                   i, r.dots[i], cpu_dots[i],
+                   (r.dots[i] == cpu_dots[i]) ? "OK" : "MISMATCH");
+        }
+
+        int ok = (r.isr_fires == NUM_NEURONS) && (r.matches == NUM_NEURONS);
+        test_count++;
+        if (ok) pass_count++;
+        printf("  %s\n\n", ok ? "OK" : "FAIL");
+        fflush(stdout);
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+     *  TEST 3: Throughput (10 runs averaged)
+     * ══════════════════════════════════════════════════════════════ */
+    printf("-- TEST 3: Throughput (10 runs) --\n");
+    fflush(stdout);
+    if (gdma_isr_handle == NULL) {
+        printf("  SKIPPED — ISR allocation failed\n\n");
+        test_count++;
+        fflush(stdout);
+    } else {
+        int64_t total_us = 0;
+        int all_match = 1;
+
+        for (int run = 0; run < 10; run++) {
+            cfc_init(1000 + run * 77, 50);
+            premultiply_all();
+            encode_all_neurons();
+            build_neuron_chain();
+            cpu_compute_all_dots();
+
+            chain_isr_result_t r = run_chain_with_isr();
+            total_us += r.elapsed_us;
+            if (r.matches != NUM_NEURONS || r.isr_fires != NUM_NEURONS) {
+                printf("  Run %d: isr=%d matches=%d\n", run, r.isr_fires, r.matches);
+                all_match = 0;
+            }
+        }
+
+        double avg_us = (double)total_us / 10.0;
+        printf("  Average: %.1f us per chain (with ISR capture)\n", avg_us);
+        printf("  Frequency: %.1f Hz\n", 1e6 / avg_us);
+        printf("  All matches: %s\n", all_match ? "YES" : "NO");
+
+        /* Compare with M8 v1 per-neuron mode (13,190 us) and chain mode (2,139 us) */
+        printf("\n  Comparison:\n");
+        printf("    M8 v1 per-neuron: ~13,190 us (64 individual runs)\n");
+        printf("    M8 v1 chain:       ~2,139 us (cumulative sum only)\n");
+        printf("    M8 v2 ISR chain:   %.0f us (per-neuron results!)\n", avg_us);
+
+        test_count++;
+        if (all_match) pass_count++;
+        printf("  %s\n\n", all_match ? "OK" : "FAIL");
+        fflush(stdout);
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+     *  TEST 4: Fast per-neuron (no ISR, minimal ceremony)
+     *
+     *  Run each neuron individually like M8 v1, but strip the
+     *  ceremony to the absolute minimum: single PCNT clear,
+     *  small wait, no triple-clear errata workaround.
+     * ══════════════════════════════════════════════════════════════ */
+    printf("-- TEST 4: Fast per-neuron (minimal ceremony) --\n");
+    fflush(stdout);
+    {
+        cfc_init(42, 50);
+        premultiply_all();
+        encode_all_neurons();
+        cpu_compute_all_dots();
+
+        /* Disable ISR */
+        REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = 0;
+
+        gpio_set_level(GPIO_X_POS, 0);
+        gpio_set_level(GPIO_X_NEG, 0);
+        gpio_set_level(GPIO_Y_POS, 1);
+        gpio_set_level(GPIO_Y_NEG, 0);
+        esp_rom_delay_us(50);
+
+        int matches = 0;
+        int hw_dots[NUM_NEURONS];
+        int64_t t_start = esp_timer_get_time();
+
+        for (int n = 0; n < NUM_NEURONS; n++) {
+            /* Build single-descriptor chain */
+            memset(&neuron_descs[0], 0, sizeof(lldesc_t));
+            neuron_descs[0].size = NEURON_BUF_SIZE;
+            neuron_descs[0].length = NEURON_BUF_SIZE;
+            neuron_descs[0].buf = neuron_bufs[n];
+            neuron_descs[0].owner = 1;
+            neuron_descs[0].eof = 1;
+
+            /* Single PCNT clear */
+            clear_all_pcnt();
+
+            /* Setup GDMA + PARLIO */
+            setup_gdma(&neuron_descs[0], NEURON_BUF_SIZE);
+            esp_rom_delay_us(5);
+            clear_all_pcnt();
+
+            /* Fire */
+            uint32_t tx_cfg0 = REG32(PARLIO_TX_CFG0);
+            tx_cfg0 |= (1 << 19);
+            REG32(PARLIO_TX_CFG0) = tx_cfg0;
+
+            /* 80 bytes * 4 symbols / 20 MHz = 16us + margin */
+            esp_rom_delay_us(30);
+
+            parlio_stop_and_reset();
+
+            int agree, disagree;
+            pcnt_unit_get_count(pcnt_agree, &agree);
+            pcnt_unit_get_count(pcnt_disagree, &disagree);
+            hw_dots[n] = agree - disagree;
+
+            if (hw_dots[n] == cpu_dots[n]) matches++;
+        }
+
+        int64_t t_end = esp_timer_get_time();
+        int64_t elapsed = t_end - t_start;
+
+        gpio_set_level(GPIO_Y_POS, 0);
+        gpio_set_level(GPIO_Y_NEG, 0);
+
+        printf("  Matches: %d / %d\n", matches, NUM_NEURONS);
+        printf("  Elapsed: %lld us (%.1f us/neuron)\n", elapsed, (double)elapsed / NUM_NEURONS);
+
+        /* Show samples */
+        printf("  Sample results:\n");
+        for (int i = 0; i < 4; i++) {
+            printf("    n[%2d]: hw=%+4d cpu=%+4d %s\n",
+                   i, hw_dots[i], cpu_dots[i],
+                   (hw_dots[i] == cpu_dots[i]) ? "OK" : "MISMATCH");
+        }
+        printf("    ...\n");
+        for (int i = 60; i < 64; i++) {
+            printf("    n[%2d]: hw=%+4d cpu=%+4d %s\n",
+                   i, hw_dots[i], cpu_dots[i],
+                   (hw_dots[i] == cpu_dots[i]) ? "OK" : "MISMATCH");
+        }
+
+        double m8v1_us = 13190.0;
+        printf("\n  Comparison:\n");
+        printf("    M8 v1 per-neuron:  %.0f us (triple-clear ceremony)\n", m8v1_us);
+        printf("    M8 v2 fast neuron: %lld us (minimal ceremony)\n", elapsed);
+        printf("    Speedup: %.1fx\n", m8v1_us / (double)elapsed);
+
+        int ok = (matches == NUM_NEURONS);
+        test_count++;
+        if (ok) pass_count++;
+        printf("  %s\n\n", ok ? "OK" : "FAIL");
+        fflush(stdout);
+    }
+
+    /* ── Summary ── */
+    printf("============================================================\n");
+    printf("  RESULTS: %d / %d PASSED\n", pass_count, test_count);
+    printf("============================================================\n");
+    if (pass_count == test_count) {
+        printf("\n  *** M8 v2: PER-NEURON ISR CAPTURE VERIFIED ***\n");
+        printf("  64 neurons, one DMA chain, per-neuron dot products.\n");
+        printf("  ISR overhead: ~10 register ops per neuron boundary.\n\n");
+    } else {
+        printf("\n  SOME TESTS FAILED — see details above.\n\n");
+    }
+    fflush(stdout);
+
+    while (1) vTaskDelay(pdMS_TO_TICKS(10000));
+}
