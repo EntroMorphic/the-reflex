@@ -167,8 +167,20 @@ static void IRAM_ATTR gdma_eof_isr(void *arg) {
 
     if (status & GDMA_OUT_EOF_BIT) {
         /* out_eof fires when separator is read from memory.
-         * Capture cumulative PCNT — no clearing, no RMW races. */
+         * Capture cumulative PCNT — no clearing, no RMW races.
+         *
+         * CLOCK DOMAIN DRAIN: EOF fires on the AHB/memory clock when
+         * GDMA reads the separator descriptor. At this point, the last
+         * few bytes of neuron data may still be in the PARLIO TX FIFO
+         * and PCNT may have an edge in its input synchronizer pipeline.
+         * A short spin gives the PCNT clock domain time to settle.
+         * At 160MHz CPU, ~32 NOPs ≈ 200ns ≈ 4 PCNT clock cycles. */
         REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = GDMA_OUT_EOF_BIT;
+
+        /* Spin ~2.5us for PCNT pipeline drain (~50 PCNT cycles at 20MHz).
+         * At 160MHz RISC-V, each volatile loop iteration ≈ 25ns.
+         * 100 iterations ≈ 2.5us. Well within 12.8us separator window. */
+        for (volatile int _d = 0; _d < 100; _d++) { }
 
         int idx = isr_count;
         if (idx < ISR_CAPTURES) {
