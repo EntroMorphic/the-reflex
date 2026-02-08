@@ -1,22 +1,34 @@
 /*
- * geometry_cfc_m8_etm.c — M8 v2: Per-Neuron ISR Capture
+ * geometry_cfc_m8_etm.c — Autonomous Ternary CfC on the GIE
  *
- * Milestone 8 v2: Chain all neurons as one GDMA linked list, fire a
- * GDMA EOF interrupt after each descriptor, capture cumulative PCNT
- * counts in the ISR.  Per-neuron dots decoded by differencing.
+ * The first fully-ternary CfC liquid neural network running on
+ * autonomous hardware: GDMA→PARLIO→PCNT computes all 64 dot products
+ * (32 f-pathway + 32 g-pathway) in a single DMA chain while the CPU
+ * is free. CPU only premultiplies, encodes, fires, then applies the
+ * ternary blend logic (~3 instructions per neuron).
  *
  * Architecture:
- *   - 2 dummy neurons (all zeros) absorb startup transients
+ *   - 3 dummy neurons (all zeros) absorb startup transients
  *   - 64 real neurons, each = [data 80B] + [separator 64B, eof=1]
  *   - GDMA EOF interrupt (LEVEL3) fires on each separator read-from-memory
  *   - ISR reads cumulative PCNT via direct register access (~10 cycles)
  *   - Per-neuron dot decoded by cumulative differencing
  *   - Auto-detects baseline (last (0,0) dummy capture)
  *
+ * CfC update equation (ternary):
+ *   f[n] = sign(dot(W_f[n], [input|hidden]))    gate:      {-1, 0, +1}
+ *   g[n] = sign(dot(W_g[n], [input|hidden]))    candidate: {-1, 0, +1}
+ *   if f == +1: h_new = g      (UPDATE)
+ *   if f ==  0: h_new = h_old  (HOLD)
+ *   if f == -1: h_new = -g     (INVERT)
+ *
  * Tests:
  *   TEST 1: Chain without ISR (cumulative sum, sanity check)
  *   TEST 2: Chain with ISR (per-neuron capture, verify vs CPU)
  *   TEST 3: Throughput — 10 runs with different seeds, all must match
+ *   TEST 4: CfC single step — hw dots → blend → hidden state match
+ *   TEST 5: CfC 8-step trajectory — hidden state match at every step
+ *   TEST 6: CfC dynamics — all three blend modes active, state evolves
  *
  * Board: ESP32-C6FH4 (QFN32) rev v0.2
  * ESP-IDF: v5.4
@@ -103,7 +115,7 @@
 #define SEP_SIZE        64   /* separator: all zeros, no PCNT edges. */
 
 /* Total descriptors: 2 dummies + 2 seps + (1 data + 1 separator) per neuron */
-#define NUM_DUMMIES     2
+#define NUM_DUMMIES     3
 #define TOTAL_DESCS     (NUM_DUMMIES * 2 + NUM_NEURONS * 2)
 
 /* ── Static allocations (BSS) ── */
@@ -343,6 +355,12 @@ static inline int8_t tmul(int8_t a, int8_t b) {
     return (int8_t)(a * b);
 }
 
+static inline int8_t tsign(int val) {
+    if (val > 0) return T_POS;
+    if (val < 0) return T_NEG;
+    return T_ZERO;
+}
+
 static uint32_t cfc_rng_state;
 
 static void cfc_seed(uint32_t seed) {
@@ -490,6 +508,77 @@ static void cpu_compute_all_dots(void) {
 }
 
 /* ══════════════════════════════════════════════════════════════════
+ *  DETERMINISTIC INPUT GENERATOR
+ * ══════════════════════════════════════════════════════════════════ */
+
+static void gen_input(int8_t *input, uint32_t seed) {
+    cfc_seed(seed);
+    for (int i = 0; i < CFC_INPUT_DIM; i++)
+        input[i] = rand_trit(40);  /* 40% sparse */
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ *  CfC STEP — apply blend logic to dot products, update hidden state
+ *
+ *  dots[0..31]  = f-pathway (gate)
+ *  dots[32..63] = g-pathway (candidate)
+ *
+ *  Returns: number of UPDATE, HOLD, INVERT operations
+ * ══════════════════════════════════════════════════════════════════ */
+
+typedef struct {
+    int8_t h_new[CFC_HIDDEN_DIM];
+    int n_update, n_hold, n_invert;
+} cfc_blend_result_t;
+
+static cfc_blend_result_t cfc_apply_blend(const int *dots, int8_t *hidden) {
+    cfc_blend_result_t r = {0};
+    for (int n = 0; n < CFC_HIDDEN_DIM; n++) {
+        int8_t f = tsign(dots[n]);                    /* f-pathway: neuron n */
+        int8_t g = tsign(dots[n + CFC_HIDDEN_DIM]);   /* g-pathway: neuron n+32 */
+
+        if (f == T_ZERO) {
+            r.h_new[n] = hidden[n];   /* HOLD */
+            r.n_hold++;
+        } else {
+            r.h_new[n] = tmul(f, g);  /* UPDATE or INVERT */
+            if (f == T_POS) r.n_update++;
+            else r.n_invert++;
+        }
+    }
+    /* Commit */
+    memcpy(hidden, r.h_new, CFC_HIDDEN_DIM);
+    return r;
+}
+
+/* Display helpers */
+static char trit_char(int8_t t) {
+    if (t > 0) return '+';
+    if (t < 0) return '-';
+    return '0';
+}
+
+static void print_trit_vec(const char *label, const int8_t *v, int n) {
+    printf("  %s: [", label);
+    for (int i = 0; i < n; i++) printf("%c", trit_char(v[i]));
+    printf("]\n");
+}
+
+static int trit_hamming(const int8_t *a, const int8_t *b, int n) {
+    int d = 0;
+    for (int i = 0; i < n; i++)
+        if (a[i] != b[i]) d++;
+    return d;
+}
+
+static int trit_energy(const int8_t *v, int n) {
+    int e = 0;
+    for (int i = 0; i < n; i++)
+        if (v[i] != T_ZERO) e++;
+    return e;
+}
+
+/* ══════════════════════════════════════════════════════════════════
  *  DMA ENGINE CONTROL
  * ══════════════════════════════════════════════════════════════════ */
 
@@ -628,9 +717,17 @@ static chain_isr_result_t run_chain_with_isr(void) {
     /* 2 dummies + 64 real, each = data + separator */
     int total_bytes = (NUM_DUMMIES + NUM_NEURONS) * (NEURON_BUF_SIZE + SEP_SIZE);
 
-    /* Full reset sequence: disable interrupts, reset GDMA, rebuild state */
+    /* ── Phase 1: Full pipeline quiesce ──
+     * Stop PARLIO, reset GDMA, clear interrupts.
+     * This ensures no residual state from a previous chain run. */
+    parlio_stop_and_reset();
+    esp_rom_delay_us(50);
+
+    /* Disable and clear ALL GDMA interrupts */
     REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = 0;
     REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0x3F;
+    esp_rom_delay_us(10);
+    REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0x3F;  /* double-clear */
 
     /* Reset descriptor owner bits — GDMA clears these after processing */
     for (int d = 0; d < TOTAL_DESCS; d++) {
@@ -643,19 +740,32 @@ static chain_isr_result_t run_chain_with_isr(void) {
     memset((void*)isr_agree, 0, sizeof(isr_agree));
     memset((void*)isr_disagree, 0, sizeof(isr_disagree));
 
+    /* Drive all GPIOs low and settle before enabling interrupts */
+    gpio_set_level(GPIO_X_POS, 0);
+    gpio_set_level(GPIO_X_NEG, 0);
+    gpio_set_level(GPIO_Y_POS, 0);
+    gpio_set_level(GPIO_Y_NEG, 0);
+    esp_rom_delay_us(50);
+
+    /* Triple-clear PCNT before anything else */
+    clear_all_pcnt();
+    esp_rom_delay_us(10);
+    clear_all_pcnt();
+    esp_rom_delay_us(10);
+    clear_all_pcnt();
+    esp_rom_delay_us(50);
+
     /* Clear and enable interrupts BEFORE setup — we want to catch ALL
      * EOFs including the dummy's, which fires during GDMA prefetch.
-     * This gives us a reliable 65 captures (1 dummy + 64 real). */
+     * This gives us a reliable 66 captures (2 dummies + 64 real). */
     REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0x3F;
     REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = GDMA_OUT_EOF_BIT | GDMA_OUT_TOTAL_EOF_BIT;
 
-    gpio_set_level(GPIO_X_POS, 0);
-    gpio_set_level(GPIO_X_NEG, 0);
+    /* Now set Y_POS high for PCNT level gating */
     gpio_set_level(GPIO_Y_POS, 1);
     gpio_set_level(GPIO_Y_NEG, 0);
     esp_rom_delay_us(50);
 
-    clear_all_pcnt();
     setup_gdma(&neuron_descs[0], total_bytes);
     esp_rom_delay_us(500);
     clear_all_pcnt();
@@ -701,24 +811,48 @@ static chain_isr_result_t run_chain_with_isr(void) {
 
     /* Decode ISR captures.
      *
-     * Chain has 2 dummies + 64 real neurons = 66 separator EOFs.
+     * Chain has 3 dummies + 64 real neurons = 67 separator EOFs.
      * Dummies are all zeros — no PCNT edges.
      *
      * Find the last dummy capture (highest index with agree==disagree==0,
      * or just use the last capture before real neuron data appears).
      * Use it as baseline for differencing.
      *
-     * With 2 dummies, even if dummy 0's EOF fires during GDMA prefetch
-     * with a stale PCNT, dummy 1 streams after PCNT is cleared and
-     * provides a clean (0,0) baseline.
+     * With 3 dummies: dummy 0 absorbs GDMA prefetch transient,
+     * dummy 1 absorbs PCNT clearing residue, dummy 2 provides
+     * a clean (0,0) baseline after everything has settled.
      */
-    /* Find baseline: last capture with both agree=0 and disagree=0 */
-    int base = 0;
-    for (int i = 0; i < isr_count && i < NUM_DUMMIES + 1; i++) {
-        if (isr_agree[i] == 0 && isr_disagree[i] == 0) {
-            base = i;
+    /* Find baseline: scan early captures for the last one where cumulative
+     * PCNT has stabilized (two consecutive captures with same values).
+     * This is more robust than checking for absolute (0,0) — it handles
+     * the case where PCNT clearing leaves a small residue, as long as
+     * the residue is stable (same in both consecutive dummy captures).
+     *
+     * With 3 dummies we expect 3 early captures. Use the last one where
+     * the delta from the previous capture is (0,0) as the baseline. */
+    int base = -1;
+    int scan_limit = (isr_count < NUM_DUMMIES + 2) ? isr_count : NUM_DUMMIES + 2;
+
+    /* First try: find last consecutive pair with zero delta */
+    for (int i = 1; i < scan_limit; i++) {
+        int da = isr_agree[i] - isr_agree[i - 1];
+        int dd = isr_disagree[i] - isr_disagree[i - 1];
+        if (da == 0 && dd == 0) {
+            base = i;  /* This capture has same cumulative as previous = stable */
         }
     }
+
+    /* Fallback: find last absolute (0,0) */
+    if (base < 0) {
+        for (int i = 0; i < scan_limit; i++) {
+            if (isr_agree[i] == 0 && isr_disagree[i] == 0) {
+                base = i;
+            }
+        }
+    }
+
+    /* Last resort: use the last dummy capture */
+    if (base < 0) base = (scan_limit > 0) ? scan_limit - 1 : 0;
 
     /* Real neuron captures start at base+1 */
     int avail = isr_count - base - 1;
@@ -936,14 +1070,233 @@ void app_main(void) {
         fflush(stdout);
     }
 
+    /* ══════════════════════════════════════════════════════════════
+     *  TEST 4: CfC single step — hw dots → blend → hidden state match
+     *
+     *  Run one CfC step via ISR chain AND via CPU. Both must produce
+     *  identical hidden states (dot-for-dot verification).
+     * ══════════════════════════════════════════════════════════════ */
+    printf("-- TEST 4: CfC single step (hw vs cpu hidden state) --\n");
+    fflush(stdout);
+    if (gdma_isr_handle == NULL) {
+        printf("  SKIPPED — ISR allocation failed\n\n");
+        test_count++;
+        fflush(stdout);
+    } else {
+        /* Two identical networks */
+        static cfc_state_t cfc_cpu_ref;
+        cfc_init(42, 50);
+        memcpy(&cfc_cpu_ref, &cfc, sizeof(cfc_state_t));
+
+        int8_t input[CFC_INPUT_DIM];
+        gen_input(input, 9999);
+
+        /* CPU reference step */
+        memcpy(cfc_cpu_ref.input, input, CFC_INPUT_DIM);
+        int cpu_ref_dots[NUM_NEURONS];
+        {
+            /* Premultiply using cpu_ref */
+            for (int n = 0; n < CFC_HIDDEN_DIM; n++) {
+                int sum_f = 0, sum_g = 0;
+                for (int i = 0; i < CFC_INPUT_DIM; i++) {
+                    sum_f += cfc_cpu_ref.W_f[n][i] * input[i];
+                    sum_g += cfc_cpu_ref.W_g[n][i] * input[i];
+                }
+                for (int i = 0; i < CFC_HIDDEN_DIM; i++) {
+                    sum_f += cfc_cpu_ref.W_f[n][CFC_INPUT_DIM + i] * cfc_cpu_ref.hidden[i];
+                    sum_g += cfc_cpu_ref.W_g[n][CFC_INPUT_DIM + i] * cfc_cpu_ref.hidden[i];
+                }
+                cpu_ref_dots[n] = sum_f;
+                cpu_ref_dots[n + CFC_HIDDEN_DIM] = sum_g;
+            }
+        }
+        cfc_blend_result_t cpu_blend = cfc_apply_blend(cpu_ref_dots, cfc_cpu_ref.hidden);
+
+        /* HW step: premultiply, encode, chain, blend */
+        memcpy(cfc.input, input, CFC_INPUT_DIM);
+        premultiply_all();
+        encode_all_neurons();
+        build_neuron_chain();
+        cpu_compute_all_dots();  /* for verification */
+
+        chain_isr_result_t hw_r = run_chain_with_isr();
+        cfc_blend_result_t hw_blend = cfc_apply_blend(hw_r.dots, cfc.hidden);
+
+        /* Compare */
+        int dot_match = 0;
+        for (int n = 0; n < NUM_NEURONS; n++)
+            if (hw_r.dots[n] == cpu_ref_dots[n]) dot_match++;
+
+        int h_match = 0;
+        for (int n = 0; n < CFC_HIDDEN_DIM; n++)
+            if (cfc.hidden[n] == cfc_cpu_ref.hidden[n]) h_match++;
+
+        printf("  Dots: %d/%d match\n", dot_match, NUM_NEURONS);
+        printf("  Hidden: %d/%d match\n", h_match, CFC_HIDDEN_DIM);
+        printf("  CPU: U=%d H=%d I=%d\n", cpu_blend.n_update, cpu_blend.n_hold, cpu_blend.n_invert);
+        printf("  GIE: U=%d H=%d I=%d\n", hw_blend.n_update, hw_blend.n_hold, hw_blend.n_invert);
+        printf("  Chain: %lld us, %d ISR fires\n", hw_r.elapsed_us, hw_r.isr_fires);
+        print_trit_vec("h(cpu)", cfc_cpu_ref.hidden, CFC_HIDDEN_DIM);
+        print_trit_vec("h(gie)", cfc.hidden, CFC_HIDDEN_DIM);
+
+        int ok = (dot_match == NUM_NEURONS) && (h_match == CFC_HIDDEN_DIM);
+        test_count++;
+        if (ok) pass_count++;
+        printf("  %s\n\n", ok ? "OK" : "FAIL");
+        fflush(stdout);
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+     *  TEST 5: CfC 8-step trajectory — hidden state match at every step
+     *
+     *  Run 8 CfC steps with changing inputs on both hw and cpu.
+     *  Hidden states must match at every step (errors accumulate).
+     * ══════════════════════════════════════════════════════════════ */
+    printf("-- TEST 5: CfC 8-step trajectory (hw vs cpu) --\n");
+    fflush(stdout);
+    if (gdma_isr_handle == NULL) {
+        printf("  SKIPPED — ISR allocation failed\n\n");
+        test_count++;
+        fflush(stdout);
+    } else {
+        /* Two identical networks */
+        static cfc_state_t cfc_cpu_ref;
+        cfc_init(777, 45);
+        memcpy(&cfc_cpu_ref, &cfc, sizeof(cfc_state_t));
+
+        int all_match = 1;
+        int64_t total_us = 0;
+
+        for (int step = 0; step < 8; step++) {
+            int8_t input[CFC_INPUT_DIM];
+            gen_input(input, 2000 + step * 31);
+
+            /* CPU reference step */
+            memcpy(cfc_cpu_ref.input, input, CFC_INPUT_DIM);
+            int cpu_ref_dots[NUM_NEURONS];
+            for (int n = 0; n < CFC_HIDDEN_DIM; n++) {
+                int sum_f = 0, sum_g = 0;
+                for (int i = 0; i < CFC_INPUT_DIM; i++) {
+                    sum_f += cfc_cpu_ref.W_f[n][i] * input[i];
+                    sum_g += cfc_cpu_ref.W_g[n][i] * input[i];
+                }
+                for (int i = 0; i < CFC_HIDDEN_DIM; i++) {
+                    sum_f += cfc_cpu_ref.W_f[n][CFC_INPUT_DIM + i] * cfc_cpu_ref.hidden[i];
+                    sum_g += cfc_cpu_ref.W_g[n][CFC_INPUT_DIM + i] * cfc_cpu_ref.hidden[i];
+                }
+                cpu_ref_dots[n] = sum_f;
+                cpu_ref_dots[n + CFC_HIDDEN_DIM] = sum_g;
+            }
+            cfc_apply_blend(cpu_ref_dots, cfc_cpu_ref.hidden);
+
+            /* HW step */
+            memcpy(cfc.input, input, CFC_INPUT_DIM);
+            premultiply_all();
+            encode_all_neurons();
+            build_neuron_chain();
+            cpu_compute_all_dots();
+
+            chain_isr_result_t hw_r = run_chain_with_isr();
+
+            /* Check dot match BEFORE blend */
+            int dot_match = 0;
+            for (int n = 0; n < NUM_NEURONS; n++)
+                if (hw_r.dots[n] == cpu_ref_dots[n]) dot_match++;
+
+            cfc_blend_result_t hw_bl = cfc_apply_blend(hw_r.dots, cfc.hidden);
+            total_us += hw_r.elapsed_us;
+
+            int h_match = (trit_hamming(cfc.hidden, cfc_cpu_ref.hidden, CFC_HIDDEN_DIM) == 0);
+            int energy = trit_energy(cfc.hidden, CFC_HIDDEN_DIM);
+
+            printf("  step %d: h_match=%s dots=%d/%d isr=%d U=%d H=%d I=%d energy=%d [%lld us]\n",
+                   step, h_match ? "yes" : "NO",
+                   dot_match, NUM_NEURONS, hw_r.isr_fires,
+                   hw_bl.n_update, hw_bl.n_hold, hw_bl.n_invert,
+                   energy, hw_r.elapsed_us);
+
+            if (!h_match) all_match = 0;
+        }
+
+        print_trit_vec("final h(cpu)", cfc_cpu_ref.hidden, CFC_HIDDEN_DIM);
+        print_trit_vec("final h(gie)", cfc.hidden, CFC_HIDDEN_DIM);
+
+        double avg_step_us = (double)total_us / 8.0;
+        printf("  8 steps in %lld us (%.0f us/step, %.1f Hz)\n",
+               total_us, avg_step_us, 1e6 / avg_step_us);
+
+        test_count++;
+        if (all_match) pass_count++;
+        printf("  %s\n\n", all_match ? "OK" : "FAIL");
+        fflush(stdout);
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+     *  TEST 6: CfC dynamics — all three blend modes, state evolution
+     *
+     *  Verify that the ternary CfC on GIE produces all three blend
+     *  modes (UPDATE, HOLD, INVERT) and that state evolves over time.
+     * ══════════════════════════════════════════════════════════════ */
+    printf("-- TEST 6: CfC dynamics (blend modes + evolution) --\n");
+    fflush(stdout);
+    if (gdma_isr_handle == NULL) {
+        printf("  SKIPPED — ISR allocation failed\n\n");
+        test_count++;
+        fflush(stdout);
+    } else {
+        cfc_init(5555, 50);
+
+        int total_u = 0, total_h = 0, total_i = 0;
+        int state_changed = 0;
+        int8_t prev_hidden[CFC_HIDDEN_DIM];
+        memset(prev_hidden, 0, CFC_HIDDEN_DIM);
+
+        for (int step = 0; step < 8; step++) {
+            int8_t input[CFC_INPUT_DIM];
+            gen_input(input, 3000 + step * 53);
+
+            memcpy(cfc.input, input, CFC_INPUT_DIM);
+            premultiply_all();
+            encode_all_neurons();
+            build_neuron_chain();
+            cpu_compute_all_dots();
+
+            chain_isr_result_t hw_r = run_chain_with_isr();
+            cfc_blend_result_t bl = cfc_apply_blend(hw_r.dots, cfc.hidden);
+
+            int dist = trit_hamming(cfc.hidden, prev_hidden, CFC_HIDDEN_DIM);
+            int energy = trit_energy(cfc.hidden, CFC_HIDDEN_DIM);
+
+            printf("  step %d: U=%2d H=%2d I=%2d | energy=%2d delta=%d\n",
+                   step, bl.n_update, bl.n_hold, bl.n_invert, energy, dist);
+
+            total_u += bl.n_update;
+            total_h += bl.n_hold;
+            total_i += bl.n_invert;
+            if (dist > 0) state_changed = 1;
+            memcpy(prev_hidden, cfc.hidden, CFC_HIDDEN_DIM);
+        }
+
+        print_trit_vec("final h", cfc.hidden, CFC_HIDDEN_DIM);
+        printf("  totals: %d update, %d hold, %d invert\n", total_u, total_h, total_i);
+
+        int ok = (total_u > 0) && (total_h > 0) && (total_i > 0) && state_changed;
+        test_count++;
+        if (ok) pass_count++;
+        printf("  %s\n\n", ok ? "OK" : "FAIL");
+        fflush(stdout);
+    }
+
     /* ── Summary ── */
     printf("============================================================\n");
     printf("  RESULTS: %d / %d PASSED\n", pass_count, test_count);
     printf("============================================================\n");
     if (pass_count == test_count) {
-        printf("\n  *** M8 v2: PER-NEURON ISR CAPTURE VERIFIED ***\n");
-        printf("  64 neurons, one DMA chain, per-neuron dot products.\n");
-        printf("  ISR overhead: ~10 register ops per neuron boundary.\n\n");
+        printf("\n  *** AUTONOMOUS TERNARY CfC VERIFIED ***\n");
+        printf("  64 dot products via single DMA chain (GDMA→PARLIO→PCNT)\n");
+        printf("  Ternary blend: UPDATE (f=+1), HOLD (f=0), INVERT (f=-1)\n");
+        printf("  h_new = (f==0) ? h_old : f * g\n");
+        printf("  Hardware computes, CPU just blends. Sub-CPU liquid network.\n\n");
     } else {
         printf("\n  SOME TESTS FAILED — see details above.\n\n");
     }
