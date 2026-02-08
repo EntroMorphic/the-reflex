@@ -8,8 +8,12 @@
 #   - hologram_mesh_demo.c : 3-node holographic mesh demo
 #   - hologram_demo.c   : Holographic Intelligence single node demo
 #   - cfc_spine_demo.c  : CfC closed-loop spine demo
+#   - geometry_cfc_m8_etm.c : M8 v2 with ISR capture (per-neuron results)
+#   - geometry_cfc_m8.c   : M8 self-sequencing fabric experiments
+#   - geometry_cfc_20mhz.c : Ternary CfC at 20 MHz (M9 max performance)
+#   - geometry_cfc_10mhz.c : Ternary CfC at 10 MHz (M9 performance)
 #   - geometry_cfc_diff.c : Ternary CfC differentiation experiment (M10)
-#   - geometry_cfc.c    : Ternary CfC - liquid neural network on GIE
+#   - geometry_cfc.c    : Ternary CfC - liquid neural network on GIE (1 MHz)
 #   - cfc_demo.c        : Binary Ternary CfC - liquid neural network
 #   - spine_summit.c    : THE SUMMIT - zero libc, zero ESP-IDF HAL
 #   - spine_bare.c      : Bare metal (uses printf transitionally)
@@ -20,7 +24,7 @@
 
 idf_component_register(
     SRCS
-        "geometry_cfc_diff.c"
+        "geometry_cfc_m8.c"
     INCLUDE_DIRS
         "../include"
         "../shared"
