@@ -261,12 +261,12 @@
                                                                                                                                                                                                                                                     
      | Milestone | Assembly LOC | New Commands | Key Deliverable |                                                                                                                                                                                  
      |---|---|---|---|                                                                                                                                                                                                                              
-     | M1: Top-K | +60 instr | — | 4 results sorted by score |                                                                                                                                                                                      
-     | M2: Scale+Bench | +20 instr | — | 64 nodes, <1ms latency |                                                                                                                                                                                   
-     | M3: HP API | 0 (C only) | — | Clean vdb_insert/search/clear |                                                                                                                                                                                
-     | M4: HNSW | +400 instr | cmd=3 (insert) | Graph search, O(log N) |                                                                                                                                                                            
-     | M5: Pipeline | +50 instr | cmd=4 (CfC+VDB) | Autonomous perceive→think→remember |                                                                                                                                                            
-                                                                                                                                                                                                                                                    
-     Total new assembly: ~530 instructions ≈ ~2,100 bytes. .text grows from 4,500 to 6,600 bytes. Still fits in 16KB with room to spare.                                                                                                            
+      | M1: Top-K | +60 instr | — | 4 results sorted by score | DONE `6ea0497` |
+      | M2: Scale+Bench | +20 instr | — | 64 nodes, <1ms latency | DONE `2c6dd17` |
+      | M3: HP API | 0 (C only) | — | Clean vdb_insert/search/clear | DONE `fa54192` |
+      | M4: NSW Graph | +400 instr | cmd=3 (insert) | M=7, recall@1=95%, recall@4=90% | DONE `7db919f` |
+      | M5: Pipeline | +50 instr | cmd=4 (CfC+VDB) | Perceive→think→remember in one wake | DONE `06d5535` |
+                                                                                                                                                                                                                                                     
+      ALL 5 MILESTONES COMPLETE. Total .text ~7,000 bytes. Fits in 16KB with ~5.8KB free for stack.
                                                                                                                                                                                                                                                     
      ---                                                                                                    

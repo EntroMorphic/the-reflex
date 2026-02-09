@@ -1,43 +1,70 @@
 # Geometry Intersection Engine: Architecture
 
+**Last Updated:** February 9, 2026
+
 ## Overview
 
-The Geometry Intersection Engine (GIE) computes ternary dot products using the ESP32-C6's peripheral fabric. Shapes (trit vectors) flow through DMA channels, intersect at PCNT manifolds, and produce scalar results. The ETM topology defines the computation. SRAM holds the geometry. The ground state is silence.
+The Geometry Intersection Engine (GIE) computes ternary dot products using the ESP32-C6's peripheral fabric. CPU pre-multiplies weight×input, encodes into DMA buffers, GDMA streams through PARLIO (2-bit loopback to GPIO), PCNT level-gates edge counting to accumulate agree/disagree counts, dot = agree - disagree.
 
-## Three-Level Architecture
+On top of this, a three-layer hierarchy was built:
+- **GIE** (428 Hz): Peripheral hardware IS the neural network
+- **LP core** (100 Hz, ~30uA): Hand-written RISC-V for geometric CfC + VDB
+- **HP core** (on-demand): Initialization and monitoring
+
+## Three-Layer Architecture
 
 ```
-Level 3: TOPOLOGY    — ETM channels, REGDMA (defines what connects to what)
-Level 2: CHANNELS    — DMA, PARLIO, GPIO (move/transform shapes)
-Level 1: MANIFOLDS   — PCNT units (measure intersections)
+Layer 1: GIE          — GDMA + PARLIO + PCNT (peripheral fabric computes)
+Layer 2: LP CORE      — 16MHz RISC-V, hand-ASM (geometric CfC + VDB)
+Layer 3: HP CORE      — 160MHz CPU (init + monitoring)
 ```
 
-### Level 1: Single-Unit Pipeline (Milestones 4-7, verified)
+### Layer 1: Free-Running GIE (Verified, 428 Hz)
 
-PARLIO(X) + static Y → PCNT → result. Single dot product per evaluation. CPU pre-multiplies W×X and encodes the product into DMA buffers.
+Circular DMA chain loops forever: `[dummy×5][neuron×64][separator EOF=1 → back to dummy0]`. ISR fires on each neuron's EOF, reads PCNT (after 200-loop clock domain drain), applies CfC blend, re-encodes the next neuron's products. 64 neurons at 10MHz PARLIO, 428 Hz.
 
 **Resource usage:**
-- PARLIO TX: 2-bit mode, 1MHz, GPIO 4-5
-- PCNT Unit 0: agree (X_pos×Y_pos + X_neg×Y_neg)
-- PCNT Unit 1: disagree (X_pos×Y_neg + X_neg×Y_pos)
-- GDMA CH0: PARLIO data
+- PARLIO TX: 2-bit mode, 10MHz, GPIO 4-5, io_loop_back
+- PCNT Unit 0: agree (X_pos gated by Y_pos + X_neg gated by Y_neg)
+- PCNT Unit 1: disagree (X_pos gated by Y_neg + X_neg gated by Y_pos)
+- GDMA CH0: owned by PARLIO driver, bare-metal reconfigured
 - GPTimer 0: kickoff (ETM-enabled)
+- ISR: LEVEL3 priority, source ETS_DMA_OUT_CH0_INTR_SOURCE=69
 
-### Level 1.5: Ternary CfC Layer (Milestone 7, verified)
+**CfC blend in ISR:**
+```
+dot = agree - disagree
+f = sign(dot_f)    // gate:      {-1, 0, +1}
+g = sign(dot_g)    // candidate: {-1, 0, +1}
+h_new = (f == 0) ? h_old : f * g   // ternary blend
+```
 
-GIE dot products + CfC temporal dynamics. The GIE computes 2N dot products per step (N for gate pathway, N for candidate pathway). The CPU applies the ternary CfC blend: `h_new = (f==0) ? h_old : f*g`. Three blend modes: UPDATE (f=+1), HOLD (f=0), INVERT (f=-1).
+Three blend modes: UPDATE (f=+1), HOLD (f=0), INVERT (f=-1). The inversion mode creates natural oscillation and convergence resistance.
 
-**Zero-copy concatenation:** Weight layout encodes concatenation statically. `W[0..input_dim-1]` pairs with input, `W[input_dim..concat_dim-1]` pairs with hidden state. No runtime buffer copy.
+### Layer 2: LP Core Geometric Processor (Verified, 100 Hz)
 
-**Novel dynamics:** The inversion mode (f=-1) creates natural oscillation and convergence resistance — the network maintains a high-energy uncommitted state under constant stimulus (analogous to biological pluripotency).
+16MHz RISC-V LP core, hand-written assembly. Wakes every 10ms via LP timer. Four commands:
 
-### Level 2: Dual-Channel Engine (planned, Milestone 8)
+| Command | Function | Stack Frame |
+|---------|----------|-------------|
+| cmd=1 | CfC step (16 neurons, 48-trit input) | 96 bytes |
+| cmd=2 | VDB search (NSW graph or brute-force) | 608 bytes |
+| cmd=3 | VDB insert (brute-force + top-M + edges) | 224 bytes |
+| cmd=4 | CfC + VDB pipeline (one wake cycle) | 96B then 608B sequential |
 
-REGDMA advances descriptor pointers between neuron evaluations. ETM auto-restart loop: GDMA EOF → Timer reload → GDMA start (next neuron). Multiple neurons sequence without CPU.
+**Operations:** AND, popcount (256-byte LUT), add, sub, negate, branch, shift. No MUL. No FP.
 
-### Level 3: Self-Sequencing Fabric (planned, Milestone 8-9)
+**VDB:** 64 nodes, 48 trits each, 32 bytes per node (24B vector + 7B neighbors + 1B count). NSW graph with M=7, ef=32, dual entry points. recall@1=95%, recall@4=90%.
 
-LP core manages inter-layer logic. Main CPU sleeps. REGDMA advances descriptor tables. ETM topology reconfigures between phases.
+**Pipeline (cmd=4):** CfC step → copy 6 words (packed trits) to VDB query BSS → VDB search. The CfC's packed [gie_hidden | lp_hidden] IS the VDB query. No re-packing.
+
+### Layer 3: HP Core (On-Demand)
+
+Full 160MHz RISC-V CPU. Initializes peripherals, loads weights, starts GIE and LP core, then monitors. Provides the VDB API (`vdb_insert`, `vdb_search`, `vdb_cfc_pipeline_step`).
+
+### Historical Note: REGDMA Path Not Taken
+
+The original plan (M8-M9) was to use REGDMA to advance descriptor pointers between neurons, with ETM auto-restart loops. Instead, the free-running circular DMA chain with ISR-driven re-encoding proved simpler and more effective. The LP core provides the inter-layer intelligence that REGDMA would have managed, but with much more capability (CfC + VDB).
 
 ## Key Architectural Decisions
 
@@ -83,40 +110,41 @@ Byte layout (2 trits per byte):
   +1, 0 → 0x01    -1, 0 → 0x02    0, 0 → 0x00
 ```
 
-## ETM Channel Budget
+## Performance (Verified on Silicon)
 
-```
-Level 1 (current):   5 channels  (kick, clear, watchdog, auto-stop, prime)
-Level 2 (planned):  20 channels  (dual-neuron eval + result routing)
-Level 3 (planned):  15 channels  (REGDMA loop + LP core signaling)
-Total:              40 channels
-Remaining:          10 channels  (error handling, diagnostics, expansion)
-```
+**GIE (10MHz PARLIO):**
+- 428 Hz loop rate (64 neurons per loop)
+- ~2.3ms per full loop
+- ISR re-encode: ~20us per neuron (within 86us inter-neuron window)
 
-## Performance Model
+**LP Core (16MHz RISC-V):**
+- CfC step: ~200us (16 neurons × 2 pathways = 32 INTERSECT calls)
+- VDB search (NSW, 64 nodes): ~100-200us
+- Pipeline (CfC + VDB): ~300-400us per wake
+- Duty cycle: ~4% (active 400us out of 10,000us wake period)
 
-At 1 MHz PARLIO clock:
-- 128 trits = 256 dibit clocks = 256 us on wire + DMA overhead ≈ 1 ms total
-- 256 trits = 512 dibit clocks = 512 us on wire + DMA overhead ≈ 1.5 ms total
+**Combined throughput:**
+- GIE: 428 × 64 = 27,392 dot products/s (peripheral hardware)
+- LP: 100 × 32 = 3,200 INTERSECT calls/s (geometric processor)
+- VDB: 100 searches/s with NSW graph (if pipeline mode)
 
-Layer throughput (N neurons, D trits each):
-- T_total ≈ N × (D/128 × 1ms + 0.8ms overhead)
-- 32 neurons × 256 trits: 32 × 2.35ms ≈ 75ms → 425 neurons/s
+## LP Core Memory Budget (16KB LP SRAM)
 
-At 10 MHz: wire time drops 10x, overhead dominates → ~1.4ms/neuron → ~700 neurons/s
-At 20 MHz: wire time drops 20x → ~1.3ms/neuron → ~770 neurons/s
+| Section | Size | Notes |
+|---------|------|-------|
+| Vector table | 128 B | Fixed |
+| Code (.text) | ~7,000 B | CfC + VDB search + insert + pipeline |
+| Popcount LUT (.rodata) | 288 B | 256-byte LUT + alignment |
+| CfC state (.bss) | ~968 B | Weights, hidden, dots, sync vars |
+| VDB nodes (.bss) | 2,048 B | 64 × 32 bytes (M=7 neighbors) |
+| VDB metadata (.bss) | ~80 B | Query, results, counters |
+| shared_mem | 16 B | Top of SRAM |
+| **Free for stack** | **~5,800 B** | Peak: 608B (VDB search frame) |
 
-The real win at higher clock rates is for large vectors (1024+ trits).
-
-## Memory Budget
+## HP Core Memory Budget
 
 | Content | Size | Notes |
 |---------|------|-------|
-| Weight vector (256 trits) | 64 bytes | 2 bits per trit, bit-packed before encoding |
-| DMA buffer (128 trits) | 64 bytes | Zero-interleaved, ready for PARLIO |
-| DMA descriptor | 12 bytes | lldesc_t |
-| 256-neuron layer weights | 16 KB | 256 × 64 bytes |
-| 8 DMA buffers | 512 bytes | Reused across neurons |
-| SRAM available | 512 KB | Fits ~30 layers of 256×256 |
-| CfC layer (32 hidden, 160 concat) | ~16 KB | 2 × 32 × 256 weights + biases + hidden |
-| CfC step working memory | 0 bytes | Zero-copy concat; product buffer on stack (~256B) |
+| CfC struct (static) | ~16 KB | 2 × 64 × 160 weights + biases + hidden + DMA buffers |
+| DMA descriptors | ~5 KB | Circular chain: 5 dummy + 64 neurons + separators |
+| Product buffers | ~512 B | Reused across neurons in ISR |

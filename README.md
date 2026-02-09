@@ -16,13 +16,12 @@
 |----------|--------|--------|
 | **Jetson Thor** | P99 Latency | **926 ns** (255x improvement over baseline) |
 | **Jetson Thor** | Control Rate | **10 kHz** sustained |
-| **ESP32-C6** | Sub-CPU ALU | **59/59 tests** (CPU-orchestrated gates) |
-| **ESP32-C6** | Autonomous ALU | **9/9 tests** (CPU in NOP loop during evaluation) |
-| **ESP32-C6** | Ternary TMUL | **9/9 tests** (ternary multiply via PCNT gating) |
-| **ESP32-C6** | 256-Trit Dot Product | **10/10 tests** (descriptor chain accumulation) |
-| **ESP32-C6** | Multi-Neuron Layer | **6/6 tests** (2-layer network, 108.8K trit-MACs/s) |
-| **ESP32-C6** | Ternary CfC | **6/6 tests** (liquid neural network, 3 blend modes, oscillation confirmed) |
-| **ESP32-C6** | Signal Path | GDMA → PARLIO(2-bit) → GPIO 4,5 → PCNT(agree/disagree) |
+| **ESP32-C6** | GIE Free-Running | **428 Hz**, 64 neurons, ~0 CPU (peripheral hardware IS the neural network) |
+| **ESP32-C6** | LP Core CfC | **100 Hz**, 16 neurons, ~30uA (hand-written RISC-V assembly) |
+| **ESP32-C6** | Ternary VDB | **64 nodes**, NSW graph, recall@1=95%, recall@4=90% |
+| **ESP32-C6** | CfC→VDB Pipeline | **Perceive+think+remember** in one 10ms LP wake cycle |
+| **ESP32-C6** | Verified Milestones | **25 milestones**, all verified exact on silicon |
+| **ESP32-C6** | Signal Path | GDMA → PARLIO(2-bit, 10MHz) → GPIO loopback → PCNT(agree/disagree) |
 
 ## What is The Reflex?
 
@@ -44,70 +43,51 @@ Sensor (Core 0) ──→ Controller (Core 1) ──→ Actuator (Core 2)
 
 ```
 the-reflex/
-├── reflex-robotics/          # 10kHz CONTROL LOOP (Jetson Thor)
-│   ├── src/
-│   │   ├── reflex.h          # Core coordination primitive
-│   │   └── control_loop.c    # Sensor→Controller→Actuator demo
-│   ├── docs/
-│   │   ├── PHASE_4_RESULTS.md    # 926ns P99 achieved
-│   │   └── SKEPTICAL_ANALYSIS.md # Rigorous falsification
-│   └── scripts/
-│       └── setup_rt_host.sh  # RT configuration
-│
-├── reflex_ros_bridge/        # ROS2 INTEGRATION (NEW)
-│   ├── src/
-│   │   ├── bridge_node.cpp   # ROS2 topics ↔ shared memory
-│   │   └── channel.cpp       # SharedChannel class
-│   ├── reflex_force_control.c # Native 10kHz force controller
-│   └── README.md             # Integration guide
-│
-├── reflex-os/                # THE REFLEX BECOMES THE ESP32-C6
+├── reflex-os/                    # ESP32-C6: GIE + LP CORE + VDB
 │   ├── main/
-│   │   ├── geometry_layer.c  # Milestone 6: Multi-neuron layer (6/6 verified)
-│   │   ├── geometry_dot.c    # Milestone 5: 256-trit dot product (10/10 verified)
-│   │   ├── ternary_alu.c     # Milestone 4: Ternary TMUL (9/9 verified)
-│   │   ├── autonomous_alu.c  # Milestone 3: Autonomous ALU (9/9 verified)
-│   │   ├── alu_fabric.c      # Milestone 1: Sub-CPU ALU (59/59 verified)
-│   │   └── raid_etm_fabric.c # Milestone 2: Autonomous fabric (5/5 verified)
+│   │   ├── ulp/main.S            # LP core: hand-written RISC-V assembly
+│   │   │                         #   CfC + VDB search + insert + pipeline (cmd 1-4)
+│   │   ├── geometry_cfc_freerun.c  # Current entry point: free-running GIE + LP + VDB
+│   │   ├── reflex_vdb.c          # HP-side VDB API implementation
+│   │   ├── geometry_cfc.c        # M7: Original CfC (single-step)
+│   │   ├── geometry_layer.c      # M6: Multi-neuron layer
+│   │   ├── geometry_dot.c        # M5: 256-trit dot product
+│   │   ├── ternary_alu.c         # M4: Ternary TMUL
+│   │   ├── autonomous_alu.c      # M3: Autonomous ALU
+│   │   ├── alu_fabric.c          # M1: Sub-CPU ALU
+│   │   └── raid_etm_fabric.c     # M2: Autonomous fabric
 │   ├── include/
-│   │   ├── reflex.h          # Core primitive (50 lines)
-│   │   ├── reflex_gpio.h     # GPIO channels (12ns)
-│   │   ├── reflex_timer.h    # Timer channels (10kHz)
-│   │   ├── reflex_spline.h   # Catmull-Rom interpolation (137ns)
-│   │   ├── reflex_void.h     # Entropy field for TriX echips
-│   │   ├── reflex_echip.h    # Self-composing processor
-│   │   ├── reflex_obsbot.h   # OBSBOT PTZ camera control
-│   │   └── reflex_c6.h       # Master header
-│   ├── tools/                # Linux host tools
-│   │   ├── obsbot_test.c     # Camera test utility
-│   │   └── stereo_demo.c     # Synchronized stereo vision
+│   │   ├── reflex_vdb.h          # VDB API (insert/search/clear/pipeline)
+│   │   ├── reflex.h              # Core coordination primitive
+│   │   └── ...                   # GPIO, timer, spline headers
 │   └── docs/
-│       ├── ARCHITECTURE.md       # Channel model + entropy field
-│       ├── API.md                # Complete API reference
-│       ├── BENCHMARKS.md         # Performance measurements
-│       ├── RAID_ETM_FABRIC.md    # Autonomous fabric architecture
-│       ├── HARDWARE_ERRATA.md    # C6 constraints & workarounds
-│       ├── FLASH_GUIDE.md        # Flash & serial procedure
-│       └── REGISTER_REFERENCE.md # Bare-metal register addresses
+│       ├── GIE_ARCHITECTURE.md   # Three-layer GIE + LP architecture
+│       ├── HARDWARE_ERRATA.md    # 20+ errata discovered & resolved
+│       ├── REGISTER_REFERENCE.md # Bare-metal register addresses
+│       └── FLASH_GUIDE.md        # Build/flash procedure
 │
-├── pulse-arithmetic-lab/     # TEACHING LAB: PCNT + PARLIO neural computation
-│   ├── firmware/01-05/       # 5 progressive demos
-│   ├── docs/                 # Theory, hardware, ETM formalization
-│   └── CLAIMS.md             # 7 falsifiable scientific claims
+├── reflex-robotics/              # 10kHz CONTROL LOOP (Jetson Thor)
+│   ├── src/reflex.h              # Core coordination primitive
+│   └── docs/                     # Phase 1-4 results, falsification
 │
-├── src/                      # RESEARCH EXPERIMENTS (the science)
-│   ├── e3_latency_comparison.c   # Stigmergy vs Futex benchmark
-│   ├── e1_coordination_v3.c      # Causality proof
-│   └── e2b_false_sharing.c       # False positive control
+├── reflex_ros_bridge/            # ROS2 INTEGRATION
+│   └── README.md                 # Shared memory bridge architecture
 │
-├── docs/                     # DOCUMENTATION
-│   ├── HARDWARE_INVENTORY.md     # All compute resources
-│   ├── PI4_SETUP.md              # Raspberry Pi 4 setup
-│   ├── LINCOLN_MANIFOLD_*.md     # Design analysis documents
-│   └── ...                       # Lincoln Manifold phases
+├── docs/                         # PROJECT DOCUMENTATION
+│   ├── CURRENT_STATUS.md         # Complete project status
+│   ├── MILESTONE_PROGRESSION.md  # All 25 milestones documented
+│   └── ...                       # PRDs, LMMs, design analysis
 │
-└── notebooks/
-    └── stigmergy_demo.ipynb  # One-click Colab demo
+├── journal/                      # LINCOLN MANIFOLD METHOD JOURNAL
+│   ├── the_reflex_raw.md         # Phase 1: RAW
+│   ├── the_reflex_nodes.md       # Phase 2: NODES
+│   ├── the_reflex_reflect.md     # Phase 3: REFLECT
+│   └── the_reflex_synth.md       # Phase 4: SYNTHESIZE
+│
+├── the-reflex-tvdb.md            # VDB PRD (5 milestones, all complete)
+├── notes/                        # Design notes, LMM explorations
+├── delta-observer/               # Neural network observation research
+└── notebooks/                    # Colab demos
 ```
 
 ---
@@ -233,157 +213,135 @@ All numbers verified under adversarial testing with 100K+ samples. Zero catastro
 
 ---
 
-## The Silicon Grail: Autonomous Hardware Computation
+## The Three-Layer Ternary Reflex Arc
 
-The deepest layer of The Reflex: **boolean logic gates evaluated entirely by peripheral hardware** while the CPU sits in a NOP loop.
+The deepest layer of The Reflex: a three-layer hierarchy where **peripheral hardware IS the neural network**, a **micro-core IS the sub-conscious**, and the **CPU IS consciousness**.
 
-### Seven Milestones Verified on Silicon
+No floating point. No multiplication. Verified exact on silicon.
 
-Each milestone built on the last. Each was verified on a physical ESP32-C6FH4 (QFN32) rev v0.2 board. See [`docs/MILESTONE_PROGRESSION.md`](docs/MILESTONE_PROGRESSION.md) for the full narrative.
-
-#### Milestones 1-3: Boolean ALU → Autonomous Computation
-
-| Milestone | Tests | What It Proved | File |
-|-----------|-------|----------------|------|
-| M1: Sub-CPU ALU | 59/59 | PCNT level-gated edge counting implements AND, OR, XOR, NOT, SHL/SHR, ADD, MUL | `alu_fabric.c` |
-| M2: Autonomous Fabric | 5/5 | Peripheral loop runs without CPU (ETM crossbar wiring). *Note: used wrong ETM addrs, corrected in M3.* | `raid_etm_fabric.c` |
-| M3: Autonomous ALU | 9/9 | CPU enters NOP loop. GDMA descriptor chains execute gate sequences autonomously. | `autonomous_alu.c` |
-
-#### Milestone 4: Ternary TMUL (9/9 tests)
-
-Transitioned from boolean gates to **ternary arithmetic**. PARLIO 2-bit mode drives two GPIOs (X_pos, X_neg) representing trit values {-1, 0, +1}. Two PCNT units count agree/disagree edges gated by static Y levels. Result = agree - disagree = ternary multiply.
-
-**Key decision:** Switched from 4-bit PARLIO (M1-3) to 2-bit PARLIO. Eliminated the nibble-boundary glitch problem entirely.
-
-**File:** `reflex-os/main/ternary_alu.c` | **Commit:** `66469ce`
-
-#### Milestone 5: 256-Trit Dot Product (10/10 tests)
-
-Scaled from single-trit operations to **128-256 trit vector dot products** via DMA descriptor chains. Zero-interleave encoding: each trit occupies 2 dibit slots (value + silence), guaranteeing one clean rising edge per non-zero trit. 64 bytes = 128 trits per buffer. Chains of 2-4 buffers accumulate across descriptors.
-
-**Key errata:** GDMA with `ETM_EN` won't auto-follow linked lists. Solution: use normal GDMA mode (no `ETM_EN`), gate output with PARLIO `TX_START`.
-
-**File:** `reflex-os/main/geometry_dot.c`
-
-#### Milestone 6: Multi-Neuron Layer Evaluation (6/6 tests)
-
-Full **neural network layer** evaluation. CPU pre-multiplies W[i] * X[i] (ternary multiply = sign flip), encodes products into DMA buffers, hardware sums via PCNT. Ternary activation: sign(dot) → {-1, 0, +1}. Verified a **2-layer feedforward network** (8→4 neurons) end-to-end against CPU reference.
+### The Architecture
 
 ```
-Throughput (32 neurons, dim=256):
-  425 neurons/s | 108.8K trit-MACs/s | 1525 us/neuron (hardware)
+┌──────────────────────────────────────────────────────────────────┐
+│                       THE REFLEX ARC                              │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  Layer 1: GIE — Geometry Intersection Engine (Peripheral Fabric) │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │  Circular DMA chain loops forever: [dummy×5][neuron×64]   │    │
+│  │  GDMA → PARLIO (2-bit, 10MHz) → GPIO loopback → PCNT     │    │
+│  │  ISR: drain PCNT → decode dot → CfC blend → re-encode    │    │
+│  │  428 Hz, 64 neurons, ~0 CPU after init                    │    │
+│  └──────────────────────────────────────────────────────────┘    │
+│        │ cfc.hidden[32] (updated every ~2.3ms)                    │
+│        ▼                                                          │
+│  Layer 2: LP Core — Geometric Processor (16MHz RISC-V, ~30uA)   │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │  Hand-written assembly: AND + popcount(LUT) + branch       │    │
+│  │  CfC: 16 neurons × 2 pathways = 32 INTERSECT calls        │    │
+│  │  VDB: 64-node NSW graph, M=7, recall@1=95%                │    │
+│  │  Pipeline (cmd=4): perceive → think → remember             │    │
+│  │  100 Hz (10ms wake cycle), sleeps 96% of the time          │    │
+│  └──────────────────────────────────────────────────────────┘    │
+│        │ lp_hidden[16], vdb_results[4]                            │
+│        ▼                                                          │
+│  Layer 3: HP Core — Full CPU (160MHz, ~15mA)                     │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │  Initialization, weight loading, monitoring                │    │
+│  │  Awake only when needed                                    │    │
+│  └──────────────────────────────────────────────────────────┘    │
+│                                                                   │
+├──────────────────────────────────────────────────────────────────┤
+│  Operations: AND, popcount, add, sub, negate, branch, shift      │
+│  Absent: MUL, DIV, FP, gradients, backpropagation                │
+│  Verification: Exact, dot-for-dot, on silicon (25 milestones)    │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-**File:** `reflex-os/main/geometry_layer.c`
+### 25 Milestones Verified on Silicon
 
-#### Milestone 7: Ternary CfC (6/6 tests)
+Each verified on ESP32-C6FH4 (QFN32) rev v0.2. See [`docs/MILESTONE_PROGRESSION.md`](docs/MILESTONE_PROGRESSION.md) for the full narrative.
 
-The first **fully-ternary CfC** (Closed-form Continuous-time) liquid neural network. Everything is {-1, 0, +1}: weights, inputs, hidden state, activations. Three blend modes: UPDATE (f=+1), HOLD (f=0), INVERT (f=-1). The inversion mode is unique — it creates natural inhibition and oscillatory dynamics that binary CfC cannot express.
+**GIE Foundation (M1-M7):**
 
-**Key finding:** Under constant input, the ternary CfC resists convergence (still evolving at step 15), unlike binary CfC which converges to a fixed point quickly. The sustained high-energy, uncommitted state resembles biological pluripotency — the stem cell analogy.
+| Milestone | Tests | What It Proved |
+|-----------|-------|----------------|
+| M1: Sub-CPU ALU | 59/59 | PCNT+PARLIO = boolean gates |
+| M2: Autonomous Fabric | 5/5 | ETM crossbar peripheral loop |
+| M3: Autonomous ALU | 9/9 | GDMA descriptor chain sequencing |
+| M4: Ternary TMUL | 9/9 | 2-bit PARLIO + dual PCNT = ternary multiply |
+| M5: 256-Trit Dot Product | 10/10 | Multi-buffer DMA accumulation |
+| M6: Multi-Neuron Layer | 6/6 | 32-neuron layer, 108.8K trit-MACs/s |
+| M7: Ternary CfC | 6/6 | Fully-ternary liquid network, 3 blend modes |
 
-```
-CfC update: h_new = (f==0) ? h_old : f * g    (ternary multiply)
-Performance: 6.7 Hz at 1MHz PARLIO, ~67 Hz projected at 10MHz
-```
+**Free-Running + Scale (M8-M10):**
 
-**File:** `reflex-os/main/geometry_cfc.c`
+| Milestone | Tests | What It Proved |
+|-----------|-------|----------------|
+| M8: 64-Neuron Chain | 4/4 + 3/3 | Giant DMA chain, per-neuron ISR, 64/64 exact |
+| M9: 10MHz PARLIO | 6/6 | PCNT keeps up, zero errors at 10x clock |
+| M10: Differentiation | 4/5 | Stem cell hypothesis: 4/5 predictions confirmed |
+| Free-Run | 3/3 | 428 Hz autonomous CfC, 64/64 exact |
 
-### The Signal Path (Current: Milestone 7)
+**LP Core (hand-written RISC-V assembly):**
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│              GEOMETRY INTERSECTION ENGINE                         │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   CPU pre-multiplies P[i] = W[i] × X[i] (ternary, ~200 cycles) │
-│   Encodes P into DMA buffers (1 dibit = 1 trit)                 │
-│                                                                  │
-│   SRAM buffers ──► GDMA ──► PARLIO TX (2-bit, 1MHz)             │
-│   (descriptor chain)              │                              │
-│                                   ▼                              │
-│                            GPIO 4 (X_pos)                        │
-│                            GPIO 5 (X_neg)                        │
-│                                   │                              │
-│   GPIO 6 (Y_pos) = HIGH ─────────┤                              │
-│   GPIO 7 (Y_neg) = LOW  ─────────┤                              │
-│                                   ▼                              │
-│                          PCNT Unit 0 (agree)                     │
-│                          PCNT Unit 1 (disagree)                  │
-│                                   │                              │
-│                          dot = agree - disagree                  │
-│                          sign(dot) → {-1, 0, +1}                │
-│                                   │                              │
-│                          GPIO 8 (positive) ──► next layer input  │
-│                          GPIO 9 (negative)                       │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
+| Milestone | Tests | What It Proved |
+|-----------|-------|----------------|
+| LP Core ASM | 4/4 | 16/16 exact dots, every instruction specified |
 
-### Pattern Encoding (Milestone 5-6: Zero-Interleave)
+**Ternary Vector Database:**
 
-PARLIO 2-bit mode on GPIO 4 (X_pos) and GPIO 5 (X_neg):
+| Milestone | Tests | What It Proved |
+|-----------|-------|----------------|
+| VDB M1: Top-K | 5/5 | Top-4 sorted search |
+| VDB M2: Scale | 5/5 | 64 nodes, latency benchmark |
+| VDB M3: HP API | 5/5 | Clean C API (insert/search/clear/count) |
+| VDB M4: NSW Graph | 6/6 | M=7, ef=32, recall@1=95%, recall@4=90% |
+| **VDB M5: Pipeline** | **4/4** | **Perceive+think+remember in one LP wake** |
+
+### The CfC: Three Blend Modes
 
 ```
-Trit +1 → dibit 01 (X_pos rises), then dibit 00 (silence)
-Trit -1 → dibit 10 (X_neg rises), then dibit 00 (silence)
-Trit  0 → dibit 00, dibit 00 (silence)
+f[n] = sign(dot(concat, W_f[n]))   // gate:      {-1, 0, +1}
+g[n] = sign(dot(concat, W_g[n]))   // candidate: {-1, 0, +1}
+h_new = (f == 0) ? h_old : f * g   // ternary blend
 ```
 
-Each trit occupies 2 dibit slots = 4 bits = half byte. Each byte encodes 2 trits. 64 bytes = 128 trits per DMA buffer. Descriptor chains link buffers for larger vectors (256 trits = 2 buffers).
+- **f = +1 (UPDATE):** Accept candidate. Follow the evidence.
+- **f =  0 (HOLD):** Keep current state. Maintain belief.
+- **f = -1 (INVERT):** Negate candidate. Actively oppose.
 
-The zero-interleave guarantees exactly one clean rising edge per non-zero trit, eliminating the nibble-boundary glitch problem from Milestones 1-3.
+The inversion mode is unique to ternary CfC. It creates oscillation, convergence resistance, and path-dependent memory — dynamical primitives absent from binary CfC.
 
 ### Key Insight
 
 > *"We found computation hiding in the peripheral fabric."*
 >
-> PCNT was designed to count encoder pulses. PARLIO was designed for LCD interfaces. GDMA was designed for data transfer. ETM was designed to reduce interrupt latency.
+> PCNT was designed to count encoder pulses. PARLIO was designed for LCD interfaces. GDMA was designed for data transfer. Together, they form a geometry intersection engine that computes ternary neural network inference while the CPU does nothing.
 >
-> Together, they form a geometry intersection engine that computes ternary dot products — the fundamental operation of neural network inference — while the CPU does almost nothing.
-
-### Files
-
-```
-reflex-os/main/
-├── geometry_cfc.c         # M7: Ternary CfC liquid network (6/6 verified, current)
-├── geometry_layer.c       # M6: Multi-neuron layer (6/6 verified)
-├── geometry_dot.c         # M5: 256-trit dot product (10/10 verified)
-├── ternary_alu.c          # M4: Ternary TMUL (9/9 verified)
-├── autonomous_alu.c       # M3: Autonomous ALU (9/9 verified)
-├── alu_fabric.c           # M1: Sub-CPU ALU (59/59 verified)
-└── raid_etm_fabric.c      # M2: Autonomous fabric (5/5 verified)
-
-reflex-os/docs/
-├── HARDWARE_ERRATA.md     # 20+ errata discovered during development
-├── REGISTER_REFERENCE.md  # Correct bare-metal register addresses
-└── FLASH_GUIDE.md         # Build, flash, and serial capture procedure
-```
+> The constraint is generative: ternary {-1, 0, +1} maps to 2-bit GPIO encoding, which maps to PARLIO loopback, which maps to PCNT edge/level gating. Floating point would make none of this possible.
 
 ---
 
 ## The Reflex Becomes the ESP32-C6
 
-The Reflex isn't just for high-end systems. On the ESP32-C6, **The Reflex IS the operating system**:
+On the ESP32-C6, The Reflex IS the operating system — from 12ns GPIO to an autonomous neural network:
 
-| Primitive | Latency | Condition |
-|-----------|---------|-----------|
-| `gpio_write()` | **12 ns** | Direct register, 2 cycles |
-| Pure decision | **12 ns** | Threshold + GPIO only |
-| Full reflex | **87 ns** | Ideal (interrupts off) |
-| Full reflex | **187 ns** | Realistic (interrupts on) |
-| `spline_read()` | **137 ns** | Catmull-Rom interpolation |
-| With channel | **437 ns** | Cross-core coordination |
+| Layer | What | Rate | Power |
+|-------|------|------|-------|
+| GIE | Peripheral-fabric CfC (64 neurons) | 428 Hz | ~0 CPU |
+| LP core | Geometric CfC + VDB (hand ASM) | 100 Hz | ~30uA |
+| HP core | Init + monitoring | On demand | ~15mA |
+| `gpio_write()` | Direct register | 12 ns | 2 cycles |
 
-### Key Innovations
+### What's on the LP Core (16KB SRAM, Every Byte Accounted For)
 
-- **Spline Channels**: Catmull-Rom interpolation bridges discrete signals to continuous trajectories
-- **Entropy Field**: The void between shapes carries information—computation IS entropy flow
-- **TriX echips**: Soft chips built from shapes in an entropy field substrate
-- **Self-Composing Intelligence**: 4,096 shapes + 16,384 routes + Hebbian learning = circuits that grow themselves
-- **Stereo Vision**: OBSBOT PTZ cameras driven by entropy attention at 121µs latency
+- **CfC neural network:** 16 neurons, 48-trit inputs, 32 INTERSECT calls per step
+- **Ternary VDB:** 64 nodes, NSW graph (M=7), recall@1=95%, recall@4=90%
+- **Pipeline (cmd=4):** CfC step → copy packed trits → VDB search, one wake cycle
+- **Assembly:** ~7KB of hand-written RISC-V. 256-byte popcount LUT. No compiler.
 
-See [`reflex-os/`](reflex-os/) for full documentation.
+See [`reflex-os/`](reflex-os/) and [`docs/MILESTONE_PROGRESSION.md`](docs/MILESTONE_PROGRESSION.md).
 
 ---
 
@@ -551,4 +509,4 @@ MIT License
 
 **The hardware is already doing the work. We're just using it.**
 
-*12ns on a $5 chip. 309ns on a $2000 Jetson. Same code. Same topology. Falsified under adversarial testing.*
+*A ternary reflex arc where peripheral hardware IS the neural network, a micro-core IS the sub-conscious, and the CPU IS consciousness — computing with zero multiplication, learning by remembering, verified exact on silicon.*
