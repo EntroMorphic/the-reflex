@@ -77,6 +77,8 @@
 
 ## Tier 3: Peripheral Neurons (ESP32-C6)
 
+**Stable device path:** `/dev/esp32c6` (udev symlink for VID:PID `303a:1001`, points to whichever ttyACM the active C6 enumerates on).
+
 | Device | Port | Status | Chip | Flash | MAC |
 |--------|------|--------|------|-------|-----|
 | ESP32-C6 #1 | /dev/ttyACM0 | ✅ Running spine firmware | ESP32-C6FH4 | 4MB | b4:3a:45:ff:fe:8a:c4:d4 |

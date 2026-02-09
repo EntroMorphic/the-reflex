@@ -195,7 +195,7 @@ For each of 16 lp_hidden trits:
 | PARLIO | 2-bit TX mode, 10MHz, GPIO 4-5, loopback |
 | PCNT | Unit 0 (agree) + Unit 1 (disagree), 4 channels total |
 | GDMA | CH0 OUT, circular descriptor chain |
-| Device | /dev/ttyACM0 or /dev/ttyACM1 |
+| Device | /dev/esp32c6 (udev symlink for 303a:1001) |
 | ESP-IDF | v5.4 at /home/ztflynn/esp/v5.4 |
 | Cost | ~$0.50 per chip |
 
@@ -235,7 +235,7 @@ rm reflex-os/sdkconfig
 idf.py -C reflex-os build
 
 # Flash (manual: hold BOOT, press RESET, release BOOT)
-python -m esptool --chip esp32c6 -b 460800 \
+python -m esptool --chip esp32c6 --port /dev/esp32c6 -b 460800 \
   --before default_reset --after hard_reset \
   write_flash --flash_mode dio --flash_size 4MB --flash_freq 80m \
   0x0 reflex-os/build/bootloader/bootloader.bin \

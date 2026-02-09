@@ -200,7 +200,7 @@ CfC (96B frame) → bridge copies 6 words to VDB query BSS → deallocate → VD
 | Flash | 4MB embedded |
 | LP SRAM | 16KB (RESERVE_MEM=16320) |
 | ESP-IDF | v5.4 |
-| Board | Single chip, /dev/ttyACM0 |
+| Board | Single chip, /dev/esp32c6 |
 
 ### GPIO Pin Map
 
