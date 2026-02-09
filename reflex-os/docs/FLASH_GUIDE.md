@@ -33,12 +33,12 @@ Output binaries land in `build/`:
 
 ### 1. Enter Download Mode
 
-Hold **BOOT** button, press **RESET**, release **BOOT**. The device enters download mode on `/dev/esp32c6`.
+Hold **BOOT** button, press **RESET**, release **BOOT**. The device enters download mode on `/dev/esp32c6a` (or `esp32c6b` for the second board).
 
 ### 2. Flash
 
 ```bash
-esptool.py --chip esp32c6 -p /dev/esp32c6 -b 460800 \
+esptool.py --chip esp32c6 -p /dev/esp32c6a -b 460800 \
   --before=no_reset --after=no_reset \
   write_flash --flash_mode dio --flash_freq 80m --flash_size 4MB \
   0x0     build/bootloader/bootloader.bin \
@@ -58,7 +58,7 @@ Press **RESET** (without BOOT). The USB disconnects briefly and re-enumerates.
 import serial, time, glob, os
 
 # Open port before reset, detect disconnect via exception
-s = serial.Serial('/dev/esp32c6', 115200, timeout=0.1)
+s = serial.Serial('/dev/esp32c6a', 115200, timeout=0.1)
 s.reset_input_buffer()
 print('Press RESET now')
 
