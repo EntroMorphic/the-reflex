@@ -8,9 +8,9 @@
 
 The Reflex is a three-layer ternary reflex arc in silicon. Peripheral hardware IS the neural network (GIE, 428 Hz). A micro-core IS the sub-conscious (LP core, 100 Hz, ~30uA). The CPU IS consciousness (HP core, on-demand).
 
-**Current State:** VDB M5 — CfC→VDB Pipeline verified on silicon (Feb 9, 2026). The LP core autonomously perceives, thinks, and remembers in a single 10ms wake cycle. No floating point. No multiplication. Verified exact on silicon.
+**Current State:** VDB→CfC Feedback Loop verified on silicon (Feb 9, 2026). Memory shapes inference. The LP core perceives, thinks, remembers, and adapts — ternary HOLD damping proven stable (50 unique states in 50 steps). 8/8 tests. No floating point. No multiplication.
 
-**Latest Commit:** `06d5535` — feat: VDB M5 — CfC->VDB pipeline (perceive+think+remember in one LP wake) — 4/4 verified on silicon
+**Latest Commit:** `dc57d60` — feat: VDB->CfC feedback loop — memory shapes inference, ternary HOLD damping, 50 unique states in 50 steps — 8/8 verified on silicon
 
 ---
 
@@ -71,6 +71,8 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 | VDB M3: HP API | 5/5 | vdb_insert/search/clear/count API | `fa54192` |
 | VDB M4: NSW Graph | 6/6 | M=7, ef=32, dual entry, recall@1=95%, recall@4=90% | `7db919f` |
 | **VDB M5: Pipeline** | **4/4** | **CfC→VDB in one LP wake: perceive+think+remember** | **`06d5535`** |
+| Reflex Channel | 7/7 | ISR→HP coordination via reflex_channel_t, 18us avg latency | `e9e67f1` |
+| **VDB→CfC Feedback** | **8/8** | **CMD 5: memory blend into lp_hidden, HOLD damping, 50 unique states** | **`dc57d60`** |
 
 ---
 
@@ -86,6 +88,8 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 | LP core CfC | Verified | 100 Hz, 16 neurons, ~30uA |
 | LP core VDB | Verified | 64 nodes, NSW graph, recall@1=95% |
 | CfC→VDB pipeline | Verified | Perceive+think+remember in one 10ms wake |
+| Reflex channel | Verified | ISR→HP, 18us avg, fence-ordered |
+| VDB→CfC feedback | Verified | CMD 5, HOLD damping, 50 unique states in 50 steps |
 
 ### The GIE Signal Path (Current Architecture)
 
@@ -110,7 +114,7 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 │   428 Hz continuous, CPU-free after init                         │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
-        │ cfc.hidden[32] (updated every ~2.3ms)
+        │ cfc.hidden[32] via reflex_channel_t (18us, fence-ordered)
         ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │           LP CORE GEOMETRIC PROCESSOR (16MHz, ~30uA)             │
@@ -123,6 +127,7 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 │   CMD 2: VDB search (NSW graph, ef=32, or brute-force)          │
 │   CMD 3: VDB insert (brute-force candidates + top-M + edges)    │
 │   CMD 4: CfC + VDB pipeline (one wake: think + remember)        │
+│   CMD 5: CfC + VDB + Feedback (memory → lp_hidden blend)       │
 │                                                                  │
 │   100 Hz (10ms LP timer wake cycle)                              │
 │                                                                  │
@@ -144,13 +149,14 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 | Section | Size | Notes |
 |---------|------|-------|
 | Vector table | 128 B | Fixed |
-| Code (.text) | ~7,000 B | CfC + VDB search + VDB insert + pipeline |
+| Code (.text) | ~7,600 B | CfC + VDB search + VDB insert + pipeline + feedback |
 | Popcount LUT (.rodata) | 288 B | 256-byte LUT + alignment |
 | CfC state (.bss) | ~968 B | Weights, hidden, dots, sync vars |
 | VDB nodes (.bss) | 2,048 B | 64 x 32 bytes (M=7 neighbors) |
 | VDB metadata (.bss) | ~80 B | Query, results, counters |
+| Feedback state (.bss) | ~24 B | Blend scratch, loop counters |
 | shared_mem | 16 B | Top of SRAM |
-| **Free for stack** | **~5,800 B** | Peak usage: 608B (VDB search) |
+| **Free for stack** | **~4,400 B** | Peak usage: 608B (VDB search), measured 4,356 free |
 
 ### NSW Graph Performance (64 Nodes, 48 Trits)
 
@@ -231,8 +237,8 @@ the-reflex/
 ├── reflex-os/                    # ESP32-C6: GIE + LP Core + VDB
 │   ├── main/
 │   │   ├── ulp/main.S            # LP core: hand-written RISC-V assembly
-│   │   │                         #   CfC + VDB search + insert + pipeline
-│   │   ├── geometry_cfc_freerun.c  # Current entry point (6 tests)
+│   │   │                         #   CfC + VDB search + insert + pipeline + feedback (cmd 1-5)
+│   │   ├── geometry_cfc_freerun.c  # Current entry point (8 tests)
 │   │   ├── reflex_vdb.c          # HP-side VDB API implementation
 │   │   ├── geometry_cfc.c        # M7: Original CfC (single-step)
 │   │   ├── geometry_layer.c      # M6: Multi-neuron layer
@@ -269,9 +275,17 @@ the-reflex/
 
 ## What's Next
 
-The VDB PRD is complete (all 5 milestones verified). The open question is **closing the feedback loop**: letting VDB retrieval results modulate the next CfC step. This would create a system that doesn't just react and remember — it adapts based on experience.
+The feedback loop is **closed** (commit `dc57d60`). Retrieved memories now modulate the CfC hidden state via ternary blend rules:
+- **Agreement:** no change (reinforces stability)
+- **Gap fill:** h=0, mem≠0 → h=mem (memory provides context)
+- **Conflict:** h≠0, mem≠0, h≠mem → h=0 (HOLD = damper)
 
-The CfC's HOLD mode (f=0) may provide natural stability under feedback, but this is unproven.
+The CfC's HOLD mode (f=0) was confirmed as a natural stabilizer: 50 unique states in 50 feedback steps, energy bounded [7, 15], no oscillation, no lock-in.
+
+**Open directions:**
+- Multi-chip coordination (reflex channel across two C6 boards)
+- Feedback loop dynamics — explore threshold tuning, temporal windowing
+- External sensor integration as GIE input
 
 ---
 

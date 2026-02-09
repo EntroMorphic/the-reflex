@@ -88,16 +88,26 @@ Every dimension emerged from hardware constraints, not design targets:
 | LP core computes geometry in hand-written ASM | 16/16 exact dot products, 4/4 tests | `dd87898` |
 | NSW graph search works at 48-trit dimension | recall@1=95%, recall@4=90%, 64/64 self-match | `7db919f` |
 | CfC→VDB pipeline runs in one LP wake | 4/4 tests: determinism, consistency, sustained | `06d5535` |
+| ISR→HP coordination via reflex channel | 50/50 signals, 18us avg latency, fence-ordered | `e9e67f1` |
+| VDB→CfC feedback loop is stable | 50 unique states in 50 steps, energy bounded [7, 15], HOLD damping | `dc57d60` |
 | Zero multiplication in entire stack | No MUL instruction in any layer | All commits |
 | Exact verification (no approximation) | Dot-for-dot match at every milestone | All commits |
 
-## The Open Question
+## The Open Question — ANSWERED
 
-The feedback loop is not closed. VDB results flow to the HP core but do not modulate the CfC or GIE. Closing this loop — letting retrieved memories influence the next dynamical step — would create a system that adapts based on experience.
+~~The feedback loop is not closed. VDB results flow to the HP core but do not modulate the CfC or GIE.~~
 
-The CfC's HOLD mode provides natural damping: when the gate is zero, the state persists regardless of input. This suggests the system may be stable under feedback, but this is unproven.
+**Resolved (commit `dc57d60`, February 9, 2026).** The feedback loop is closed. CMD 5 in the LP core assembly runs CfC step → VDB search → memory blend, all in one LP wake cycle. Retrieved memories modulate lp_hidden via ternary blend rules: agreement reinforces, gaps fill from memory, conflict creates zeros (HOLD).
 
-**This is the next tree to chop.**
+The CfC's HOLD mode was confirmed as a natural stabilizer:
+- **50 unique states in 50 steps** — no oscillation, no lock-in
+- **Energy bounded [7, 15]** out of 16 — doesn't collapse or saturate
+- **Feedback vs no-feedback trajectories diverge** from step 0 (hamming distance grows to 14/16 by step 9)
+- **47/50 steps had feedback applied** (3 skipped when score < threshold)
+
+The HOLD damper is the key: conflict between current state and retrieved memory creates zero states, and the CfC's HOLD mode preserves these zeros on the next step. Ternary inertia prevents feedback-driven oscillation. The system adapts based on experience without instability.
+
+**The tree has been chopped.**
 
 ## The Reflex in One Sentence
 

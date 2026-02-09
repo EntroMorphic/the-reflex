@@ -1,6 +1,6 @@
 # Geometry Intersection Engine: Architecture
 
-**Last Updated:** February 9, 2026
+**Last Updated:** February 9, 2026 (VDB→CfC Feedback, Reflex Channel)
 
 ## Overview
 
@@ -43,7 +43,7 @@ Three blend modes: UPDATE (f=+1), HOLD (f=0), INVERT (f=-1). The inversion mode 
 
 ### Layer 2: LP Core Geometric Processor (Verified, 100 Hz)
 
-16MHz RISC-V LP core, hand-written assembly. Wakes every 10ms via LP timer. Four commands:
+16MHz RISC-V LP core, hand-written assembly. Wakes every 10ms via LP timer. Five commands:
 
 | Command | Function | Stack Frame |
 |---------|----------|-------------|
@@ -51,6 +51,7 @@ Three blend modes: UPDATE (f=+1), HOLD (f=0), INVERT (f=-1). The inversion mode 
 | cmd=2 | VDB search (NSW graph or brute-force) | 608 bytes |
 | cmd=3 | VDB insert (brute-force + top-M + edges) | 224 bytes |
 | cmd=4 | CfC + VDB pipeline (one wake cycle) | 96B then 608B sequential |
+| cmd=5 | CfC + VDB + feedback (memory → lp_hidden blend) | 96B then 608B sequential |
 
 **Operations:** AND, popcount (256-byte LUT), add, sub, negate, branch, shift. No MUL. No FP.
 
@@ -58,9 +59,28 @@ Three blend modes: UPDATE (f=+1), HOLD (f=0), INVERT (f=-1). The inversion mode 
 
 **Pipeline (cmd=4):** CfC step → copy 6 words (packed trits) to VDB query BSS → VDB search. The CfC's packed [gie_hidden | lp_hidden] IS the VDB query. No re-packing.
 
+**Feedback (cmd=5):** CfC step → VDB search → load best match's LP-hidden portion (trits 32..47) → blend into lp_hidden using ternary rules:
+- Agreement (h == mem): no change
+- Gap fill (h == 0, mem != 0): h = mem
+- Silence (h != 0, mem == 0): no change
+- Conflict (h != 0, mem != 0, h != mem): h = 0 (HOLD)
+
+The HOLD damper prevents feedback-driven oscillation. Verified: 50 unique states in 50 steps, energy bounded [7, 15], no lock-in.
+
+### ISR→HP Coordination: Reflex Channel
+
+The GIE ISR (producer) signals the HP main loop (consumer) via `reflex_channel_t` — the same coordination primitive used on Jetson Thor, adapted for RISC-V SRAM ordering.
+
+- `reflex_signal(&gie_channel, loop_count)`: writes value, captures cycle-accurate timestamp (CSR 0x7e2), `fence rw, rw`, increments sequence
+- HP main loop: `reflex_wait_timeout()` spin-waits until sequence changes, then reads with ordering guarantee
+- Average latency: 18,300ns (ISR tail work, not channel cost)
+- Channel itself: store + fence + increment ≈ ~10 cycles
+
+On the C6, this is SRAM ordering (no cache to snoop). On Thor, it's cache line invalidation. The primitive is the same; the physics underneath changes.
+
 ### Layer 3: HP Core (On-Demand)
 
-Full 160MHz RISC-V CPU. Initializes peripherals, loads weights, starts GIE and LP core, then monitors. Provides the VDB API (`vdb_insert`, `vdb_search`, `vdb_cfc_pipeline_step`).
+Full 160MHz RISC-V CPU. Initializes peripherals, loads weights, starts GIE and LP core, then monitors. Provides the VDB API (`vdb_insert`, `vdb_search`, `vdb_cfc_pipeline_step`, `vdb_cfc_feedback_step`).
 
 ### Historical Note: REGDMA Path Not Taken
 
@@ -133,13 +153,14 @@ Byte layout (2 trits per byte):
 | Section | Size | Notes |
 |---------|------|-------|
 | Vector table | 128 B | Fixed |
-| Code (.text) | ~7,000 B | CfC + VDB search + insert + pipeline |
+| Code (.text) | ~7,600 B | CfC + VDB search + insert + pipeline + feedback |
 | Popcount LUT (.rodata) | 288 B | 256-byte LUT + alignment |
 | CfC state (.bss) | ~968 B | Weights, hidden, dots, sync vars |
 | VDB nodes (.bss) | 2,048 B | 64 × 32 bytes (M=7 neighbors) |
 | VDB metadata (.bss) | ~80 B | Query, results, counters |
+| Feedback state (.bss) | ~24 B | fb_applied, fb_source_id, fb_score, fb_blend_count, fb_total_blends, fb_threshold |
 | shared_mem | 16 B | Top of SRAM |
-| **Free for stack** | **~5,800 B** | Peak: 608B (VDB search frame) |
+| **Free for stack** | **~4,400 B** | Peak: 608B (VDB search frame), measured 4,356 free |
 
 ## HP Core Memory Budget
 

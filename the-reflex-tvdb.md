@@ -40,7 +40,7 @@
      [12..23]  neg_mask[3]    12 bytes                                                                                                                                                                                                              
      64 nodes × 24 bytes = 1,536 bytes. No room for neighbors.                                                                                                                                                                                      
                                                                                                                                                                                                                                                     
-     Decision: Option A (32-byte nodes). The extra 8 bytes per node (512 bytes total for 64 nodes) buys us HNSW capability. M=4 neighbors is sufficient for 64 nodes — LCVDB uses M=8 for 256 nodes, so M=4 at 1/4 the scale is proportional.       
+      Decision: Option A (32-byte nodes). The extra 8 bytes per node (512 bytes total for 64 nodes) buys us graph capability. (Note: M was later increased from 4 to 7 during M4 implementation — see M4 section.)
                                                                                                                                                                                                                                                     
      Memory Budget (with 32-byte nodes)                                                                                                                                                                                                             
                                                                                                                                                                                                                                                     
@@ -158,13 +158,12 @@
                                                                                                                                                                                                                                                     
      This is the big one. Adapted from LCVDB but simplified for our constraints.                                                                                                                                                                    
                                                                                                                                                                                                                                                     
-     4a: Node Layout (32 bytes, finalized)                                                                                                                                                                                                          
-     [0..11]   pos_mask[3]    vector positive                                                                                                                                                                                                       
-     [12..23]  neg_mask[3]    vector negative                                                                                                                                                                                                       
-     [24..27]  neighbors[4]   4 × uint8 neighbor IDs                                                                                                                                                                                                
-     [28]      neighbor_count  uint8                                                                                                                                                                                                                
-     [29]      layer           uint8                                                                                                                                                                                                                
-     [30..31]  reserved        2 bytes (alignment)                                                                                                                                                                                                  
+      4a: Node Layout (32 bytes, finalized — as built: M=7, single-layer NSW)
+      [0..11]   pos_mask[3]    vector positive
+      [12..23]  neg_mask[3]    vector negative
+      [24..30]  neighbors[7]   7 × uint8 neighbor IDs (M=7, increased from planned M=4)
+      [31]      neighbor_count  uint8 (0..7)
+      NOTE: layer field removed — single-layer NSW proved sufficient at N=64.
                                                                                                                                                                                                                                                     
      4b: VDB Metadata (16 bytes)                                                                                                                                                                                                                    
      vdb_node_count:   .space 4                                                                                                                                                                                                                     
@@ -204,9 +203,16 @@
         - Process each beam entry: for each neighbor, if unvisited, compute dot, insert into beam if it qualifies.                                                                                                                                  
      3. Return top-K from beam.                                                                                                                                                                                                                     
                                                                                                                                                                                                                                                     
-     Fallback: If N < 8, fall back to brute-force (graph too sparse for meaningful search). This keeps the brute-force path alive.                                                                                                                  
-                                                                                                                                                                                                                                                    
-     Key simplification vs LCVDB: Visited bitset is only 8 bytes (64 bits) instead of 128 bytes. Fits in two registers (s-regs). No stack bitset needed.                                                                                            
+      Fallback: If N < 8, fall back to brute-force (graph too sparse for meaningful search). This keeps the brute-force path alive.
+
+      Key simplification vs LCVDB: Visited bitset is only 8 bytes (64 bits) instead of 128 bytes. Fits in two registers (s-regs). No stack bitset needed.
+
+      AS BUILT (commit `7db919f`): Single-layer NSW (not multi-layer HNSW). M=7 (not M=4).
+      ef=32 search width, dual entry points (node 0 + node N/2). Plain top-M selection beats
+      diversity heuristics for small N with low-dimensional ternary vectors. Reverse edge eviction
+      critical for connectivity — removing it destroyed the graph to 5/64 reachable. Optimized
+      over 9 build-flash-test iterations. Final: recall@1=95%, recall@4=90%, 64/64 self-match,
+      64/64 connectivity.
                                                                                                                                                                                                                                                     
      Verification:                                                                                                                                                                                                                                  
      - Insert 64 nodes, search returns correct nearest neighbor                                                                                                                                                                                     
@@ -257,16 +263,68 @@
                                                                                                                                                                                                                                                     
      ---                                                                                                                                                                                                                                            
                                                                                                                                                                                                                                                     
-     Summary                                                                                                                                                                                                                                        
-                                                                                                                                                                                                                                                    
-     | Milestone | Assembly LOC | New Commands | Key Deliverable |                                                                                                                                                                                  
-     |---|---|---|---|                                                                                                                                                                                                                              
-      | M1: Top-K | +60 instr | — | 4 results sorted by score | DONE `6ea0497` |
-      | M2: Scale+Bench | +20 instr | — | 64 nodes, <1ms latency | DONE `2c6dd17` |
-      | M3: HP API | 0 (C only) | — | Clean vdb_insert/search/clear | DONE `fa54192` |
-      | M4: NSW Graph | +400 instr | cmd=3 (insert) | M=7, recall@1=95%, recall@4=90% | DONE `7db919f` |
-      | M5: Pipeline | +50 instr | cmd=4 (CfC+VDB) | Perceive→think→remember in one wake | DONE `06d5535` |
-                                                                                                                                                                                                                                                     
-      ALL 5 MILESTONES COMPLETE. Total .text ~7,000 bytes. Fits in 16KB with ~5.8KB free for stack.
-                                                                                                                                                                                                                                                    
-     ---                                                                                                    
+      ---
+
+      M6: VDB→CfC Feedback Loop
+
+      Goal: Close the feedback loop. Retrieved VDB memories modulate the CfC hidden state.
+
+      New command: lp_command=5 (CfC + VDB + feedback)
+
+      Assembly flow:
+      1. CfC step (same as cmd=4): pack trits, 32 INTERSECT calls, blend, commit lp_hidden
+      2. Copy packed trits to VDB query, run VDB search (same as cmd=4)
+      3. NEW — Feedback blend: Load best match's LP-hidden portion (trits 32..47 = word 2 pos/neg masks)
+      4. Loop over 16 trits, comparing lp_hidden against memory:
+         - h == mem:           no change  (agreement reinforces)
+         - h == 0, mem != 0:   h = mem   (fill gap from memory)
+         - h != 0, mem == 0:   no change (memory silent)
+         - h != 0, mem != 0, h != mem:  h = 0  (conflict → HOLD)
+      5. Write modified lp_hidden back. Increment fb_total_blends.
+      6. Feedback skipped if VDB search score < fb_threshold (HP-writable, default 8).
+
+      The HOLD damper: Conflict creates zero states. The CfC's HOLD mode (f=0) preserves these
+      zeros on the next step — ternary inertia prevents feedback-driven oscillation.
+
+      New LP SRAM variables (+24 bytes BSS):
+      - fb_applied:      1 if feedback was applied this step, 0 if skipped
+      - fb_source_id:    node ID of best VDB match used for feedback
+      - fb_score:        dot product score of best match
+      - fb_blend_count:  number of trits modified by this blend
+      - fb_total_blends: cumulative count of feedback applications
+      - fb_threshold:    minimum score for feedback (HP-writable)
+
+      HP-side API: vdb_cfc_feedback_step(vdb_result_t *result) — dispatches cmd=5
+
+      Silicon results (50 sustained steps):
+      - 50 unique states in 50 steps (no repeats, no lock-in)
+      - Energy bounded [7, 15] out of 16 (doesn't collapse or saturate)
+      - Max per-step change: 14/16 trits (bounded, never all-flip)
+      - 47/50 steps had feedback applied (score >= threshold of 8)
+      - Feedback vs no-feedback trajectories diverge from step 0
+
+      Memory impact: +24 bytes BSS, +~570 bytes code. Binary: 16,320 bytes (at RESERVE_MEM limit).
+      Free stack: 4,356 bytes.
+
+      Verification (8/8 on silicon):
+      - 8a: cmd=5 runs, all three counters increment (step, search, fb_total_blends)
+      - 8b: Feedback observability — source_id valid, score >= threshold, blend_count sensible
+      - 8c: 50 sustained feedback steps — 50 unique states, bounded energy, no oscillation
+      - 8d: Feedback vs no-feedback trajectories diverge from step 0
+
+      ---
+
+      Summary
+
+      | Milestone | Assembly LOC | New Commands | Key Deliverable |
+      |---|---|---|---|
+       | M1: Top-K | +60 instr | — | 4 results sorted by score | DONE `6ea0497` |
+       | M2: Scale+Bench | +20 instr | — | 64 nodes, <1ms latency | DONE `2c6dd17` |
+       | M3: HP API | 0 (C only) | — | Clean vdb_insert/search/clear | DONE `fa54192` |
+       | M4: NSW Graph | +400 instr | cmd=3 (insert) | M=7, recall@1=95%, recall@4=90% | DONE `7db919f` |
+       | M5: Pipeline | +50 instr | cmd=4 (CfC+VDB) | Perceive→think→remember in one wake | DONE `06d5535` |
+       | M6: Feedback | +~570 bytes | cmd=5 (CfC+VDB+feedback) | Memory shapes inference, HOLD damping | DONE `dc57d60` |
+
+       ALL 6 MILESTONES COMPLETE. Total .text ~7,600 bytes. Fits in 16KB with ~4,356 bytes free for stack.
+
+      ---

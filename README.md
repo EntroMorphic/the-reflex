@@ -20,7 +20,8 @@
 | **ESP32-C6** | LP Core CfC | **100 Hz**, 16 neurons, ~30uA (hand-written RISC-V assembly) |
 | **ESP32-C6** | Ternary VDB | **64 nodes**, NSW graph, recall@1=95%, recall@4=90% |
 | **ESP32-C6** | CfC→VDB Pipeline | **Perceive+think+remember** in one 10ms LP wake cycle |
-| **ESP32-C6** | Verified Milestones | **25 milestones**, all verified exact on silicon |
+| **ESP32-C6** | VDB→CfC Feedback | **CMD 5: memory shapes inference**, HOLD damping, 50 unique states — 8/8 verified |
+| **ESP32-C6** | Verified Milestones | **27 milestones**, all verified exact on silicon |
 | **ESP32-C6** | Signal Path | GDMA → PARLIO(2-bit, 10MHz) → GPIO loopback → PCNT(agree/disagree) |
 
 ## What is The Reflex?
@@ -46,7 +47,7 @@ the-reflex/
 ├── reflex-os/                    # ESP32-C6: GIE + LP CORE + VDB
 │   ├── main/
 │   │   ├── ulp/main.S            # LP core: hand-written RISC-V assembly
-│   │   │                         #   CfC + VDB search + insert + pipeline (cmd 1-4)
+│   │   │                         #   cmd 1-5 (CfC + VDB + feedback)
 │   │   ├── geometry_cfc_freerun.c  # Current entry point: free-running GIE + LP + VDB
 │   │   ├── reflex_vdb.c          # HP-side VDB API implementation
 │   │   ├── geometry_cfc.c        # M7: Original CfC (single-step)
@@ -75,7 +76,7 @@ the-reflex/
 │
 ├── docs/                         # PROJECT DOCUMENTATION
 │   ├── CURRENT_STATUS.md         # Complete project status
-│   ├── MILESTONE_PROGRESSION.md  # All 25 milestones documented
+│   ├── MILESTONE_PROGRESSION.md  # All 27 milestones documented
 │   └── ...                       # PRDs, LMMs, design analysis
 │
 ├── journal/                      # LINCOLN MANIFOLD METHOD JOURNAL
@@ -241,6 +242,7 @@ No floating point. No multiplication. Verified exact on silicon.
 │  │  CfC: 16 neurons × 2 pathways = 32 INTERSECT calls        │    │
 │  │  VDB: 64-node NSW graph, M=7, recall@1=95%                │    │
 │  │  Pipeline (cmd=4): perceive → think → remember             │    │
+│  │  Feedback (cmd=5): VDB best match → blend into lp_hidden    │    │
 │  │  100 Hz (10ms wake cycle), sleeps 96% of the time          │    │
 │  └──────────────────────────────────────────────────────────┘    │
 │        │ lp_hidden[16], vdb_results[4]                            │
@@ -254,11 +256,11 @@ No floating point. No multiplication. Verified exact on silicon.
 ├──────────────────────────────────────────────────────────────────┤
 │  Operations: AND, popcount, add, sub, negate, branch, shift      │
 │  Absent: MUL, DIV, FP, gradients, backpropagation                │
-│  Verification: Exact, dot-for-dot, on silicon (25 milestones)    │
+│  Verification: Exact, dot-for-dot, on silicon (27 milestones)    │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-### 25 Milestones Verified on Silicon
+### 27 Milestones Verified on Silicon
 
 Each verified on ESP32-C6FH4 (QFN32) rev v0.2. See [`docs/MILESTONE_PROGRESSION.md`](docs/MILESTONE_PROGRESSION.md) for the full narrative.
 
@@ -298,6 +300,8 @@ Each verified on ESP32-C6FH4 (QFN32) rev v0.2. See [`docs/MILESTONE_PROGRESSION.
 | VDB M3: HP API | 5/5 | Clean C API (insert/search/clear/count) |
 | VDB M4: NSW Graph | 6/6 | M=7, ef=32, recall@1=95%, recall@4=90% |
 | **VDB M5: Pipeline** | **4/4** | **Perceive+think+remember in one LP wake** |
+| Reflex Channel | 7/7 | ISR→HP coordination, 18us avg latency |
+| **VDB→CfC Feedback** | **8/8** | **Memory shapes inference, HOLD damping stable** |
 
 ### The CfC: Three Blend Modes
 
@@ -339,6 +343,7 @@ On the ESP32-C6, The Reflex IS the operating system — from 12ns GPIO to an aut
 - **CfC neural network:** 16 neurons, 48-trit inputs, 32 INTERSECT calls per step
 - **Ternary VDB:** 64 nodes, NSW graph (M=7), recall@1=95%, recall@4=90%
 - **Pipeline (cmd=4):** CfC step → copy packed trits → VDB search, one wake cycle
+- **Feedback (cmd=5):** CfC step → VDB search → blend best match into lp_hidden, one wake cycle
 - **Assembly:** ~7KB of hand-written RISC-V. 256-byte popcount LUT. No compiler.
 
 See [`reflex-os/`](reflex-os/) and [`docs/MILESTONE_PROGRESSION.md`](docs/MILESTONE_PROGRESSION.md).
@@ -509,4 +514,4 @@ MIT License
 
 **The hardware is already doing the work. We're just using it.**
 
-*A ternary reflex arc where peripheral hardware IS the neural network, a micro-core IS the sub-conscious, and the CPU IS consciousness — computing with zero multiplication, learning by remembering, verified exact on silicon.*
+*A ternary reflex arc where peripheral hardware IS the neural network, a micro-core IS the sub-conscious, and the CPU IS consciousness — computing with zero multiplication, learning by remembering, adapting from experience, verified exact on silicon.*

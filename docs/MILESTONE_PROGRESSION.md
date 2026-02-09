@@ -1,6 +1,6 @@
 # Milestone Progression: The Reflex
 
-25 milestones verified on silicon. From boolean gates to an autonomous perceive-think-remember loop. Each was verified on an ESP32-C6FH4 (QFN32) rev v0.2.
+27 milestones verified on silicon. From boolean gates to a closed memory feedback loop. Each was verified on an ESP32-C6FH4 (QFN32) rev v0.2.
 
 **Last Updated:** February 9, 2026
 
@@ -336,9 +336,75 @@ The inversion mode is unique to ternary CfC. Binary CfC (Hasani et al.) has only
 
 ---
 
+## Reflex Channel: ISR→HP Coordination
+
+**Tests:** 7/7 | **Commit:** `e9e67f1` | **File:** `reflex-os/main/geometry_cfc_freerun.c`
+
+**What it proved:** The original Reflex coordination primitive (`reflex_channel_t`) now bridges the GIE ISR (producer) to the HP main loop (consumer) on the ESP32-C6. The ISR signals the channel after committing a complete hidden state. RISC-V `fence rw, rw` ensures hidden[] is in SRAM before the sequence number becomes visible.
+
+**Mechanism:** `reflex_signal(&gie_channel, loop_count)` writes value, captures cycle-accurate timestamp via CSR 0x7e2 (ESP32-C6 performance counter), executes `fence rw, rw`, increments sequence. The HP main loop spin-waits with `reflex_wait_timeout()` until the sequence changes, then reads with ordering guarantee.
+
+**Performance:** 18,300ns average latency (min 16,337ns, max 21,612ns). This is the ISR's tail work (re-encode 64 neurons after setting timestamp), not the channel cost. The channel itself is store + fence + increment ≈ ~10 cycles.
+
+**Key insight:** On the C6, this is SRAM ordering (no cache to snoop). On Thor, it's cache line invalidation. The primitive is the same; the physics underneath changes.
+
+**Verified:**
+- 7a: 50/50 signals received, zero value mismatches
+- 7b: Latency — 100 samples, spin-wait measurement
+- 7c: 64/64 dot consistency after channel wait vs CPU reference
+- 7d: 20/20 channel-driven LP core feeds, 20/20 LP steps
+
+---
+
+## VDB→CfC Feedback Loop: Memory Shapes Inference
+
+**Tests:** 8/8 | **Commit:** `dc57d60` | **Files:** `reflex-os/main/ulp/main.S`, `reflex-os/main/geometry_cfc_freerun.c`, `reflex_vdb.c`, `reflex_vdb.h`
+
+**What it proved:** The feedback loop is closed. Retrieved VDB memories now modulate the CfC hidden state. CMD 5 in the LP core assembly runs: CfC step → VDB search → memory blend, all in a single LP wake cycle.
+
+**Blend rule (ternary, in hand-written RISC-V assembly):**
+```
+For each of 16 lp_hidden trits:
+  memory_trit = best VDB match's LP-hidden portion (trits 32..47)
+  if h == mem:           no change  (agreement reinforces)
+  if h == 0, mem != 0:   h = mem   (fill gap from memory)
+  if h != 0, mem == 0:   no change (memory silent)
+  if h != 0, mem != 0, h != mem:  h = 0  (conflict → HOLD)
+```
+
+**The HOLD damper:** Conflict between current state and retrieved memory creates zero states. The CfC's HOLD mode (f=0) preserves these zeros on the next step — the neuron becomes undecided and waits for new evidence. This is ternary inertia. It prevents feedback-driven oscillation.
+
+**Stability proof (on silicon):**
+- 50 steps of sustained feedback: **50 unique states in 50 steps** (no repeats, no lock-in)
+- Energy bounded [7, 15] out of 16 (doesn't collapse or saturate)
+- Max per-step change: 14/16 trits (bounded, never all-flip)
+- 47/50 steps had feedback applied (score ≥ threshold of 8)
+
+**Divergence proof:** Identical inputs through CMD 4 (no feedback) and CMD 5 (with feedback) produce different trajectories from step 0, with hamming distance growing to 14/16 by step 9. The feedback definitively shapes behavior.
+
+**Observability:** 6 new LP SRAM variables — `fb_applied`, `fb_source_id`, `fb_score`, `fb_blend_count`, `fb_total_blends`, `fb_threshold` (HP-writable).
+
+**Memory budget impact:** +24 bytes BSS (6 variables), +~570 bytes code (.text). Stack unchanged (reuses VDB frame). Free stack: 4,356 bytes.
+
+**HP-side API:** `vdb_cfc_feedback_step(vdb_result_t *result)` — dispatches cmd=5, waits for step + search counters, reads results.
+
+**Verified:**
+- 8a: cmd=5 runs, all three counters increment (step, search, fb_total_blends)
+- 8b: Feedback observability — source_id valid, score ≥ threshold, blend_count sensible
+- 8c: 50 sustained feedback steps — 50 unique states, bounded energy, no oscillation
+- 8d: Feedback vs no-feedback trajectories diverge from step 0
+
+---
+
 ## What's Next
 
-The VDB PRD is complete (all 5 milestones verified). The open question is closing the VDB→CfC feedback loop — letting retrieved memories modulate the next CfC step. This would create a system that adapts based on experience.
+The feedback loop is closed (commit `dc57d60`). The system now perceives, thinks, remembers, and adapts — all in ternary, all on a $0.50 chip, all without multiplication.
+
+**Open directions:**
+- Multi-chip coordination (reflex channel across two C6 boards)
+- Feedback threshold tuning and temporal windowing
+- External sensor integration as GIE input
+- The CfC's HOLD damping is proven stable — explore whether it generalizes to larger networks
 
 ---
 
@@ -361,7 +427,7 @@ The VDB PRD is complete (all 5 milestones verified). The open question is closin
 
 ---
 
-## GPIO Pin Map (Current — VDB M5)
+## GPIO Pin Map (Current — Feedback Loop)
 
 | GPIO | Function | Direction |
 |------|----------|-----------|
@@ -370,7 +436,7 @@ The VDB PRD is complete (all 5 milestones verified). The open question is closin
 | 6 | Y_pos (static level) | Output (CPU-driven) |
 | 7 | Y_neg (static level) | Output (CPU-driven) |
 
-## Peripheral Allocation (Current — VDB M5)
+## Peripheral Allocation (Current — Feedback Loop)
 
 | Peripheral | Usage |
 |------------|-------|
@@ -380,5 +446,5 @@ The VDB PRD is complete (all 5 milestones verified). The open question is closin
 | PCNT Unit 1 | Disagree: X_pos gated by Y_neg + X_neg gated by Y_pos |
 | GPTimer 0 | Kickoff trigger (ETM-enabled) |
 | ETM | Clock enable only |
-| LP Core | 16MHz RISC-V, CfC + VDB, 10ms timer wake |
+| LP Core | 16MHz RISC-V, CfC + VDB + Feedback, 10ms timer wake |
 | LP SRAM | 16KB: code + LUT + CfC state + VDB nodes + stack |
