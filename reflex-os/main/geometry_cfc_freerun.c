@@ -54,6 +54,7 @@
 #include "rom/lldesc.h"
 #include "ulp_lp_core.h"
 #include "ulp_main.h"
+#include "reflex_vdb.h"
 
 /* ── Register addresses ── */
 #define ETM_BASE            0x60013000
@@ -1443,10 +1444,10 @@ void app_main(void) {
     }
 
     /* ══════════════════════════════════════════════════════════════
-     *  TEST 5: Ternary VDB — 64 Nodes, Top-K, Latency
+     *  TEST 5: Ternary VDB — 64 Nodes via Clean API
      *
-     *  Full-capacity test of the LP core ternary vector database.
-     *  64 nodes × 48 trits, brute-force top-4 search in assembly.
+     *  Uses the reflex_vdb.h API: vdb_init/insert/search/clear/count.
+     *  64 nodes × 48 trits, brute-force top-4 search on LP core.
      *
      *  Verification:
      *  5a) Self-match: query each of 64 nodes against itself
@@ -1454,35 +1455,34 @@ void app_main(void) {
      *  5b) Random query: top-4 must match CPU brute-force reference
      *  5c) Latency: measure search time at full capacity
      * ══════════════════════════════════════════════════════════════ */
-    printf("-- TEST 5: Ternary VDB — 64 Nodes, Top-K, Latency --\n");
+    printf("-- TEST 5: Ternary VDB — 64 Nodes via API --\n");
     fflush(stdout);
     {
-        #define VDB_N           64
-        #define VDB_TRIT_DIM    48
-        #define VDB_WORDS       3
-        #define VDB_K           4
-
         /* Generate 64 random 48-trit vectors (static — 3KB, too big for stack) */
-        static int8_t vdb_vecs[VDB_N][VDB_TRIT_DIM];
+        static int8_t vdb_vecs[VDB_MAX_NODES][VDB_TRIT_DIM];
         cfc_seed(0xDB5EED01);
-        for (int n = 0; n < VDB_N; n++)
+        for (int n = 0; n < VDB_MAX_NODES; n++)
             for (int i = 0; i < VDB_TRIT_DIM; i++)
                 vdb_vecs[n][i] = rand_trit(30);
 
-        /* Pack and write all 64 nodes to LP SRAM */
-        volatile uint32_t *nodes_base = (volatile uint32_t *)ulp_addr(&ulp_vdb_nodes);
-        for (int n = 0; n < VDB_N; n++) {
-            volatile uint32_t *node_pos = &nodes_base[n * 6];
-            volatile uint32_t *node_neg = &nodes_base[n * 6 + VDB_WORDS];
-            pack_trits_for_lp(vdb_vecs[n], VDB_TRIT_DIM,
-                              node_pos, node_neg, VDB_WORDS);
+        /* Insert all 64 nodes via API */
+        vdb_clear();
+        for (int n = 0; n < VDB_MAX_NODES; n++) {
+            int id = vdb_insert(vdb_vecs[n]);
+            if (id != n) {
+                printf("  INSERT FAIL: expected id=%d, got %d\n", n, id);
+                break;
+            }
         }
-        ulp_vdb_node_count = VDB_N;
+        printf("  Inserted %d nodes\n", vdb_count());
 
-        volatile uint32_t *qpos = (volatile uint32_t *)ulp_addr(&ulp_vdb_query_pos);
-        volatile uint32_t *qneg = (volatile uint32_t *)ulp_addr(&ulp_vdb_query_neg);
-        volatile uint8_t *result_ids = (volatile uint8_t *)ulp_addr(&ulp_vdb_result_ids);
-        volatile int32_t *result_scores = (volatile int32_t *)ulp_addr(&ulp_vdb_result_scores);
+        /* Verify insert overflow returns -1 */
+        int8_t dummy_vec[VDB_TRIT_DIM];
+        memset(dummy_vec, 0, sizeof(dummy_vec));
+        int overflow_id = vdb_insert(dummy_vec);
+        if (overflow_id != -1) {
+            printf("  WARN: overflow insert returned %d, expected -1\n", overflow_id);
+        }
 
         /* ── 5a: Self-match all 64 nodes ── */
         printf("  5a: Self-match all 64 nodes...\n");
@@ -1490,66 +1490,51 @@ void app_main(void) {
 
         int self_match_ok = 0;
         int self_match_fail = 0;
-        for (int q = 0; q < VDB_N; q++) {
-            pack_trits_for_lp(vdb_vecs[q], VDB_TRIT_DIM, qpos, qneg, VDB_WORDS);
+        vdb_result_t result;
 
-            uint32_t sb = ulp_vdb_search_count;
-            ulp_lp_command = 2;
-            int timeout = 50;
-            while (ulp_vdb_search_count == sb && timeout > 0) {
-                vTaskDelay(pdMS_TO_TICKS(5));
-                timeout--;
+        for (int q = 0; q < VDB_MAX_NODES; q++) {
+            int err = vdb_search(vdb_vecs[q], &result);
+            if (err != 0) {
+                self_match_fail++;
+                if (self_match_fail <= 3)
+                    printf("    TIMEOUT on node %d\n", q);
+                continue;
             }
-
-            int got_id = result_ids[0];
-            int got_score = result_scores[0];
 
             /* Expected score = number of nonzero trits */
             int exp_score = 0;
             for (int i = 0; i < VDB_TRIT_DIM; i++)
                 if (vdb_vecs[q][i] != 0) exp_score++;
 
-            if (got_id == q && got_score == exp_score) {
+            if (result.ids[0] == q && result.scores[0] == exp_score) {
                 self_match_ok++;
             } else {
                 self_match_fail++;
-                if (self_match_fail <= 3) /* Print first few failures */
+                if (self_match_fail <= 3)
                     printf("    FAIL node %d: got id=%d s=%d, expect id=%d s=%d\n",
-                           q, got_id, got_score, q, exp_score);
+                           q, (int)result.ids[0], (int)result.scores[0], q, exp_score);
             }
         }
-        int ok_5a = (self_match_ok == VDB_N);
+        int ok_5a = (self_match_ok == VDB_MAX_NODES);
         printf("  5a: %d/%d self-match exact — %s\n\n",
-               self_match_ok, VDB_N, ok_5a ? "OK" : "FAIL");
+               self_match_ok, VDB_MAX_NODES, ok_5a ? "OK" : "FAIL");
         fflush(stdout);
 
         /* ── 5b: Random query — top-4 verification at N=64 ── */
-        printf("  5b: Random query (N=%d), top-4 vs CPU...\n", VDB_N);
+        printf("  5b: Random query (N=%d), top-4 vs CPU...\n", vdb_count());
         fflush(stdout);
 
         int8_t query_vec[VDB_TRIT_DIM];
         cfc_seed(0xC0E4A42);
         for (int i = 0; i < VDB_TRIT_DIM; i++)
             query_vec[i] = rand_trit(30);
-        pack_trits_for_lp(query_vec, VDB_TRIT_DIM, qpos, qneg, VDB_WORDS);
 
-        uint32_t search_before = ulp_vdb_search_count;
-        ulp_lp_command = 2;
-        int timeout = 50;
-        while (ulp_vdb_search_count == search_before && timeout > 0) {
-            vTaskDelay(pdMS_TO_TICKS(5));
-            timeout--;
-        }
-
-        int lp_ids[VDB_K], lp_scores[VDB_K];
-        for (int k = 0; k < VDB_K; k++) {
-            lp_ids[k] = result_ids[k];
-            lp_scores[k] = result_scores[k];
-        }
+        vdb_result_t lp_result;
+        vdb_search(query_vec, &lp_result);
 
         /* CPU brute-force: all 64 dots */
-        static int cpu_dots[VDB_N];
-        for (int n = 0; n < VDB_N; n++) {
+        static int cpu_dots[VDB_MAX_NODES];
+        for (int n = 0; n < VDB_MAX_NODES; n++) {
             int dot = 0;
             for (int i = 0; i < VDB_TRIT_DIM; i++)
                 dot += tmul(query_vec[i], vdb_vecs[n][i]);
@@ -1558,11 +1543,11 @@ void app_main(void) {
 
         /* CPU top-4 by repeated max extraction */
         int cpu_top_ids[VDB_K], cpu_top_scores[VDB_K];
-        static int used[VDB_N];
+        static int used[VDB_MAX_NODES];
         memset(used, 0, sizeof(used));
         for (int k = 0; k < VDB_K; k++) {
             int best = -99999, best_id = -1;
-            for (int n = 0; n < VDB_N; n++) {
+            for (int n = 0; n < VDB_MAX_NODES; n++) {
                 if (!used[n] && cpu_dots[n] > best) {
                     best = cpu_dots[n];
                     best_id = n;
@@ -1575,7 +1560,7 @@ void app_main(void) {
 
         printf("  LP  top-4: ");
         for (int k = 0; k < VDB_K; k++)
-            printf("[id=%d s=%d] ", lp_ids[k], lp_scores[k]);
+            printf("[id=%d s=%d] ", (int)lp_result.ids[k], (int)lp_result.scores[k]);
         printf("\n");
         printf("  CPU top-4: ");
         for (int k = 0; k < VDB_K; k++)
@@ -1584,41 +1569,28 @@ void app_main(void) {
 
         int ok_5b = 1;
         for (int k = 0; k < VDB_K; k++) {
-            if (lp_ids[k] != cpu_top_ids[k] ||
-                lp_scores[k] != cpu_top_scores[k])
+            if (lp_result.ids[k] != cpu_top_ids[k] ||
+                lp_result.scores[k] != cpu_top_scores[k])
                 ok_5b = 0;
         }
         printf("  5b: %s\n\n", ok_5b ? "OK" : "FAIL");
         fflush(stdout);
 
         /* ── 5c: Latency benchmark — 10 searches at N=64 ── */
-        printf("  5c: Latency benchmark (10 searches, N=%d)...\n", VDB_N);
+        printf("  5c: Latency benchmark (10 searches, N=%d)...\n", vdb_count());
         fflush(stdout);
 
-        /* To measure LP core search latency from the HP side, we
-         * timestamp before setting lp_command and after vdb_search_count
-         * increments. This includes LP wake jitter (up to 10ms) so we
-         * subtract the LP timer period to estimate pure compute time.
-         * For a tighter measurement, we run 10 searches and take the
-         * minimum observed round-trip — this minimizes wake jitter. */
         int64_t min_rt_us = 999999;
         int64_t max_rt_us = 0;
         int64_t sum_rt_us = 0;
         for (int trial = 0; trial < 10; trial++) {
-            /* Use a different query each trial to avoid caching effects */
             for (int i = 0; i < VDB_TRIT_DIM; i++)
                 query_vec[i] = rand_trit(30);
-            pack_trits_for_lp(query_vec, VDB_TRIT_DIM, qpos, qneg, VDB_WORDS);
 
-            uint32_t sb = ulp_vdb_search_count;
             int64_t t0 = esp_timer_get_time();
-            ulp_lp_command = 2;
-
-            /* Busy-wait with 1ms polls for tighter timing */
-            while (ulp_vdb_search_count == sb)
-                vTaskDelay(pdMS_TO_TICKS(1));
-
+            vdb_search(query_vec, &result);
             int64_t t1 = esp_timer_get_time();
+
             int64_t dt = t1 - t0;
             if (dt < min_rt_us) min_rt_us = dt;
             if (dt > max_rt_us) max_rt_us = dt;
@@ -1637,7 +1609,16 @@ void app_main(void) {
         int ok_5c = (min_rt_us > 0 && min_rt_us < 50000);
         printf("  5c: %s\n\n", ok_5c ? "OK" : "FAIL");
 
-        int ok = ok_5a && ok_5b && ok_5c;
+        /* ── 5d: API consistency — clear and re-insert ── */
+        vdb_clear();
+        int ok_5d = (vdb_count() == 0);
+        vdb_insert(vdb_vecs[0]);
+        ok_5d = ok_5d && (vdb_count() == 1);
+        vdb_search(vdb_vecs[0], &result);
+        ok_5d = ok_5d && (result.ids[0] == 0);
+        printf("  5d: API clear/re-insert: %s\n\n", ok_5d ? "OK" : "FAIL");
+
+        int ok = ok_5a && ok_5b && ok_5c && ok_5d;
         test_count++;
         if (ok) pass_count++;
         printf("  %s\n\n", ok ? "OK" : "FAIL");

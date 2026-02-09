@@ -22,7 +22,7 @@
 #   - layers_main.c     : Layered exploration
 #   - main.c            : Full benchmark suite
 
-set(app_sources "geometry_cfc_freerun.c")
+set(app_sources "geometry_cfc_freerun.c" "reflex_vdb.c")
 
 idf_component_register(
     SRCS
