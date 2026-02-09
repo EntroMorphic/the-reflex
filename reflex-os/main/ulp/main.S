@@ -5,11 +5,13 @@
  * Every instruction on this core is specified here. No compiler
  * decisions, no hidden register allocation, no spills.
  *
- * Three modes, selected by lp_command:
+ * Four modes, selected by lp_command:
  *   CMD 1: CfC neural network step (ternary liquid neural network)
  *   CMD 2: VDB search (graph-aware beam search, brute-force fallback)
  *   CMD 3: VDB graph insert (brute-force candidates, top-M select,
  *          bidirectional edges)
+ *   CMD 4: CfC + VDB pipeline (CfC step, then search VDB using the
+ *          CfC's packed input vector as the query — zero re-packing)
  *
  * All modes use the same INTERSECT primitive:
  *   dot = popcount(a_pos & b_pos) + popcount(a_neg & b_neg)
@@ -39,7 +41,7 @@
 
 /* ── Command dispatch ── */
     .global lp_command
-lp_command:     .space 4        /* 0=noop, 1=CfC, 2=VDB search, 3=VDB insert */
+lp_command:     .space 4        /* 0=noop, 1=CfC, 2=VDB search, 3=VDB insert, 4=CfC+VDB */
 
 /* ═══════════════════════════════════════════════════════════════
  *  CfC STATE — Ternary liquid neural network
@@ -76,6 +78,9 @@ lp_dots_g:      .space 64       /* 16 × int32_t: g-pathway dots */
 
     .global lp_data_ready
 lp_data_ready:  .space 4        /* uint32_t: sync flag (for CfC mode) */
+
+    .global lp_pipeline_flag
+lp_pipeline_flag: .space 4      /* uint32_t: 0=CfC only (cmd 1), 1=CfC+VDB (cmd 4) */
 
 /* ═══════════════════════════════════════════════════════════════
  *  VDB STATE — Ternary Vector Database with NSW Graph
@@ -391,6 +396,7 @@ popcount_lut:
  *    1 = CfC step (read gie_hidden, compute, write lp_hidden)
  *    2 = VDB search (graph beam search or brute-force)
  *    3 = VDB insert (build graph edges for new node)
+ *    4 = CfC + VDB pipeline (CfC step → VDB search in one wake)
  * ═══════════════════════════════════════════════════════════════ */
     .text
     .align 2
@@ -408,9 +414,24 @@ main:
     beq     t1, t2, .Lvdb_entry
     li      t2, 3
     beq     t1, t2, .Lvdb_insert_entry
+    li      t2, 4
+    beq     t1, t2, .Lcfc_vdb_entry
     /* Unknown command — ignore */
     j       .Learly_exit
 
+
+/* ═══════════════════════════════════════════════════════════════
+ *  CfC+VDB PIPELINE (CMD 4) — Entry point
+ *
+ *  Sets pipeline flag, then falls through to CfC body.
+ *  After CfC step completes, the flag causes a bridge to copy
+ *  the packed trit vector to VDB query BSS, then run VDB search.
+ * ═══════════════════════════════════════════════════════════════ */
+.Lcfc_vdb_entry:
+    la      t0, lp_pipeline_flag
+    li      t1, 1
+    sw      t1, 0(t0)
+    j       .Lcfc_body
 
 /* ═══════════════════════════════════════════════════════════════
  *  CfC MODE — Ternary Liquid Neural Network Step
@@ -419,6 +440,10 @@ main:
  *  computes 16×(INTERSECT, PROJECT, GATE), writes lp_hidden.
  * ═══════════════════════════════════════════════════════════════ */
 .Lcfc_entry:
+    la      t0, lp_pipeline_flag
+    sw      zero, 0(t0)
+
+.Lcfc_body:
     /* ── Save callee-saved registers ── */
     addi    sp, sp, -96
     sw      ra,  40(sp)
@@ -616,7 +641,65 @@ main:
     addi    t1, t1, 1
     sw      t1, 0(t0)
 
+    /* ── Check pipeline flag: cmd 4 bridges to VDB search ── */
+    la      t0, lp_pipeline_flag
+    lw      t1, 0(t0)
+    bnez    t1, .Lcfc_vdb_bridge
+
     j       .Lrestore_and_exit
+
+
+/* ═══════════════════════════════════════════════════════════════
+ *  CfC → VDB BRIDGE (CMD 4)
+ *
+ *  Reached when lp_pipeline_flag == 1 after the CfC step.
+ *  The packed 48-trit input vector (x_pos[3] and x_neg[3]) is
+ *  still on the CfC stack frame at sp+0..23. Copy it to the VDB
+ *  query BSS, then restore CfC regs, deallocate the CfC frame,
+ *  and fall through to .Lvdb_entry which manages its own frame.
+ *
+ *  The packed vector is the concatenation [gie_hidden | lp_hidden],
+ *  which is exactly the CfC's perception of the world — the ideal
+ *  VDB query for associative memory lookup.
+ * ═══════════════════════════════════════════════════════════════ */
+.Lcfc_vdb_bridge:
+    /* Copy x_pos[3] (sp+0..11) → vdb_query_pos */
+    la      t0, vdb_query_pos
+    lw      t1, 0(sp)
+    sw      t1, 0(t0)
+    lw      t1, 4(sp)
+    sw      t1, 4(t0)
+    lw      t1, 8(sp)
+    sw      t1, 8(t0)
+
+    /* Copy x_neg[3] (sp+12..23) → vdb_query_neg */
+    la      t0, vdb_query_neg
+    lw      t1, 12(sp)
+    sw      t1, 0(t0)
+    lw      t1, 16(sp)
+    sw      t1, 4(t0)
+    lw      t1, 20(sp)
+    sw      t1, 8(t0)
+
+    /* Restore CfC callee-saved regs and deallocate frame */
+    lw      ra,  40(sp)
+    lw      s0,  48(sp)
+    lw      s1,  52(sp)
+    lw      s2,  56(sp)
+    lw      s3,  60(sp)
+    lw      s4,  64(sp)
+    lw      s5,  68(sp)
+    lw      s6,  72(sp)
+    lw      s7,  76(sp)
+    lw      s8,  80(sp)
+    lw      s9,  84(sp)
+    lw      s10, 88(sp)
+    lw      s11, 92(sp)
+    addi    sp, sp, 96
+
+    /* Fall through to VDB search — it saves its own regs
+     * and allocates its own 608-byte frame. The query is
+     * already in vdb_query_pos/neg BSS. */
 
 
 /* ═══════════════════════════════════════════════════════════════

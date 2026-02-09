@@ -94,3 +94,21 @@ int vdb_count(void);
  * Useful for verifying graph search is actually sub-linear.
  */
 int vdb_last_visit_count(void);
+
+/*
+ * vdb_cfc_pipeline_step — Combined CfC + VDB search in one LP wake.
+ *
+ * @param result    Output: top-K results sorted descending by score.
+ * @return          0 on success, -1 on timeout.
+ *
+ * Dispatches cmd=4 to the LP core, which:
+ *   1. Runs one CfC step (reads gie_hidden + lp_hidden, updates lp_hidden)
+ *   2. Copies the packed 48-trit input vector to VDB query
+ *   3. Runs VDB search (graph or brute-force)
+ * All in a single wake cycle. Waits for both lp_step_count and
+ * vdb_search_count to increment.
+ *
+ * The query vector is [gie_hidden | lp_hidden] — the CfC's perception
+ * of the world, used as an associative memory lookup key.
+ */
+int vdb_cfc_pipeline_step(vdb_result_t *result);

@@ -1689,15 +1689,286 @@ void app_main(void) {
         fflush(stdout);
     }
 
+    /* ══════════════════════════════════════════════════════════════
+     *  TEST 6: CfC → VDB Pipeline (CMD 4)
+     *
+     *  The LP core wakes up, runs one CfC step, then immediately
+     *  searches the VDB using the CfC's packed input vector as the
+     *  query — all in a single wake cycle. Zero CPU involvement
+     *  after init.
+     *
+     *  Verification:
+     *  6a) Pipeline runs: cmd=4 increments both step and search counts
+     *  6b) CfC determinism: cmd=4 produces same hidden state as cmd=1
+     *  6c) VDB consistency: pipeline search results match standalone
+     *  6d) Sustained operation: multiple pipeline steps, counters advance
+     * ══════════════════════════════════════════════════════════════ */
+    printf("-- TEST 6: CfC -> VDB Pipeline (CMD 4) --\n");
+    fflush(stdout);
+    {
+        /* ── Setup: populate VDB with 32 known vectors ──
+         * We reuse the same PRNG seed as Test 5 for the vectors,
+         * but only insert 32 of them (enough for graph search). */
+        static int8_t pipe_vecs[32][VDB_TRIT_DIM];
+        cfc_seed(0xDB5EED01);
+        for (int n = 0; n < 32; n++)
+            for (int i = 0; i < VDB_TRIT_DIM; i++)
+                pipe_vecs[n][i] = rand_trit(30);
+
+        printf("  Setup: Inserting 32 vectors into VDB...\n");
+        fflush(stdout);
+        vdb_clear();
+        for (int n = 0; n < 32; n++) {
+            int id = vdb_insert(pipe_vecs[n]);
+            if (id < 0) {
+                printf("    INSERT FAIL at node %d\n", n);
+                break;
+            }
+        }
+        printf("  VDB has %d nodes\n", vdb_count());
+        fflush(stdout);
+
+        /* ── 6a: Basic pipeline operation ──
+         * Reset LP hidden to zero, feed known GIE hidden, run cmd=4,
+         * verify both counters increment. */
+        printf("\n  6a: Pipeline basic operation...\n");
+        fflush(stdout);
+
+        /* Get a known GIE hidden state from GIE */
+        cfc_init(42, 50);
+        premultiply_all();
+        encode_all_neurons();
+        build_circular_chain();
+        start_freerun();
+        vTaskDelay(pdMS_TO_TICKS(50));
+        int8_t known_gie_h[LP_GIE_HIDDEN];
+        memcpy(known_gie_h, (void*)cfc.hidden, LP_GIE_HIDDEN);
+        stop_freerun();
+
+        /* Reset LP hidden to zero */
+        memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
+
+        /* Feed GIE hidden state */
+        memcpy(ulp_addr(&ulp_gie_hidden), known_gie_h, LP_GIE_HIDDEN);
+
+        uint32_t step_before = ulp_lp_step_count;
+        uint32_t search_before = ulp_vdb_search_count;
+
+        /* Run pipeline */
+        vdb_result_t pipe_result;
+        int pipe_err = vdb_cfc_pipeline_step(&pipe_result);
+
+        uint32_t step_after = ulp_lp_step_count;
+        uint32_t search_after = ulp_vdb_search_count;
+
+        int step_inc = (step_after - step_before);
+        int search_inc = (search_after - search_before);
+
+        printf("  step_count: %d -> %d (delta=%d)\n",
+               (int)step_before, (int)step_after, step_inc);
+        printf("  search_count: %d -> %d (delta=%d)\n",
+               (int)search_before, (int)search_after, search_inc);
+        printf("  Pipeline return: %d\n", pipe_err);
+        printf("  Top-4 results: [%d,%d,%d,%d] scores=[%d,%d,%d,%d]\n",
+               (int)pipe_result.ids[0], (int)pipe_result.ids[1],
+               (int)pipe_result.ids[2], (int)pipe_result.ids[3],
+               (int)pipe_result.scores[0], (int)pipe_result.scores[1],
+               (int)pipe_result.scores[2], (int)pipe_result.scores[3]);
+
+        int ok_6a = (pipe_err == 0) && (step_inc == 1) && (search_inc == 1);
+        printf("  6a: %s\n\n", ok_6a ? "OK" : "FAIL");
+        fflush(stdout);
+
+        /* ── 6b: CfC determinism — compare cmd=4 vs cmd=1 hidden state ──
+         * Reset LP hidden to zero twice, run the same inputs through
+         * cmd=1 and cmd=4, verify identical hidden states. */
+        printf("  6b: CfC determinism (cmd=4 vs cmd=1)...\n");
+        fflush(stdout);
+
+        /* Run cmd=1 first (CfC only) */
+        memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
+        memcpy(ulp_addr(&ulp_gie_hidden), known_gie_h, LP_GIE_HIDDEN);
+        step_before = ulp_lp_step_count;
+        ulp_lp_command = 1;
+        int timeout = 50;
+        while (ulp_lp_step_count == step_before && timeout > 0) {
+            vTaskDelay(pdMS_TO_TICKS(5));
+            timeout--;
+        }
+        int8_t h_cmd1[LP_HIDDEN_DIM];
+        memcpy(h_cmd1, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
+        int32_t dots_f_cmd1[LP_HIDDEN_DIM];
+        int32_t dots_g_cmd1[LP_HIDDEN_DIM];
+        memcpy(dots_f_cmd1, ulp_addr(&ulp_lp_dots_f), sizeof(dots_f_cmd1));
+        memcpy(dots_g_cmd1, ulp_addr(&ulp_lp_dots_g), sizeof(dots_g_cmd1));
+
+        /* Run cmd=4 (pipeline) with same initial state */
+        memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
+        memcpy(ulp_addr(&ulp_gie_hidden), known_gie_h, LP_GIE_HIDDEN);
+        step_before = ulp_lp_step_count;
+        search_before = ulp_vdb_search_count;
+
+        vdb_result_t pipe_result_6b;
+        pipe_err = vdb_cfc_pipeline_step(&pipe_result_6b);
+
+        int8_t h_cmd4[LP_HIDDEN_DIM];
+        memcpy(h_cmd4, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
+        int32_t dots_f_cmd4[LP_HIDDEN_DIM];
+        int32_t dots_g_cmd4[LP_HIDDEN_DIM];
+        memcpy(dots_f_cmd4, ulp_addr(&ulp_lp_dots_f), sizeof(dots_f_cmd4));
+        memcpy(dots_g_cmd4, ulp_addr(&ulp_lp_dots_g), sizeof(dots_g_cmd4));
+
+        /* Compare hidden states */
+        int h_match = 1;
+        for (int i = 0; i < LP_HIDDEN_DIM; i++) {
+            if (h_cmd1[i] != h_cmd4[i]) { h_match = 0; break; }
+        }
+        int f_match = 1, g_match = 1;
+        for (int i = 0; i < LP_HIDDEN_DIM; i++) {
+            if (dots_f_cmd1[i] != dots_f_cmd4[i]) f_match = 0;
+            if (dots_g_cmd1[i] != dots_g_cmd4[i]) g_match = 0;
+        }
+
+        print_trit_vec("cmd=1 hidden", h_cmd1, LP_HIDDEN_DIM);
+        print_trit_vec("cmd=4 hidden", h_cmd4, LP_HIDDEN_DIM);
+        printf("  Hidden match: %s\n", h_match ? "YES" : "NO");
+        printf("  f-dots match: %s, g-dots match: %s\n",
+               f_match ? "YES" : "NO", g_match ? "YES" : "NO");
+
+        int ok_6b = h_match && f_match && g_match;
+        printf("  6b: %s\n\n", ok_6b ? "OK" : "FAIL");
+        fflush(stdout);
+
+        /* ── 6c: VDB consistency — pipeline results match standalone ──
+         * After cmd=4 from 6b, run cmd=2 (search only) with the same
+         * query (already in vdb_query_pos/neg BSS from the pipeline).
+         * Results should be identical. */
+        printf("  6c: VDB consistency (pipeline vs standalone search)...\n");
+        fflush(stdout);
+
+        /* The pipeline already left the packed query in vdb_query_pos/neg.
+         * Run a standalone search with the same query. */
+        search_before = ulp_vdb_search_count;
+        ulp_lp_command = 2;
+        timeout = 50;
+        while (ulp_vdb_search_count == search_before && timeout > 0) {
+            vTaskDelay(pdMS_TO_TICKS(5));
+            timeout--;
+        }
+
+        /* Read standalone results */
+        volatile uint8_t *ids_raw = (volatile uint8_t *)ulp_addr(&ulp_vdb_result_ids);
+        volatile int32_t *scores_raw = (volatile int32_t *)ulp_addr(&ulp_vdb_result_scores);
+        vdb_result_t standalone_result;
+        for (int k = 0; k < VDB_K; k++) {
+            standalone_result.ids[k] = ids_raw[k];
+            standalone_result.scores[k] = scores_raw[k];
+        }
+
+        printf("  Pipeline: [%d,%d,%d,%d] scores=[%d,%d,%d,%d]\n",
+               (int)pipe_result_6b.ids[0], (int)pipe_result_6b.ids[1],
+               (int)pipe_result_6b.ids[2], (int)pipe_result_6b.ids[3],
+               (int)pipe_result_6b.scores[0], (int)pipe_result_6b.scores[1],
+               (int)pipe_result_6b.scores[2], (int)pipe_result_6b.scores[3]);
+        printf("  Standalone: [%d,%d,%d,%d] scores=[%d,%d,%d,%d]\n",
+               (int)standalone_result.ids[0], (int)standalone_result.ids[1],
+               (int)standalone_result.ids[2], (int)standalone_result.ids[3],
+               (int)standalone_result.scores[0], (int)standalone_result.scores[1],
+               (int)standalone_result.scores[2], (int)standalone_result.scores[3]);
+
+        int results_match = 1;
+        for (int k = 0; k < VDB_K; k++) {
+            if (pipe_result_6b.ids[k] != standalone_result.ids[k]) results_match = 0;
+            if (pipe_result_6b.scores[k] != standalone_result.scores[k]) results_match = 0;
+        }
+        printf("  Results match: %s\n", results_match ? "YES" : "NO");
+
+        int ok_6c = results_match;
+        printf("  6c: %s\n\n", ok_6c ? "OK" : "FAIL");
+        fflush(stdout);
+
+        /* ── 6d: Sustained operation — run 10 pipeline steps ──
+         * Feed GIE hidden state, run cmd=4 ten times via the LP timer,
+         * verify both counters advance by 10. */
+        printf("  6d: Sustained pipeline operation (10 steps)...\n");
+        fflush(stdout);
+
+        /* Start GIE free-running to feed LP core with evolving state */
+        cfc_init(42, 50);
+        premultiply_all();
+        encode_all_neurons();
+        build_circular_chain();
+        start_freerun();
+
+        /* Let GIE produce some hidden state */
+        vTaskDelay(pdMS_TO_TICKS(50));
+
+        step_before = ulp_lp_step_count;
+        search_before = ulp_vdb_search_count;
+
+        /* Run 10 pipeline steps, feeding GIE hidden each time */
+        int pipeline_ok_count = 0;
+        for (int i = 0; i < 10; i++) {
+            feed_lp_core();  /* updates gie_hidden in LP SRAM */
+            /* Override command to cmd=4 (feed_lp_core sets cmd=1) */
+            ulp_lp_command = 4;
+
+            /* Wait for this pipeline step to complete */
+            uint32_t this_step = ulp_lp_step_count;
+            uint32_t this_search = ulp_vdb_search_count;
+            timeout = 50;
+            while (timeout > 0) {
+                if (ulp_lp_step_count != this_step &&
+                    ulp_vdb_search_count != this_search) {
+                    pipeline_ok_count++;
+                    break;
+                }
+                vTaskDelay(pdMS_TO_TICKS(5));
+                timeout--;
+            }
+        }
+
+        stop_freerun();
+
+        step_after = ulp_lp_step_count;
+        search_after = ulp_vdb_search_count;
+
+        int total_steps = (int)(step_after - step_before);
+        int total_searches = (int)(search_after - search_before);
+
+        printf("  Pipeline steps completed: %d / 10\n", pipeline_ok_count);
+        printf("  step_count delta: %d\n", total_steps);
+        printf("  search_count delta: %d\n", total_searches);
+
+        /* Read final LP hidden state */
+        int8_t final_lp_h[LP_HIDDEN_DIM];
+        memcpy(final_lp_h, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
+        int final_energy = trit_energy(final_lp_h, LP_HIDDEN_DIM);
+        print_trit_vec("Final LP hidden", final_lp_h, LP_HIDDEN_DIM);
+        printf("  Final LP hidden energy: %d/%d\n", final_energy, LP_HIDDEN_DIM);
+
+        int ok_6d = (pipeline_ok_count == 10) &&
+                    (total_steps >= 10) && (total_searches >= 10);
+        printf("  6d: %s\n\n", ok_6d ? "OK" : "FAIL");
+        fflush(stdout);
+
+        int ok = ok_6a && ok_6b && ok_6c && ok_6d;
+        test_count++;
+        if (ok) pass_count++;
+        printf("  %s\n\n", ok ? "OK" : "FAIL");
+        fflush(stdout);
+    }
+
     /* ── Summary ── */
     printf("============================================================\n");
     printf("  RESULTS: %d / %d PASSED\n", pass_count, test_count);
     printf("============================================================\n");
     if (pass_count == test_count) {
-        printf("\n  *** THREE-LAYER TERNARY HIERARCHY + NSW GRAPH VDB VERIFIED ***\n");
+        printf("\n  *** THREE-LAYER TERNARY HIERARCHY + CfC->VDB PIPELINE VERIFIED ***\n");
         printf("  Layer 1: GIE (GDMA+PARLIO+PCNT) — 441 Hz, ~0 CPU\n");
         printf("  Layer 2: LP core geometric processor — 100 Hz, ~30uA\n");
         printf("  Layer 2b: LP core ternary VDB — NSW graph search (M=%d)\n", VDB_M);
+        printf("  Layer 2c: CfC -> VDB pipeline — perceive+think+remember in one wake\n");
         printf("  Layer 3: HP core — awake only for init + monitoring\n");
         printf("  All ternary. No floating point. No multiplication.\n");
         printf("  The neural network is infrastructure, not software.\n\n");
