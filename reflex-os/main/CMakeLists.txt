@@ -22,9 +22,11 @@
 #   - layers_main.c     : Layered exploration
 #   - main.c            : Full benchmark suite
 
+set(app_sources "geometry_cfc_freerun.c")
+
 idf_component_register(
     SRCS
-        "geometry_cfc_freerun.c"
+        ${app_sources}
     INCLUDE_DIRS
         "../include"
         "../shared"
@@ -37,4 +39,12 @@ idf_component_register(
         esp_driver_parlio
         esp_driver_ledc
         esp_hw_support
+        ulp
+    WHOLE_ARCHIVE
     )
+
+# LP Core geometric processor — built as separate RISC-V binary
+set(ulp_app_name ulp_${COMPONENT_NAME})
+set(ulp_sources "ulp/main.c")
+set(ulp_exp_dep_srcs ${app_sources})
+ulp_embed_binary(${ulp_app_name} "${ulp_sources}" "${ulp_exp_dep_srcs}")

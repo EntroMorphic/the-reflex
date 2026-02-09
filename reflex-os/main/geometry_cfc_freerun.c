@@ -52,6 +52,8 @@
 #include "soc/gdma_struct.h"
 #include "soc/interrupts.h"
 #include "rom/lldesc.h"
+#include "ulp_lp_core.h"
+#include "ulp_main.h"
 
 /* ── Register addresses ── */
 #define ETM_BASE            0x60013000
@@ -158,12 +160,39 @@ typedef struct {
 static cfc_state_t cfc;
 static int8_t all_products[NUM_NEURONS][CFC_MAX_DIM];
 
+/* ── LP Core binary (embedded by build system) ── */
+extern const uint8_t ulp_main_bin_start[] asm("_binary_ulp_main_bin_start");
+extern const uint8_t ulp_main_bin_end[]   asm("_binary_ulp_main_bin_end");
+
+/* Helper to get an opaque pointer to a ULP symbol's LP SRAM address.
+ * The ULP build system declares all symbols as `extern uint32_t`, but the
+ * actual data is larger (arrays). This helper prevents GCC's -Warray-bounds
+ * from seeing through the cast. */
+static inline void * __attribute__((always_inline))
+ulp_addr(const volatile void *sym) {
+    uintptr_t addr;
+    __asm__ volatile("" : "=r"(addr) : "0"(sym));
+    return (void*)addr;
+}
+
+/* LP Core CfC dimensions (must match ulp/main.c) */
+#define LP_GIE_HIDDEN    32  /* = CFC_HIDDEN_DIM */
+#define LP_HIDDEN_DIM    16
+#define LP_CONCAT_DIM    48  /* 32 + 16 */
+#define LP_NUM_NEURONS   32  /* 16 f + 16 g */
+#define LP_PACKED_WORDS  3   /* ceil(48/16) */
+
 /* ══════════════════════════════════════════════════════════════════
  *  TERNARY OPERATIONS & PRNG
  * ══════════════════════════════════════════════════════════════════ */
 
-static inline int8_t tmul(int8_t a, int8_t b) {
-    return (int8_t)(a * b);
+static inline int8_t IRAM_ATTR tmul(int8_t a, int8_t b) {
+    /* Ternary multiply without MUL instruction.
+     * {-1,0,+1} × {-1,0,+1} → {-1,0,+1}
+     * Zero if either is zero; sign = XOR of signs. */
+    if (a == 0 || b == 0) return 0;
+    /* same sign → +1, different sign → -1 */
+    return ((a ^ b) >= 0) ? (int8_t)1 : (int8_t)-1;
 }
 
 static inline int8_t tsign(int val) {
@@ -375,6 +404,14 @@ static void IRAM_ATTR isr_loop_boundary(void) {
     memcpy((void*)loop_dots, dots, sizeof(dots));
     loop_timestamp_us = esp_timer_get_time();
     loop_count++;
+
+    /* ── 7. Feed GIE hidden state to LP core ──
+     * Copy the new hidden state to LP SRAM where the LP core's
+     * geometric processor can read it. The ulp_ prefix accesses
+     * the LP SRAM variable directly by address.
+     * Note: ulp_ symbols are uint32_t pointers into LP SRAM. */
+    /* LP SRAM update is done from main loop context (not ISR) to avoid
+     * bus contention stalling the time-critical ISR. See feed_lp_core(). */
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -857,6 +894,115 @@ static void prime_pipeline(void) {
 }
 
 /* ══════════════════════════════════════════════════════════════════
+ *  LP CORE INITIALIZATION
+ *
+ *  Pack ternary weights into the LP core's geometric format and
+ *  load the LP binary into LP SRAM.
+ * ══════════════════════════════════════════════════════════════════ */
+
+/* Pack a trit vector into (pos_mask, neg_mask) for LP core.
+ * 16 trits per 32-bit word. */
+static void pack_trits_for_lp(const int8_t *trits, int n_trits,
+                               volatile uint32_t *pos, volatile uint32_t *neg,
+                               int n_words) {
+    for (int w = 0; w < n_words; w++) {
+        uint32_t p = 0, n = 0;
+        for (int b = 0; b < 16 && (w * 16 + b) < n_trits; b++) {
+            int8_t t = trits[w * 16 + b];
+            if (t > 0) p |= (1u << b);
+            if (t < 0) n |= (1u << b);
+        }
+        pos[w] = p;
+        neg[w] = n;
+    }
+}
+
+/* LP CfC weights — separate from the GIE weights.
+ * The LP core has its own network that takes GIE hidden state
+ * as input and produces a higher-level decision. */
+static int8_t lp_W_f[LP_HIDDEN_DIM][LP_CONCAT_DIM];
+static int8_t lp_W_g[LP_HIDDEN_DIM][LP_CONCAT_DIM];
+
+static void init_lp_core_weights(uint32_t seed) {
+    /* Generate LP-local weights using same PRNG */
+    cfc_seed(seed);
+
+    for (int n = 0; n < LP_HIDDEN_DIM; n++) {
+        for (int i = 0; i < LP_CONCAT_DIM; i++) {
+            lp_W_f[n][i] = rand_trit(40);
+            lp_W_g[n][i] = rand_trit(40);
+        }
+    }
+
+    /* Pack into LP SRAM in geometric format.
+     * ULP build system exports all symbols as flat uint32_t.
+     * The LP core's lp_W_f_pos[16][3] is accessed via byte offset
+     * from &ulp_lp_W_f_pos. Each neuron's 3 words = 12 bytes. */
+    volatile uint32_t *wf_pos = (volatile uint32_t *)ulp_addr(&ulp_lp_W_f_pos);
+    volatile uint32_t *wf_neg = (volatile uint32_t *)ulp_addr(&ulp_lp_W_f_neg);
+    volatile uint32_t *wg_pos = (volatile uint32_t *)ulp_addr(&ulp_lp_W_g_pos);
+    volatile uint32_t *wg_neg = (volatile uint32_t *)ulp_addr(&ulp_lp_W_g_neg);
+
+    for (int n = 0; n < LP_HIDDEN_DIM; n++) {
+        pack_trits_for_lp(lp_W_f[n], LP_CONCAT_DIM,
+                          &wf_pos[n * LP_PACKED_WORDS],
+                          &wf_neg[n * LP_PACKED_WORDS],
+                          LP_PACKED_WORDS);
+        pack_trits_for_lp(lp_W_g[n], LP_CONCAT_DIM,
+                          &wg_pos[n * LP_PACKED_WORDS],
+                          &wg_neg[n * LP_PACKED_WORDS],
+                          LP_PACKED_WORDS);
+    }
+
+    /* Initialize LP hidden state to zero */
+    memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
+    ulp_lp_step_count = 0;
+    ulp_lp_decision = 0;
+    ulp_lp_data_ready = 0;
+}
+
+static void start_lp_core(void) {
+    /* Binary is already loaded by caller — do NOT reload here,
+     * as that would zero BSS and wipe out the packed weights. */
+    ulp_lp_core_cfg_t cfg = {
+        .wakeup_source = ULP_LP_CORE_WAKEUP_SOURCE_LP_TIMER,
+        .lp_timer_sleep_duration_us = 10000,  /* 10ms = ~100 Hz */
+    };
+
+    esp_err_t err = ulp_lp_core_run(&cfg);
+    if (err != ESP_OK) {
+        printf("[LP] FAILED to start: %d\n", err);
+        return;
+    }
+    printf("[LP] Geometric processor running (100 Hz, 16 MHz RISC-V)\n");
+}
+
+/* Feed GIE hidden state to LP core — called from main loop context,
+ * NOT from ISR (LP SRAM bus contention stalls the ISR). */
+static void feed_lp_core(void) {
+    memcpy(ulp_addr(&ulp_gie_hidden), (void*)cfc.hidden, CFC_HIDDEN_DIM);
+    ulp_lp_data_ready = 1;
+}
+
+/* CPU reference: compute LP CfC dot products for verification */
+static void cpu_lp_reference(const int8_t *gie_h, const int8_t *lp_h,
+                              int *dots_f, int *dots_g) {
+    int8_t concat[LP_CONCAT_DIM];
+    memcpy(concat, gie_h, LP_GIE_HIDDEN);
+    memcpy(concat + LP_GIE_HIDDEN, lp_h, LP_HIDDEN_DIM);
+
+    for (int n = 0; n < LP_HIDDEN_DIM; n++) {
+        int sum_f = 0, sum_g = 0;
+        for (int i = 0; i < LP_CONCAT_DIM; i++) {
+            sum_f += tmul(lp_W_f[n][i], concat[i]);
+            sum_g += tmul(lp_W_g[n][i], concat[i]);
+        }
+        dots_f[n] = sum_f;
+        dots_g[n] = sum_g;
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════════
  *  MAIN — TEST SUITE
  * ══════════════════════════════════════════════════════════════════ */
 
@@ -866,8 +1012,9 @@ void app_main(void) {
     printf("\n");
     printf("============================================================\n");
     printf("  FREE-RUNNING SUB-CPU NEURAL NETWORK\n");
-    printf("  Ternary CfC on GIE — CPU never computes a dot product\n");
-    printf("  GDMA circular chain → PARLIO → PCNT → ISR blend → loop\n");
+    printf("  + LP CORE GEOMETRIC PROCESSOR\n");
+    printf("  GIE (441 Hz HW) → LP core (100 Hz, 16MHz RISC-V, ~30uA)\n");
+    printf("  Three-layer hierarchy: peripheral → geometric → CPU\n");
     printf("============================================================\n\n");
 
     printf("[INIT] GPIO 4-7...\n");
@@ -885,6 +1032,21 @@ void app_main(void) {
     printf("[GDMA] PARLIO owns CH%d\n", bare_ch);
     printf("[INIT] GDMA ISR (free-running mode)...\n");
     init_gdma_isr();
+    /* CRITICAL: Load LP binary FIRST, then pack weights.
+     * ulp_lp_core_load_binary() zeros the BSS section in LP SRAM,
+     * which would wipe out any weights already written there. */
+    printf("[INIT] LP core binary (%d bytes)...\n",
+           (int)(ulp_main_bin_end - ulp_main_bin_start));
+    {
+        esp_err_t err = ulp_lp_core_load_binary(ulp_main_bin_start,
+                                                (ulp_main_bin_end - ulp_main_bin_start));
+        if (err != ESP_OK) {
+            printf("[LP] FAILED to load binary: %d\n", err);
+        }
+    }
+    printf("[INIT] LP core weights (after binary load)...\n");
+    init_lp_core_weights(0xCAFE1234);
+    start_lp_core();
     printf("[INIT] Done.\n\n");
     fflush(stdout);
 
@@ -1127,15 +1289,160 @@ void app_main(void) {
         fflush(stdout);
     }
 
+    /* ══════════════════════════════════════════════════════════════
+     *  TEST 4: LP Core Geometric Processor
+     *
+     *  The LP core runs a ternary CfC on RISC-V at 16MHz / ~30μA.
+     *  It implements geometric operations (INTERSECT via AND+popcount,
+     *  PROJECT via sign, GATE via branch/negate) — no multiplication.
+     *
+     *  Three-part verification:
+     *  4a) LP core is running (step count advances)
+     *  4b) Deterministic single-step dot product verification:
+     *       Reset LP hidden to zero, feed known GIE hidden state,
+     *       wait for exactly 1 LP step, compare dots against CPU.
+     *  4c) Hidden state evolves with GIE (live integration test)
+     * ══════════════════════════════════════════════════════════════ */
+    printf("-- TEST 4: LP Core Geometric Processor --\n");
+    fflush(stdout);
+    {
+        /* ── Phase 1: Live integration — verify LP core runs with GIE ── */
+        cfc_init(42, 50);
+        premultiply_all();
+        encode_all_neurons();
+        build_circular_chain();
+
+        start_freerun();
+
+        /* Let GIE + LP core run for 300ms, feeding LP core every 10ms */
+        printf("  Phase 1: GIE + LP core integration (300ms)...\n");
+        fflush(stdout);
+        for (int i = 0; i < 30; i++) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            feed_lp_core();
+        }
+
+        uint32_t lp_steps_live = ulp_lp_step_count;
+        int8_t lp_h_live[LP_HIDDEN_DIM];
+        memcpy(lp_h_live, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
+        int8_t lp_dec_live = (int8_t)ulp_lp_decision;
+
+        stop_freerun();
+
+        int lp_running = (lp_steps_live >= 10);
+        int lp_energy = trit_energy(lp_h_live, LP_HIDDEN_DIM);
+
+        printf("  4a: LP running: %s (steps=%d)\n",
+               lp_running ? "YES" : "NO", (int)lp_steps_live);
+        printf("  4c: LP hidden energy: %d/%d\n", lp_energy, LP_HIDDEN_DIM);
+        print_trit_vec("LP hidden", lp_h_live, LP_HIDDEN_DIM);
+        printf("  LP decision: %d\n", (int)lp_dec_live);
+
+        /* ── Phase 2: Deterministic single-step dot verification ──
+         * Reset LP state, feed a known GIE hidden vector, wait for
+         * exactly 1 LP step, and compare dots against CPU reference.
+         * This eliminates the race condition from Phase 1. */
+        printf("\n  Phase 2: Deterministic single-step verification...\n");
+        fflush(stdout);
+
+        /* Use a known GIE hidden state: the one from Test 1's first loop */
+        cfc_init(42, 50);
+        premultiply_all();
+        encode_all_neurons();
+        build_circular_chain();
+        start_freerun();
+        /* Let GIE run a few loops to produce a nonzero hidden state */
+        vTaskDelay(pdMS_TO_TICKS(50));
+        int8_t known_gie_h[LP_GIE_HIDDEN];
+        memcpy(known_gie_h, (void*)cfc.hidden, LP_GIE_HIDDEN);
+        stop_freerun();
+
+        int gie_e = trit_energy(known_gie_h, LP_GIE_HIDDEN);
+        printf("  Known GIE hidden energy: %d/%d\n", gie_e, LP_GIE_HIDDEN);
+        print_trit_vec("Known GIE hidden", known_gie_h, LP_GIE_HIDDEN);
+
+        /* Reset LP hidden to zero and record step count */
+        memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
+        uint32_t step_before = ulp_lp_step_count;
+
+        /* Feed known GIE hidden state and trigger one LP step */
+        memcpy(ulp_addr(&ulp_gie_hidden), known_gie_h, LP_GIE_HIDDEN);
+        ulp_lp_data_ready = 1;
+
+        /* Wait for LP core to process (wakes every 10ms) */
+        int timeout = 50;
+        while (ulp_lp_step_count == step_before && timeout > 0) {
+            vTaskDelay(pdMS_TO_TICKS(5));
+            timeout--;
+        }
+        uint32_t step_after = ulp_lp_step_count;
+        printf("  LP steps: %d → %d (delta=%d)\n",
+               (int)step_before, (int)step_after, (int)(step_after - step_before));
+
+        /* Snapshot LP dots from this single step */
+        int32_t lp_dots_f_snap[LP_HIDDEN_DIM];
+        int32_t lp_dots_g_snap[LP_HIDDEN_DIM];
+        memcpy(lp_dots_f_snap, ulp_addr(&ulp_lp_dots_f), sizeof(lp_dots_f_snap));
+        memcpy(lp_dots_g_snap, ulp_addr(&ulp_lp_dots_g), sizeof(lp_dots_g_snap));
+
+        /* CPU reference: compute from same inputs (GIE hidden + zero LP hidden) */
+        int8_t lp_h_zero[LP_HIDDEN_DIM];
+        memset(lp_h_zero, 0, LP_HIDDEN_DIM);
+        int cpu_f[LP_HIDDEN_DIM], cpu_g[LP_HIDDEN_DIM];
+        cpu_lp_reference(known_gie_h, lp_h_zero, cpu_f, cpu_g);
+
+        /* Compare — should be EXACT since both computed from same inputs */
+        int f_exact = 0, g_exact = 0, f_sign = 0, g_sign = 0;
+        int f_nonzero = 0, g_nonzero = 0;
+        for (int n = 0; n < LP_HIDDEN_DIM; n++) {
+            if (lp_dots_f_snap[n] == cpu_f[n]) f_exact++;
+            if (lp_dots_g_snap[n] == cpu_g[n]) g_exact++;
+            if (cpu_f[n] != 0) {
+                f_nonzero++;
+                if (tsign(lp_dots_f_snap[n]) == tsign(cpu_f[n])) f_sign++;
+            }
+            if (cpu_g[n] != 0) {
+                g_nonzero++;
+                if (tsign(lp_dots_g_snap[n]) == tsign(cpu_g[n])) g_sign++;
+            }
+        }
+
+        printf("  4b: f-dots exact: %d/%d, g-dots exact: %d/%d\n",
+               f_exact, LP_HIDDEN_DIM, g_exact, LP_HIDDEN_DIM);
+        printf("  4b: f-dots sign:  %d/%d, g-dots sign:  %d/%d\n",
+               f_sign, f_nonzero, g_sign, g_nonzero);
+        printf("  LP  f-dots: ");
+        for (int n = 0; n < LP_HIDDEN_DIM; n++) printf("%d ", (int)lp_dots_f_snap[n]);
+        printf("\n  CPU f-dots: ");
+        for (int n = 0; n < LP_HIDDEN_DIM; n++) printf("%d ", cpu_f[n]);
+        printf("\n  LP  g-dots: ");
+        for (int n = 0; n < LP_HIDDEN_DIM; n++) printf("%d ", (int)lp_dots_g_snap[n]);
+        printf("\n  CPU g-dots: ");
+        for (int n = 0; n < LP_HIDDEN_DIM; n++) printf("%d ", cpu_g[n]);
+        printf("\n");
+
+        /* Pass criteria:
+         * - LP core ran at least 10 steps (4a)
+         * - LP hidden state evolved (4c: energy > 0)
+         * - Exact dot match for deterministic test (4b) */
+        int dots_ok = (f_exact == LP_HIDDEN_DIM && g_exact == LP_HIDDEN_DIM);
+        int ok = lp_running && (lp_energy > 0) && dots_ok;
+        test_count++;
+        if (ok) pass_count++;
+        printf("  %s\n\n", ok ? "OK" : "FAIL");
+        fflush(stdout);
+    }
+
     /* ── Summary ── */
     printf("============================================================\n");
     printf("  RESULTS: %d / %d PASSED\n", pass_count, test_count);
     printf("============================================================\n");
     if (pass_count == test_count) {
-        printf("\n  *** FREE-RUNNING SUB-CPU NEURAL NETWORK VERIFIED ***\n");
-        printf("  Circular DMA chain loops autonomously.\n");
-        printf("  ISR decodes dots, blends, re-encodes — CPU never computes.\n");
-        printf("  Hidden state is a peripheral register, always current.\n");
+        printf("\n  *** THREE-LAYER TERNARY HIERARCHY VERIFIED ***\n");
+        printf("  Layer 1: GIE (GDMA+PARLIO+PCNT) — 441 Hz, ~0 CPU\n");
+        printf("  Layer 2: LP core geometric processor — 100 Hz, ~30uA\n");
+        printf("  Layer 3: HP core — awake only for init + monitoring\n");
+        printf("  All ternary. No floating point. No multiplication.\n");
         printf("  The neural network is infrastructure, not software.\n\n");
     } else {
         printf("\n  SOME TESTS FAILED — see details above.\n\n");
