@@ -55,6 +55,7 @@
 #include "ulp_lp_core.h"
 #include "ulp_main.h"
 #include "reflex_vdb.h"
+#include "reflex.h"
 
 /* ── Register addresses ── */
 #define ETM_BASE            0x60013000
@@ -136,6 +137,11 @@ static volatile int32_t loop_dots[NUM_NEURONS]; /* dots from last completed loop
 static volatile int64_t loop_timestamp_us;  /* timestamp of last loop completion */
 static volatile int32_t loop_base;          /* diagnostic: baseline index */
 static volatile int32_t loop_isr_count;     /* diagnostic: isr_count at boundary */
+
+/* Reflex channel: ISR → main loop coordination.
+ * The ISR signals this channel after committing a complete hidden state,
+ * providing ordering guarantees and cycle-accurate timestamps. */
+static reflex_channel_t gie_channel __attribute__((aligned(32)));
 /* Raw capture diagnostic: captures around neuron 0 */
 #define DIAG_LEN 12
 static volatile int32_t diag_agree[DIAG_LEN];
@@ -405,6 +411,12 @@ static void IRAM_ATTR isr_loop_boundary(void) {
     memcpy((void*)loop_dots, dots, sizeof(dots));
     loop_timestamp_us = esp_timer_get_time();
     loop_count++;
+
+    /* ── 6b. Signal reflex channel ──
+     * The hidden state and loop_dots are committed to SRAM above.
+     * The fence inside reflex_signal() guarantees the consumer sees
+     * the complete state before the sequence number changes. */
+    reflex_signal(&gie_channel, (uint32_t)loop_count);
 
     /* ── 7. Feed GIE hidden state to LP core ──
      * Copy the new hidden state to LP SRAM where the LP core's
@@ -744,6 +756,7 @@ static void start_freerun(void) {
     memset((void*)isr_agree, 0, sizeof(isr_agree));
     memset((void*)isr_disagree, 0, sizeof(isr_disagree));
     memset((void*)loop_dots, 0, sizeof(loop_dots));
+    memset(&gie_channel, 0, sizeof(gie_channel));
 
     /* Drive GPIOs */
     gpio_set_level(GPIO_X_POS, 0);
@@ -1959,19 +1972,254 @@ void app_main(void) {
         fflush(stdout);
     }
 
+    /* ══════════════════════════════════════════════════════════════
+     *  TEST 7: Reflex Channel — Cache Coherency Coordination
+     *
+     *  The reflex channel is the original coordination primitive:
+     *  a 32-byte aligned struct with sequence counter, timestamp,
+     *  value, and memory fences. Here we use it to coordinate the
+     *  GIE ISR (producer) with the HP main loop (consumer).
+     *
+     *  The ISR signals the channel after committing a complete
+     *  hidden state. The main loop waits on the channel and reads
+     *  the state with ordering guarantees: the fence ensures
+     *  hidden[] is visible before the sequence increments.
+     *
+     *  On a single-core C6, this is SRAM ordering (no cache to
+     *  snoop). But the protocol is the same one that gives 309ns
+     *  on Thor's 14-core ARM via cache coherency traffic.
+     *
+     *  Verification:
+     *  7a) Channel signals match loop_count — every loop produces a signal
+     *  7b) Latency — cycles between ISR signal and main loop read
+     *  7c) Consistency — hidden state after wait matches CPU reference
+     *  7d) Channel-driven LP feeding — feed LP only on channel signal
+     * ══════════════════════════════════════════════════════════════ */
+    printf("-- TEST 7: Reflex Channel Coordination --\n");
+    fflush(stdout);
+    {
+        /* ── 7a: Channel signals match loop count ── */
+        printf("  7a: Channel signals match loop count...\n");
+        fflush(stdout);
+
+        cfc_init(42, 50);
+        premultiply_all();
+        encode_all_neurons();
+        build_circular_chain();
+        start_freerun();
+
+        /* Wait for 50 loops using reflex_wait */
+        uint32_t last_seq = gie_channel.sequence;
+        int signals_received = 0;
+        int mismatch = 0;
+
+        for (int i = 0; i < 50; i++) {
+            uint32_t new_seq = reflex_wait_timeout(&gie_channel, last_seq,
+                                                    160000000); /* 1s timeout */
+            if (new_seq == 0) break; /* timeout */
+            signals_received++;
+
+            /* Channel value should equal loop_count */
+            uint32_t ch_val = reflex_read(&gie_channel);
+            if (ch_val != (uint32_t)loop_count) mismatch++;
+
+            last_seq = new_seq;
+        }
+
+        stop_freerun();
+
+        printf("  Signals received: %d / 50\n", signals_received);
+        printf("  Value mismatches: %d\n", mismatch);
+        printf("  Final loop_count: %d, channel value: %d, channel seq: %d\n",
+               (int)loop_count, (int)gie_channel.value, (int)gie_channel.sequence);
+
+        int ok_7a = (signals_received == 50) && (mismatch == 0);
+        printf("  7a: %s\n\n", ok_7a ? "OK" : "FAIL");
+        fflush(stdout);
+
+        /* ── 7b: Signal latency measurement ──
+         * Spin-wait on the channel and measure cycles between the ISR's
+         * timestamp and our read. This is the ISR→main-loop latency. */
+        printf("  7b: Signal latency (ISR -> main loop)...\n");
+        fflush(stdout);
+
+        cfc_init(42, 50);
+        premultiply_all();
+        encode_all_neurons();
+        build_circular_chain();
+        start_freerun();
+
+        last_seq = gie_channel.sequence;
+        int n_lat = 0;
+        uint32_t min_lat = UINT32_MAX, max_lat = 0;
+        uint64_t sum_lat = 0;
+
+        for (int i = 0; i < 100; i++) {
+            uint32_t new_seq = reflex_wait_timeout(&gie_channel, last_seq,
+                                                    160000000);
+            if (new_seq == 0) break;
+
+            /* Measure: cycles from ISR timestamp to now */
+            uint32_t lat = reflex_latency(&gie_channel);
+            n_lat++;
+            if (lat < min_lat) min_lat = lat;
+            if (lat > max_lat) max_lat = lat;
+            sum_lat += lat;
+
+            last_seq = new_seq;
+        }
+
+        stop_freerun();
+
+        uint32_t avg_lat = (n_lat > 0) ? (uint32_t)(sum_lat / n_lat) : 0;
+        printf("  Samples: %d\n", n_lat);
+        printf("  Latency (cycles): min=%lu, max=%lu, avg=%lu\n",
+               (unsigned long)min_lat, (unsigned long)max_lat, (unsigned long)avg_lat);
+        printf("  Latency (ns):     min=%lu, max=%lu, avg=%lu\n",
+               (unsigned long)reflex_cycles_to_ns(min_lat),
+               (unsigned long)reflex_cycles_to_ns(max_lat),
+               (unsigned long)reflex_cycles_to_ns(avg_lat));
+
+        /* On single-core C6 with spin-wait, the latency is the time
+         * from ISR return to the next instruction in the spin loop.
+         * Should be very small — under 1us (160 cycles). But the ISR
+         * does fence + signal at the end, so some overhead is expected. */
+        int ok_7b = (n_lat == 100) && (min_lat < 16000); /* < 100us */
+        printf("  7b: %s\n\n", ok_7b ? "OK" : "FAIL");
+        fflush(stdout);
+
+        /* ── 7c: Consistency — hidden state after wait is complete ──
+         * Run GIE, wait on channel, snapshot hidden, compare vs CPU ref.
+         * The fence guarantees we see the complete state. */
+        printf("  7c: Hidden state consistency after channel wait...\n");
+        fflush(stdout);
+
+        cfc_init(42, 50);
+        premultiply_all();
+        encode_all_neurons();
+        build_circular_chain();
+        start_freerun();
+
+        /* Let it warm up a few loops */
+        last_seq = gie_channel.sequence;
+        for (int i = 0; i < 5; i++) {
+            uint32_t new_seq = reflex_wait_timeout(&gie_channel, last_seq,
+                                                    160000000);
+            if (new_seq == 0) break;
+            last_seq = new_seq;
+        }
+
+        /* Snapshot hidden state right after a channel signal */
+        int8_t h_before_signal[CFC_HIDDEN_DIM];
+        memcpy(h_before_signal, (void*)cfc.hidden, CFC_HIDDEN_DIM);
+
+        /* Wait for one more signal — new hidden state */
+        uint32_t new_seq = reflex_wait_timeout(&gie_channel, last_seq, 160000000);
+        int8_t h_after_signal[CFC_HIDDEN_DIM];
+        memcpy(h_after_signal, (void*)cfc.hidden, CFC_HIDDEN_DIM);
+        int32_t dots_snap[NUM_NEURONS];
+        memcpy(dots_snap, (void*)loop_dots, sizeof(dots_snap));
+
+        stop_freerun();
+
+        /* CPU reference: compute dots from h_before_signal (the state
+         * that was active when the ISR computed the dots we just read) */
+        int cpu_dots_ref[NUM_NEURONS];
+        for (int n = 0; n < CFC_HIDDEN_DIM; n++) {
+            int sum_f = 0, sum_g = 0;
+            for (int i = 0; i < CFC_INPUT_DIM; i++) {
+                sum_f += tmul(cfc.W_f[n][i], cfc.input[i]);
+                sum_g += tmul(cfc.W_g[n][i], cfc.input[i]);
+            }
+            for (int i = 0; i < CFC_HIDDEN_DIM; i++) {
+                sum_f += tmul(cfc.W_f[n][CFC_INPUT_DIM + i], h_before_signal[i]);
+                sum_g += tmul(cfc.W_g[n][CFC_INPUT_DIM + i], h_before_signal[i]);
+            }
+            cpu_dots_ref[n] = sum_f;
+            cpu_dots_ref[n + CFC_HIDDEN_DIM] = sum_g;
+        }
+
+        /* Compare */
+        int dot_match = 0, dot_total = NUM_NEURONS;
+        for (int n = 0; n < NUM_NEURONS; n++) {
+            if (dots_snap[n] == cpu_dots_ref[n]) dot_match++;
+        }
+
+        printf("  Dot match: %d / %d\n", dot_match, dot_total);
+        printf("  Channel signaled: %s (seq %lu -> %lu)\n",
+               (new_seq != 0) ? "YES" : "NO",
+               (unsigned long)last_seq, (unsigned long)new_seq);
+
+        int ok_7c = (new_seq != 0) && (dot_match == dot_total);
+        printf("  7c: %s\n\n", ok_7c ? "OK" : "FAIL");
+        fflush(stdout);
+
+        /* ── 7d: Channel-driven LP core feeding ──
+         * Instead of polling, use the reflex channel to know exactly
+         * when new GIE state is available, then feed the LP core.
+         * Run 20 channel-driven feed cycles, verify LP core advances. */
+        printf("  7d: Channel-driven LP feeding (20 cycles)...\n");
+        fflush(stdout);
+
+        cfc_init(42, 50);
+        premultiply_all();
+        encode_all_neurons();
+        build_circular_chain();
+        start_freerun();
+
+        /* Let GIE settle */
+        vTaskDelay(pdMS_TO_TICKS(20));
+
+        uint32_t lp_step_before = ulp_lp_step_count;
+        last_seq = gie_channel.sequence;
+        int feeds = 0;
+
+        for (int i = 0; i < 20; i++) {
+            /* Wait for GIE to produce new state */
+            new_seq = reflex_wait_timeout(&gie_channel, last_seq, 160000000);
+            if (new_seq == 0) break;
+            last_seq = new_seq;
+
+            /* Feed LP core — state is guaranteed complete by the fence */
+            feed_lp_core();
+            feeds++;
+
+            /* Small delay to let LP core wake and process */
+            vTaskDelay(pdMS_TO_TICKS(12));
+        }
+
+        stop_freerun();
+
+        uint32_t lp_step_after = ulp_lp_step_count;
+        int lp_steps = (int)(lp_step_after - lp_step_before);
+
+        printf("  Channel-driven feeds: %d / 20\n", feeds);
+        printf("  LP step_count delta: %d\n", lp_steps);
+
+        int ok_7d = (feeds == 20) && (lp_steps >= 15); /* allow some jitter */
+        printf("  7d: %s\n\n", ok_7d ? "OK" : "FAIL");
+        fflush(stdout);
+
+        int ok = ok_7a && ok_7b && ok_7c && ok_7d;
+        test_count++;
+        if (ok) pass_count++;
+        printf("  %s\n\n", ok ? "OK" : "FAIL");
+        fflush(stdout);
+    }
+
     /* ── Summary ── */
     printf("============================================================\n");
     printf("  RESULTS: %d / %d PASSED\n", pass_count, test_count);
     printf("============================================================\n");
     if (pass_count == test_count) {
-        printf("\n  *** THREE-LAYER TERNARY HIERARCHY + CfC->VDB PIPELINE VERIFIED ***\n");
-        printf("  Layer 1: GIE (GDMA+PARLIO+PCNT) — 441 Hz, ~0 CPU\n");
+        printf("\n  *** THREE-LAYER TERNARY HIERARCHY + REFLEX CHANNEL VERIFIED ***\n");
+        printf("  Layer 1: GIE (GDMA+PARLIO+PCNT) — 428 Hz, ~0 CPU\n");
         printf("  Layer 2: LP core geometric processor — 100 Hz, ~30uA\n");
         printf("  Layer 2b: LP core ternary VDB — NSW graph search (M=%d)\n", VDB_M);
         printf("  Layer 2c: CfC -> VDB pipeline — perceive+think+remember in one wake\n");
-        printf("  Layer 3: HP core — awake only for init + monitoring\n");
+        printf("  Layer 3: HP core — reflex channel coordination\n");
         printf("  All ternary. No floating point. No multiplication.\n");
-        printf("  The neural network is infrastructure, not software.\n\n");
+        printf("  The coordination primitive meets the neural network.\n\n");
     } else {
         printf("\n  SOME TESTS FAILED — see details above.\n\n");
     }
