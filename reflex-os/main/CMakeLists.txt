@@ -45,6 +45,6 @@ idf_component_register(
 
 # LP Core geometric processor — built as separate RISC-V binary
 set(ulp_app_name ulp_${COMPONENT_NAME})
-set(ulp_sources "ulp/main.c")
+set(ulp_sources "ulp/main.S")
 set(ulp_exp_dep_srcs ${app_sources})
 ulp_embed_binary(${ulp_app_name} "${ulp_sources}" "${ulp_exp_dep_srcs}")
