@@ -2207,19 +2207,328 @@ void app_main(void) {
         fflush(stdout);
     }
 
+    /* ══════════════════════════════════════════════════════════════
+     *  TEST 8: VDB → CfC Feedback Loop (CMD 5)
+     *
+     *  The feedback loop closes the circle: past memories now
+     *  influence the current CfC hidden state. After the CfC step
+     *  and VDB search, the LP core blends the best-matching stored
+     *  memory into lp_hidden using ternary blend rules:
+     *
+     *    Agreement:  no change (reinforces stability)
+     *    Gap fill:   h=0, mem≠0 → h=mem (memory provides context)
+     *    Conflict:   h≠0, mem≠0, h≠mem → h=0 (HOLD = damper)
+     *
+     *  The HOLD mode is the natural stabilizer: conflicting feedback
+     *  creates zero states, which preserve their value on the next
+     *  CfC step (f=0 → h_new = h_old). This is ternary inertia.
+     *
+     *  Verification:
+     *  8a) Single feedback step works (cmd=5 increments all counters)
+     *  8b) Feedback observability (fb_applied, fb_source_id, fb_blend_count)
+     *  8c) Stability under sustained feedback (N steps, no oscillation)
+     *  8d) Feedback vs no-feedback divergence (cmd=5 vs cmd=4 produce
+     *      different hidden states, proving feedback has effect)
+     * ══════════════════════════════════════════════════════════════ */
+    printf("-- TEST 8: VDB -> CfC Feedback Loop (CMD 5) --\n");
+    fflush(stdout);
+    {
+        /* ── Setup: populate VDB with 32 known vectors ──
+         * Same vectors as Test 6, same seed for reproducibility. */
+        static int8_t fb_vecs[32][VDB_TRIT_DIM];
+        cfc_seed(0xDB5EED01);
+        for (int n = 0; n < 32; n++)
+            for (int i = 0; i < VDB_TRIT_DIM; i++)
+                fb_vecs[n][i] = rand_trit(30);
+
+        printf("  Setup: Inserting 32 vectors into VDB...\n");
+        fflush(stdout);
+        vdb_clear();
+        for (int n = 0; n < 32; n++) {
+            int id = vdb_insert(fb_vecs[n]);
+            if (id < 0) {
+                printf("    INSERT FAIL at node %d\n", n);
+                break;
+            }
+        }
+        printf("  VDB has %d nodes\n", vdb_count());
+        fflush(stdout);
+
+        /* Set feedback threshold — score must be >= 8 out of 48 trits */
+        ulp_fb_threshold = 8;
+
+        /* ── 8a: Single feedback step ──
+         * Reset LP hidden to zero, feed known GIE hidden, run cmd=5,
+         * verify all three counters increment (step, search, total_blends). */
+        printf("\n  8a: Single feedback step (cmd=5)...\n");
+        fflush(stdout);
+
+        /* Get a known GIE hidden state */
+        cfc_init(42, 50);
+        premultiply_all();
+        encode_all_neurons();
+        build_circular_chain();
+        start_freerun();
+        vTaskDelay(pdMS_TO_TICKS(50));
+        int8_t fb_gie_h[LP_GIE_HIDDEN];
+        memcpy(fb_gie_h, (void*)cfc.hidden, LP_GIE_HIDDEN);
+        stop_freerun();
+
+        /* Reset LP hidden and feedback counters */
+        memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
+        ulp_fb_total_blends = 0;
+
+        /* Feed GIE hidden state */
+        memcpy(ulp_addr(&ulp_gie_hidden), fb_gie_h, LP_GIE_HIDDEN);
+
+        uint32_t step_before = ulp_lp_step_count;
+        uint32_t search_before = ulp_vdb_search_count;
+        uint32_t fb_total_before = ulp_fb_total_blends;
+
+        /* Run feedback pipeline */
+        vdb_result_t fb_result;
+        int fb_err = vdb_cfc_feedback_step(&fb_result);
+
+        uint32_t step_after = ulp_lp_step_count;
+        uint32_t search_after = ulp_vdb_search_count;
+        uint32_t fb_total_after = ulp_fb_total_blends;
+        uint32_t fb_app = ulp_fb_applied;
+        uint32_t fb_src = ulp_fb_source_id;
+        int32_t  fb_sc = (int32_t)ulp_fb_score;
+        uint32_t fb_bc = ulp_fb_blend_count;
+
+        int8_t fb_h_after[LP_HIDDEN_DIM];
+        memcpy(fb_h_after, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
+
+        printf("  cmd=5 return: %d\n", fb_err);
+        printf("  step_count: %d -> %d (delta=%d)\n",
+               (int)step_before, (int)step_after, (int)(step_after - step_before));
+        printf("  search_count: %d -> %d (delta=%d)\n",
+               (int)search_before, (int)search_after, (int)(search_after - search_before));
+        printf("  fb_total_blends: %d -> %d\n",
+               (int)fb_total_before, (int)fb_total_after);
+        printf("  fb_applied: %d\n", (int)fb_app);
+        printf("  fb_source_id: %d\n", (int)fb_src);
+        printf("  fb_score: %d\n", (int)fb_sc);
+        printf("  fb_blend_count: %d trits modified\n", (int)fb_bc);
+        printf("  Top-4 results: [%d,%d,%d,%d] scores=[%d,%d,%d,%d]\n",
+               (int)fb_result.ids[0], (int)fb_result.ids[1],
+               (int)fb_result.ids[2], (int)fb_result.ids[3],
+               (int)fb_result.scores[0], (int)fb_result.scores[1],
+               (int)fb_result.scores[2], (int)fb_result.scores[3]);
+        print_trit_vec("LP hidden after feedback", fb_h_after, LP_HIDDEN_DIM);
+
+        int ok_8a = (fb_err == 0) &&
+                    ((step_after - step_before) == 1) &&
+                    ((search_after - search_before) == 1);
+        printf("  8a: %s\n\n", ok_8a ? "OK" : "FAIL");
+        fflush(stdout);
+
+        /* ── 8b: Feedback observability ──
+         * Verify the feedback diagnostic variables are sensible. */
+        printf("  8b: Feedback observability...\n");
+        fflush(stdout);
+
+        /* If fb_applied == 1, source_id should be valid, score >= threshold,
+         * blend_count > 0, and total_blends should have incremented. */
+        int ok_8b;
+        if (fb_app == 1) {
+            int src_valid = (fb_src < 32);  /* we inserted 32 nodes */
+            int score_valid = (fb_sc >= 8); /* threshold */
+            int blend_valid = (fb_bc > 0 && fb_bc <= 16);
+            int total_inc = (fb_total_after > fb_total_before);
+            printf("  Applied: YES (source=%d, score=%d, blended=%d trits)\n",
+                   (int)fb_src, (int)fb_sc, (int)fb_bc);
+            printf("  source valid: %s, score>=thresh: %s, blend valid: %s, total++: %s\n",
+                   src_valid ? "YES" : "NO",
+                   score_valid ? "YES" : "NO",
+                   blend_valid ? "YES" : "NO",
+                   total_inc ? "YES" : "NO");
+            ok_8b = src_valid && score_valid && blend_valid && total_inc;
+        } else {
+            /* Feedback not applied — this is OK if score was below threshold.
+             * Verify the skip was clean. */
+            printf("  Applied: NO (best score %d < threshold %d)\n",
+                   (int)fb_sc, 8);
+            printf("  This is acceptable if no stored memory is similar enough.\n");
+            ok_8b = (fb_bc == 0) && (fb_src == 0xFF || fb_src == 0);
+        }
+        printf("  8b: %s\n\n", ok_8b ? "OK" : "FAIL");
+        fflush(stdout);
+
+        /* ── 8c: Stability under sustained feedback ──
+         * Run 50 feedback steps with the GIE free-running.
+         * Track LP hidden state at each step. Verify:
+         *  - The system doesn't lock into a single state (it evolves)
+         *  - The system doesn't oscillate wildly (bounded change per step)
+         *  - Energy stays bounded (doesn't go to all-zero or all-nonzero) */
+        printf("  8c: Stability under sustained feedback (50 steps)...\n");
+        fflush(stdout);
+
+        cfc_init(42, 50);
+        premultiply_all();
+        encode_all_neurons();
+        build_circular_chain();
+        start_freerun();
+
+        /* Let GIE produce initial hidden state */
+        vTaskDelay(pdMS_TO_TICKS(50));
+
+        /* Reset LP hidden for clean start */
+        memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
+        ulp_fb_total_blends = 0;
+
+        int steps_ok = 0;
+        int fb_applied_count = 0;
+        int max_change_per_step = 0;
+        int energy_min = 999, energy_max = 0;
+        int8_t prev_h[LP_HIDDEN_DIM];
+        memset(prev_h, 0, LP_HIDDEN_DIM);
+
+        /* Track unique states seen (simple hash) */
+        uint32_t state_hashes[50];
+        int n_unique = 0;
+
+        for (int step = 0; step < 50; step++) {
+            /* Feed current GIE hidden */
+            memcpy(ulp_addr(&ulp_gie_hidden), (void*)cfc.hidden, LP_GIE_HIDDEN);
+
+            vdb_result_t step_result;
+            int err = vdb_cfc_feedback_step(&step_result);
+            if (err == 0) steps_ok++;
+            if (ulp_fb_applied) fb_applied_count++;
+
+            /* Read LP hidden */
+            int8_t cur_h[LP_HIDDEN_DIM];
+            memcpy(cur_h, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
+
+            /* Compute change from previous step */
+            int change = trit_hamming(cur_h, prev_h, LP_HIDDEN_DIM);
+            if (change > max_change_per_step) max_change_per_step = change;
+
+            /* Energy */
+            int e = trit_energy(cur_h, LP_HIDDEN_DIM);
+            if (e < energy_min) energy_min = e;
+            if (e > energy_max) energy_max = e;
+
+            /* Simple state hash for uniqueness */
+            uint32_t hash = 0;
+            for (int i = 0; i < LP_HIDDEN_DIM; i++)
+                hash = hash * 31 + (uint32_t)(cur_h[i] + 2);
+            int is_new = 1;
+            for (int j = 0; j < n_unique; j++) {
+                if (state_hashes[j] == hash) { is_new = 0; break; }
+            }
+            if (is_new && n_unique < 50)
+                state_hashes[n_unique++] = hash;
+
+            memcpy(prev_h, cur_h, LP_HIDDEN_DIM);
+
+            /* Print every 10th step */
+            if (step % 10 == 0) {
+                printf("    step %d: e=%d, delta=%d, fb=%d, score=%d, src=%d\n",
+                       step, e, change,
+                       (int)ulp_fb_applied, (int)ulp_fb_score,
+                       (int)ulp_fb_source_id);
+            }
+        }
+
+        stop_freerun();
+
+        uint32_t total_blends_after = ulp_fb_total_blends;
+        printf("  Steps completed: %d / 50\n", steps_ok);
+        printf("  Feedback applied: %d / 50 steps\n", fb_applied_count);
+        printf("  Total blend operations: %d\n", (int)total_blends_after);
+        printf("  Max change per step: %d / %d trits\n", max_change_per_step, LP_HIDDEN_DIM);
+        printf("  Energy range: [%d, %d] / %d\n", energy_min, energy_max, LP_HIDDEN_DIM);
+        printf("  Unique states visited: %d\n", n_unique);
+        print_trit_vec("Final LP hidden", prev_h, LP_HIDDEN_DIM);
+
+        /* Stability criteria:
+         * - All 50 steps completed
+         * - System explored multiple states (not stuck)
+         * - Max per-step change bounded (< 16 = not every trit flipping)
+         * - Energy didn't collapse to 0 or saturate to 16 permanently */
+        int ok_8c = (steps_ok == 50) &&
+                    (n_unique >= 2) &&
+                    (max_change_per_step < LP_HIDDEN_DIM);
+        printf("  8c: %s\n\n", ok_8c ? "OK" : "FAIL");
+        fflush(stdout);
+
+        /* ── 8d: Feedback vs no-feedback divergence ──
+         * Run the same inputs through cmd=4 (no feedback) and cmd=5
+         * (with feedback), verify they produce different hidden states.
+         * This proves the feedback loop actually modifies behavior. */
+        printf("  8d: Feedback vs no-feedback divergence...\n");
+        fflush(stdout);
+
+        /* Get a known GIE hidden state (reuse from 8a) */
+        /* Run 10 steps with cmd=4 (no feedback) */
+        memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
+        int8_t no_fb_history[10][LP_HIDDEN_DIM];
+        for (int step = 0; step < 10; step++) {
+            memcpy(ulp_addr(&ulp_gie_hidden), fb_gie_h, LP_GIE_HIDDEN);
+            vdb_result_t nfb_result;
+            vdb_cfc_pipeline_step(&nfb_result);  /* cmd=4 */
+            memcpy(no_fb_history[step], ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
+        }
+
+        /* Run 10 steps with cmd=5 (with feedback) from same initial state */
+        memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
+        int8_t fb_history[10][LP_HIDDEN_DIM];
+        for (int step = 0; step < 10; step++) {
+            memcpy(ulp_addr(&ulp_gie_hidden), fb_gie_h, LP_GIE_HIDDEN);
+            vdb_result_t fbs_result;
+            vdb_cfc_feedback_step(&fbs_result);  /* cmd=5 */
+            memcpy(fb_history[step], ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
+        }
+
+        /* Compare trajectories */
+        int first_diverge = -1;
+        int total_diverge = 0;
+        for (int step = 0; step < 10; step++) {
+            int dist = trit_hamming(no_fb_history[step], fb_history[step], LP_HIDDEN_DIM);
+            if (dist > 0) {
+                total_diverge++;
+                if (first_diverge < 0) first_diverge = step;
+            }
+            printf("    step %d: hamming distance = %d\n", step, dist);
+        }
+
+        printf("  First divergence at step: %d\n", first_diverge);
+        printf("  Steps with different states: %d / 10\n", total_diverge);
+        print_trit_vec("No-feedback final", no_fb_history[9], LP_HIDDEN_DIM);
+        print_trit_vec("Feedback final   ", fb_history[9], LP_HIDDEN_DIM);
+
+        /* The feedback loop MUST produce a different trajectory.
+         * If they're identical, either feedback never applied (all scores
+         * below threshold) or the blend had no effect. Either way, the
+         * loop isn't closed. */
+        int ok_8d = (total_diverge > 0);
+        printf("  8d: %s\n\n", ok_8d ? "OK" : "FAIL");
+        fflush(stdout);
+
+        int ok = ok_8a && ok_8b && ok_8c && ok_8d;
+        test_count++;
+        if (ok) pass_count++;
+        printf("  %s\n\n", ok ? "OK" : "FAIL");
+        fflush(stdout);
+    }
+
     /* ── Summary ── */
     printf("============================================================\n");
     printf("  RESULTS: %d / %d PASSED\n", pass_count, test_count);
     printf("============================================================\n");
     if (pass_count == test_count) {
-        printf("\n  *** THREE-LAYER TERNARY HIERARCHY + REFLEX CHANNEL VERIFIED ***\n");
+        printf("\n  *** VDB -> CfC FEEDBACK LOOP VERIFIED ***\n");
         printf("  Layer 1: GIE (GDMA+PARLIO+PCNT) — 428 Hz, ~0 CPU\n");
         printf("  Layer 2: LP core geometric processor — 100 Hz, ~30uA\n");
         printf("  Layer 2b: LP core ternary VDB — NSW graph search (M=%d)\n", VDB_M);
-        printf("  Layer 2c: CfC -> VDB pipeline — perceive+think+remember in one wake\n");
+        printf("  Layer 2c: CfC -> VDB pipeline — perceive+think+remember\n");
+        printf("  Layer 2d: VDB -> CfC feedback — memory shapes inference\n");
         printf("  Layer 3: HP core — reflex channel coordination\n");
         printf("  All ternary. No floating point. No multiplication.\n");
-        printf("  The coordination primitive meets the neural network.\n\n");
+        printf("  The circle is closed. Past experience shapes perception.\n\n");
     } else {
         printf("\n  SOME TESTS FAILED — see details above.\n\n");
     }

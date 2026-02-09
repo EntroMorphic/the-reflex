@@ -5,13 +5,15 @@
  * Every instruction on this core is specified here. No compiler
  * decisions, no hidden register allocation, no spills.
  *
- * Four modes, selected by lp_command:
+ * Five modes, selected by lp_command:
  *   CMD 1: CfC neural network step (ternary liquid neural network)
  *   CMD 2: VDB search (graph-aware beam search, brute-force fallback)
  *   CMD 3: VDB graph insert (brute-force candidates, top-M select,
  *          bidirectional edges)
  *   CMD 4: CfC + VDB pipeline (CfC step, then search VDB using the
  *          CfC's packed input vector as the query — zero re-packing)
+ *   CMD 5: CfC + VDB + Feedback (CfC → VDB search → blend best
+ *          match into lp_hidden — closes the memory feedback loop)
  *
  * All modes use the same INTERSECT primitive:
  *   dot = popcount(a_pos & b_pos) + popcount(a_neg & b_neg)
@@ -80,7 +82,7 @@ lp_dots_g:      .space 64       /* 16 × int32_t: g-pathway dots */
 lp_data_ready:  .space 4        /* uint32_t: sync flag (for CfC mode) */
 
     .global lp_pipeline_flag
-lp_pipeline_flag: .space 4      /* uint32_t: 0=CfC only (cmd 1), 1=CfC+VDB (cmd 4) */
+lp_pipeline_flag: .space 4      /* uint32_t: 0=CfC only, 1=CfC+VDB (cmd 4), 2=CfC+VDB+FB (cmd 5) */
 
 /* ═══════════════════════════════════════════════════════════════
  *  VDB STATE — Ternary Vector Database with NSW Graph
@@ -138,6 +140,31 @@ vdb_insert_count: .space 4      /* uint32_t: total inserts completed */
 
     .global vdb_visit_count
 vdb_visit_count: .space 4       /* uint32_t: nodes visited in last search */
+
+/* ═══════════════════════════════════════════════════════════════
+ *  FEEDBACK STATE — VDB → CfC memory blending
+ *
+ *  After cmd=5 (CfC + VDB + Feedback), the LP core blends the
+ *  best VDB match into lp_hidden. These variables let the HP
+ *  core observe what happened.
+ * ═══════════════════════════════════════════════════════════════ */
+    .global fb_applied
+fb_applied:     .space 4        /* uint32_t: 1 if feedback was applied, 0 if skipped */
+
+    .global fb_source_id
+fb_source_id:   .space 4        /* uint32_t: node ID of best match used for feedback */
+
+    .global fb_score
+fb_score:       .space 4        /* int32_t: dot score of best match */
+
+    .global fb_blend_count
+fb_blend_count: .space 4        /* uint32_t: number of trits modified by blend */
+
+    .global fb_total_blends
+fb_total_blends: .space 4       /* uint32_t: cumulative feedback applications */
+
+    .global fb_threshold
+fb_threshold:   .space 4        /* int32_t: minimum score to apply feedback (HP-writable) */
 
 
 /* ═══════════════════════════════════════════════════════════════
@@ -397,6 +424,8 @@ popcount_lut:
  *    2 = VDB search (graph beam search or brute-force)
  *    3 = VDB insert (build graph edges for new node)
  *    4 = CfC + VDB pipeline (CfC step → VDB search in one wake)
+ *    5 = CfC + VDB + Feedback (CfC → VDB search → blend best match
+ *        into lp_hidden — closes the memory feedback loop)
  * ═══════════════════════════════════════════════════════════════ */
     .text
     .align 2
@@ -416,9 +445,24 @@ main:
     beq     t1, t2, .Lvdb_insert_entry
     li      t2, 4
     beq     t1, t2, .Lcfc_vdb_entry
+    li      t2, 5
+    beq     t1, t2, .Lcfc_vdb_fb_entry
     /* Unknown command — ignore */
     j       .Learly_exit
 
+
+/* ═══════════════════════════════════════════════════════════════
+ *  CfC+VDB+FEEDBACK (CMD 5) — Entry point
+ *
+ *  Sets pipeline flag to 2 (feedback mode), then falls through
+ *  to CfC body. After CfC + VDB search, the feedback phase
+ *  blends the best VDB match into lp_hidden.
+ * ═══════════════════════════════════════════════════════════════ */
+.Lcfc_vdb_fb_entry:
+    la      t0, lp_pipeline_flag
+    li      t1, 2
+    sw      t1, 0(t0)
+    j       .Lcfc_body
 
 /* ═══════════════════════════════════════════════════════════════
  *  CfC+VDB PIPELINE (CMD 4) — Entry point
@@ -1254,6 +1298,175 @@ main:
     addi    t1, t1, 1
     sw      t1, 0(t0)
 
+    /* ── Check feedback flag: if pipeline_flag == 2, blend VDB result ── */
+    la      t0, lp_pipeline_flag
+    lw      t1, 0(t0)
+    li      t2, 2
+    beq     t1, t2, .Lvdb_feedback
+    j       .Lvdb_restore_exit
+
+/* ═══════════════════════════════════════════════════════════════
+ *  VDB → CfC FEEDBACK — Memory Blending (CMD 5)
+ *
+ *  Reached when lp_pipeline_flag == 2 after VDB search.
+ *  The best VDB match is blended into lp_hidden[16] using a
+ *  ternary blend rule:
+ *
+ *    For each trit position i (0..15) of lp_hidden:
+ *      memory_trit = retrieved node's trit at position [32+i]
+ *        (offset 32 in the 48-trit vector = lp_hidden portion)
+ *      h = lp_hidden[i]
+ *      if h == memory_trit:    no change  (agreement reinforces)
+ *      if h == 0, mem != 0:    h = mem    (fill gap from memory)
+ *      if h != 0, mem == 0:    no change  (memory has no opinion)
+ *      if h != 0, mem != 0, h != mem:  h = 0  (conflict → HOLD)
+ *
+ *  The HOLD state (0) is the CfC's damper: a neuron that holds
+ *  preserves its value on the next CfC step, creating inertia
+ *  against feedback-driven oscillation.
+ *
+ *  The ternary constraint bounds change: at most ±1 per trit per
+ *  step. No accumulation possible. No explosion.
+ *
+ *  Minimum score threshold: fb_threshold (HP-writable, default 8).
+ *  If best match score < threshold, feedback is skipped (too weak
+ *  a memory to influence the current state).
+ *
+ *  We only blend the LP hidden portion (trits 32..47 of the
+ *  48-trit stored vector). The GIE hidden portion (trits 0..31)
+ *  is read-only from the LP core's perspective.
+ *
+ *  Context: VDB frame is still active (608 bytes). All callee-saved
+ *  regs are available. s8=&popcount_lut, s11=&vdb_nodes still valid.
+ *  VDB results are in vdb_result_ids[0..3], vdb_result_scores[0..3].
+ * ═══════════════════════════════════════════════════════════════ */
+.Lvdb_feedback:
+    /* ── Check if VDB had any results ── */
+    la      t0, vdb_result_ids
+    lbu     t1, 0(t0)                 /* t1 = best match ID */
+    li      t2, 0xFF
+    beq     t1, t2, .Lfb_skip        /* no results → skip */
+
+    /* ── Check score against threshold ── */
+    la      t0, vdb_result_scores
+    lw      t2, 0(t0)                 /* t2 = best match score */
+    la      t0, fb_threshold
+    lw      t3, 0(t0)                 /* t3 = threshold */
+    blt     t2, t3, .Lfb_skip        /* score < threshold → skip */
+
+    /* ── Record feedback source ── */
+    la      t0, fb_source_id
+    sw      t1, 0(t0)                 /* fb_source_id = best match ID */
+    la      t0, fb_score
+    sw      t2, 0(t0)                 /* fb_score = best match score */
+
+    /* ── Load the best match node's LP-hidden-portion trits ──
+     * The node vector is 48 trits packed as (pos_mask[3], neg_mask[3]).
+     * Trits 32..47 = the LP hidden portion = bits 0..15 of word 2.
+     * (Word 0 = trits 0..15, word 1 = trits 16..31, word 2 = trits 32..47)
+     *
+     * We need to unpack 16 trits from word 2 of the node's pos/neg masks
+     * and compare each against lp_hidden[i]. */
+
+    /* s2 = &node[best].pos_mask[2] (word 2, trits 32..47) */
+    la      s11, vdb_nodes
+    slli    t0, t1, 5                 /* best_id * 32 */
+    add     t0, s11, t0               /* &node[best] */
+    lw      s2, 8(t0)                 /* s2 = pos_mask[2] */
+    lw      s3, 20(t0)                /* s3 = neg_mask[2] (offset 12+8=20) */
+
+    /* ── Blend loop: 16 trits ── */
+    la      s9, lp_hidden
+    li      s0, 0                     /* trit index */
+    li      s1, 0                     /* blend count (trits modified) */
+    li      s10, 1                    /* bit mask */
+
+.Lfb_blend_loop:
+    li      t0, 16
+    bge     s0, t0, .Lfb_blend_done
+
+    /* Extract memory trit: check bit s0 in s2 (pos) and s3 (neg) */
+    and     t1, s2, s10               /* pos bit set? */
+    and     t2, s3, s10               /* neg bit set? */
+
+    /* Decode memory trit → t3: +1 if pos, -1 if neg, 0 if neither */
+    li      t3, 0
+    bnez    t1, .Lfb_mem_pos
+    bnez    t2, .Lfb_mem_neg
+    j       .Lfb_blend_apply
+.Lfb_mem_pos:
+    li      t3, 1
+    j       .Lfb_blend_apply
+.Lfb_mem_neg:
+    li      t3, -1
+
+.Lfb_blend_apply:
+    /* Load lp_hidden[s0] → t4 */
+    add     t4, s9, s0
+    lb      t4, 0(t4)                 /* t4 = h = lp_hidden[i] */
+
+    /* Blend rule:
+     *   if h == mem:              no change
+     *   if h == 0, mem != 0:     h = mem  (fill gap)
+     *   if h != 0, mem == 0:     no change (memory silent)
+     *   if h != 0, mem != 0, h != mem:  h = 0  (conflict → HOLD) */
+
+    /* If memory trit is 0, skip (memory has no opinion) */
+    beqz    t3, .Lfb_blend_next
+
+    /* If h == mem, skip (agreement, already correct) */
+    beq     t4, t3, .Lfb_blend_next
+
+    /* If h == 0, adopt memory trit */
+    beqz    t4, .Lfb_adopt_mem
+
+    /* h != 0, mem != 0, h != mem: conflict → set to 0 (HOLD) */
+    li      t5, 0
+    add     t6, s9, s0
+    sb      t5, 0(t6)
+    addi    s1, s1, 1
+    j       .Lfb_blend_next
+
+.Lfb_adopt_mem:
+    /* h = 0, mem != 0: adopt memory trit */
+    add     t6, s9, s0
+    sb      t3, 0(t6)
+    addi    s1, s1, 1
+
+.Lfb_blend_next:
+    addi    s0, s0, 1
+    slli    s10, s10, 1
+    j       .Lfb_blend_loop
+
+.Lfb_blend_done:
+    /* ── Record feedback results ── */
+    la      t0, fb_applied
+    li      t1, 1
+    sw      t1, 0(t0)
+
+    la      t0, fb_blend_count
+    sw      s1, 0(t0)                 /* trits modified this step */
+
+    la      t0, fb_total_blends
+    lw      t1, 0(t0)
+    addi    t1, t1, 1
+    sw      t1, 0(t0)                 /* cumulative blend count */
+
+    j       .Lvdb_restore_exit
+
+.Lfb_skip:
+    /* ── No feedback applied ── */
+    la      t0, fb_applied
+    sw      zero, 0(t0)
+    la      t0, fb_blend_count
+    sw      zero, 0(t0)
+    la      t0, fb_source_id
+    li      t1, 0xFF
+    sw      t1, 0(t0)
+    la      t0, fb_score
+    sw      zero, 0(t0)
+
+.Lvdb_restore_exit:
     /* ── Restore and return ── */
     lw      ra,  0(sp)
     lw      s0,  4(sp)

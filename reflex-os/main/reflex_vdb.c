@@ -178,3 +178,37 @@ int vdb_cfc_pipeline_step(vdb_result_t *result) {
 
     return 0;
 }
+
+int vdb_cfc_feedback_step(vdb_result_t *result) {
+    /* Record counters before dispatch */
+    uint32_t step_before = ulp_lp_step_count;
+    uint32_t search_before = ulp_vdb_search_count;
+
+    /* Dispatch combined CfC + VDB + Feedback command */
+    ulp_lp_command = 5;
+
+    /* Wait for BOTH counters to increment (one LP wake cycle).
+     * The feedback phase adds ~10us — negligible vs the 10ms wake period. */
+    int timeout = 50;  /* 50 x 5ms = 250ms max */
+    while (timeout > 0) {
+        if (ulp_lp_step_count != step_before &&
+            ulp_vdb_search_count != search_before) {
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(5));
+        timeout--;
+    }
+
+    if (timeout == 0) return -1;
+
+    /* Read results from LP SRAM */
+    volatile uint8_t *ids = (volatile uint8_t *)vdb_ulp_addr(&ulp_vdb_result_ids);
+    volatile int32_t *scores = (volatile int32_t *)vdb_ulp_addr(&ulp_vdb_result_scores);
+
+    for (int k = 0; k < VDB_K; k++) {
+        result->ids[k] = ids[k];
+        result->scores[k] = scores[k];
+    }
+
+    return 0;
+}

@@ -112,3 +112,31 @@ int vdb_last_visit_count(void);
  * of the world, used as an associative memory lookup key.
  */
 int vdb_cfc_pipeline_step(vdb_result_t *result);
+
+/*
+ * vdb_cfc_feedback_step — CfC + VDB + Feedback in one LP wake.
+ *
+ * @param result    Output: top-K results sorted descending by score.
+ * @return          0 on success, -1 on timeout.
+ *
+ * Dispatches cmd=5 to the LP core, which:
+ *   1. Runs one CfC step (reads gie_hidden + lp_hidden, updates lp_hidden)
+ *   2. Copies the packed 48-trit input vector to VDB query
+ *   3. Runs VDB search (graph or brute-force)
+ *   4. If best match score >= fb_threshold: blends the best match's
+ *      LP-hidden portion into lp_hidden using ternary blend rules:
+ *        - Agreement:  no change (reinforces)
+ *        - Gap fill:   h=0, mem!=0 → h=mem (memory provides context)
+ *        - Conflict:   h!=0, mem!=0, h!=mem → h=0 (HOLD = damper)
+ *      This closes the VDB→CfC feedback loop.
+ *
+ * After return, the feedback observability variables are available:
+ *   ulp_fb_applied     — 1 if feedback was applied, 0 if skipped
+ *   ulp_fb_source_id   — node ID used for feedback
+ *   ulp_fb_score       — match quality (dot product)
+ *   ulp_fb_blend_count — number of trits modified
+ *   ulp_fb_total_blends — cumulative feedback applications
+ *
+ * Set ulp_fb_threshold before calling to control feedback sensitivity.
+ */
+int vdb_cfc_feedback_step(vdb_result_t *result);
