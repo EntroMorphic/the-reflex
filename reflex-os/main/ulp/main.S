@@ -86,8 +86,8 @@ lp_data_ready:  .space 4        /* uint32_t: sync flag (for CfC mode) */
  *
  *  64 nodes × 24 bytes = 1,536 bytes
  *
- *  Brute-force search: dot query against all nodes, return best.
- *  HNSW graph can be layered on later.
+ *  Brute-force search: dot query against all nodes, return top-K
+ *  sorted descending by score. HNSW graph can be layered on later.
  * ═══════════════════════════════════════════════════════════════ */
 
 #define VDB_MAX_NODES   64
@@ -564,6 +564,8 @@ main:
  *  The only difference: instead of fixed weight matrices, we
  *  iterate over a dynamic array of stored vectors.
  *
+ *  Returns top-K (K=4) results sorted descending by score.
+ *
  *  Register plan:
  *    s0  = node index (0..N-1)
  *    s1  = node count
@@ -574,13 +576,25 @@ main:
  *    s6  = &query_pos
  *    s7  = &query_neg
  *    s8  = &popcount_lut
- *    s9  = best_score
- *    s10 = best_id
- *    s11 = (free)
+ *    s9  = &topk_scores (stack pointer, sp+56)
+ *    s10 = scratch
+ *    s11 = scratch
+ *
+ *  Stack layout (80 bytes):
+ *    [sp+0..51]   saved callee-saved regs (13 × 4)
+ *    [sp+52..55]  padding (alignment)
+ *    [sp+56..71]  topk_scores[4] (4 × int32, descending)
+ *    [sp+72..75]  topk_ids[4]    (4 × uint8)
+ *    [sp+76..79]  padding
  * ═══════════════════════════════════════════════════════════════ */
+
+#define TOPK        4
+#define TOPK_SCORES 56          /* stack offset: scores[0..3] */
+#define TOPK_IDS    72          /* stack offset: ids[0..3] */
+
 .Lvdb_entry:
     /* ── Save callee-saved registers ── */
-    addi    sp, sp, -56
+    addi    sp, sp, -80
     sw      ra,  0(sp)
     sw      s0,  4(sp)
     sw      s1,  8(sp)
@@ -605,9 +619,20 @@ main:
     lw      s1, 0(t0)
     beqz    s1, .Lvdb_no_results
 
-    /* ── Initialize best = -infinity (0x80000000) ── */
-    lui     s9, 0x80000                 /* best_score = INT32_MIN */
-    li      s10, 0xFF                   /* best_id = 0xFF (none) */
+    /* ── Initialize top-K: all scores = INT32_MIN, ids = 0xFF ── */
+    lui     t0, 0x80000                 /* INT32_MIN */
+    sw      t0, TOPK_SCORES+0(sp)
+    sw      t0, TOPK_SCORES+4(sp)
+    sw      t0, TOPK_SCORES+8(sp)
+    sw      t0, TOPK_SCORES+12(sp)
+    li      t0, 0xFF
+    sb      t0, TOPK_IDS+0(sp)
+    sb      t0, TOPK_IDS+1(sp)
+    sb      t0, TOPK_IDS+2(sp)
+    sb      t0, TOPK_IDS+3(sp)
+
+    /* s9 = pointer to topk_scores base (used in insertion) */
+    addi    s9, sp, TOPK_SCORES
 
     /* ── Scan all nodes ── */
     la      s2, vdb_nodes               /* &nodes[0].pos */
@@ -624,33 +649,98 @@ main:
 
     /* s4 = dot product of query vs node[s0] */
 
-    /* ── Update best if this dot > best_score ── */
-    ble     s4, s9, .Lvdb_not_better
-    mv      s9, s4                      /* best_score = dot */
-    mv      s10, s0                     /* best_id = node index */
-.Lvdb_not_better:
+    /* ── Insert into top-K if better than worst (slot 3) ──
+     *
+     * Top-K is sorted descending: scores[0] >= [1] >= [2] >= [3].
+     * If s4 > scores[3], replace slot 3 and bubble up.
+     * Max 3 compare+swaps per insertion. */
+    lw      t0, 12(s9)                 /* t0 = scores[3] (worst) */
+    ble     s4, t0, .Lvdb_not_topk
+    /* Replace worst slot */
+    sw      s4, 12(s9)
+    addi    t0, sp, TOPK_IDS
+    sb      s0, 3(t0)
+
+    /* Bubble up: compare [3] vs [2] */
+    lw      s10, 8(s9)                 /* s10 = scores[2] */
+    ble     s4, s10, .Lvdb_not_topk    /* already in order */
+    /* Swap [3] and [2] */
+    sw      s10, 12(s9)               /* scores[3] = old scores[2] */
+    sw      s4,  8(s9)                /* scores[2] = new score */
+    addi    t0, sp, TOPK_IDS
+    lbu     s10, 2(t0)                /* s10 = ids[2] */
+    lbu     s11, 3(t0)                /* s11 = ids[3] (= new id) */
+    sb      s11, 2(t0)                /* ids[2] = new id */
+    sb      s10, 3(t0)                /* ids[3] = old ids[2] */
+
+    /* Bubble up: compare [2] vs [1] */
+    lw      s10, 4(s9)                 /* s10 = scores[1] */
+    ble     s4, s10, .Lvdb_not_topk
+    /* Swap [2] and [1] */
+    sw      s10, 8(s9)
+    sw      s4,  4(s9)
+    addi    t0, sp, TOPK_IDS
+    lbu     s10, 1(t0)
+    lbu     s11, 2(t0)
+    sb      s11, 1(t0)
+    sb      s10, 2(t0)
+
+    /* Bubble up: compare [1] vs [0] */
+    lw      s10, 0(s9)                 /* s10 = scores[0] */
+    ble     s4, s10, .Lvdb_not_topk
+    /* Swap [1] and [0] */
+    sw      s10, 4(s9)
+    sw      s4,  0(s9)
+    addi    t0, sp, TOPK_IDS
+    lbu     s10, 0(t0)
+    lbu     s11, 1(t0)
+    sb      s11, 0(t0)
+    sb      s10, 1(t0)
+
+.Lvdb_not_topk:
 
     /* ── Advance to next node ── */
     addi    s2, s2, VDB_NODE_BYTES      /* next node (+24 bytes) */
     addi    s0, s0, 1
     bne     s0, s1, .Lvdb_scan_loop
 
-    /* ── Write results ── */
+    /* ── Write top-K results ── */
     la      t0, vdb_result_ids
-    sb      s10, 0(t0)                  /* result_ids[0] = best_id */
+    addi    t1, sp, TOPK_IDS
+    lbu     t2, 0(t1)
+    sb      t2, 0(t0)
+    lbu     t2, 1(t1)
+    sb      t2, 1(t0)
+    lbu     t2, 2(t1)
+    sb      t2, 2(t0)
+    lbu     t2, 3(t1)
+    sb      t2, 3(t0)
 
     la      t0, vdb_result_scores
-    sw      s9, 0(t0)                   /* result_scores[0] = best_score */
+    lw      t2, 0(s9)
+    sw      t2, 0(t0)
+    lw      t2, 4(s9)
+    sw      t2, 4(t0)
+    lw      t2, 8(s9)
+    sw      t2, 8(t0)
+    lw      t2, 12(s9)
+    sw      t2, 12(t0)
 
     j       .Lvdb_done
 
 .Lvdb_no_results:
-    /* No nodes — write 0xFF / 0 */
+    /* No nodes — write 0xFF / 0 for all K slots */
     la      t0, vdb_result_ids
     li      t1, 0xFF
     sb      t1, 0(t0)
+    sb      t1, 1(t0)
+    sb      t1, 2(t0)
+    sb      t1, 3(t0)
     la      t0, vdb_result_scores
     sw      zero, 0(t0)
+    sw      zero, 4(t0)
+    sw      zero, 8(t0)
+    sw      zero, 12(t0)
 
 .Lvdb_done:
     /* ── Increment search counter ── */
@@ -673,7 +763,7 @@ main:
     lw      s9, 40(sp)
     lw      s10, 44(sp)
     lw      s11, 48(sp)
-    addi    sp, sp, 56
+    addi    sp, sp, 80
 
     li      a0, 0
     ret
