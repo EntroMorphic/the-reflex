@@ -1,10 +1,15 @@
-# Reflex OS: The Reflex Becomes the ESP32-C6
+# Reflex OS: ESP32-C6 Ternary Compute Platform
 
-**Every peripheral is a channel. The hardware already thinks in signals.**
+> **This README is largely historical.** The system has evolved significantly since it was written.
+> For the current technical reality, see [`../TECHNICAL_REALITY.md`](../TECHNICAL_REALITY.md).
+>
+> **Current state (Feb 9, 2026):** 27 milestones verified on silicon. The active code is
+> `main/geometry_cfc_freerun.c` (HP entry point), `main/ulp/main.S` (LP core assembly),
+> and `main/reflex_vdb.c` (VDB API). Everything below this banner describes earlier work.
 
 ---
 
-## What is Reflex OS?
+## What is Reflex OS? (Historical)
 
 Reflex OS is not an operating system that runs on the ESP32-C6. Reflex OS **is** the C6 - a complete reimagining of the chip as a channel machine where every peripheral, every GPIO, every timer is a signal source or sink.
 
@@ -72,7 +77,7 @@ The breakthrough: PCNT counts pulses = hardware addition. PARLIO transmits in pa
 - 2-pattern task: 21.5/256 avg error (94.5% of target separation)
 - Coupling matrix evolves from uniform 0.2 to asymmetric 0.01-0.98
 
-See [docs/PULSE_ARITHMETIC_ENGINE.md](docs/PULSE_ARITHMETIC_ENGINE.md) for full details.
+See [docs/archive/PULSE_ARITHMETIC_ENGINE.md](docs/archive/PULSE_ARITHMETIC_ENGINE.md) for full details.
 
 ### Earlier Approaches
 
@@ -94,7 +99,7 @@ See [docs/PULSE_ARITHMETIC_ENGINE.md](docs/PULSE_ARITHMETIC_ENGINE.md) for full 
 - **Splined mixer**: 256 KB → 640 bytes (410x compression)
 - **Power**: ~17 μW = **RF harvestable at 2.4 GHz**
 
-See [docs/SILICON_GRAIL.md](docs/SILICON_GRAIL.md) for the full architecture.
+See [docs/archive/SILICON_GRAIL.md](docs/archive/SILICON_GRAIL.md) for the full architecture.
 
 ### ETM Fabric: Hardware Neural Network
 
@@ -105,7 +110,7 @@ The ETM Fabric runs neural inference with **near-zero CPU involvement**:
 - **Splined LUT** = 640 bytes (was 256 KB)
 - **2 RMT calls** per inference (not 128!)
 
-See [docs/ETM_FABRIC_CFC.md](docs/ETM_FABRIC_CFC.md) for details.
+See [docs/archive/ETM_FABRIC_CFC.md](docs/archive/ETM_FABRIC_CFC.md) for details.
 
 ### Holographic Intelligence: Distributed Brain
 
@@ -116,7 +121,7 @@ Multiple nodes form a mesh that thinks through **interference patterns**:
 - Fault-tolerant: remove a node, others compensate
 - 6.9 kHz tick rate with 64 neurons per node
 
-See [docs/HOLOGRAPHIC_INTELLIGENCE.md](docs/HOLOGRAPHIC_INTELLIGENCE.md) for details.
+See [docs/archive/HOLOGRAPHIC_INTELLIGENCE.md](docs/archive/HOLOGRAPHIC_INTELLIGENCE.md) for details.
 
 ---
 
@@ -215,7 +220,7 @@ Entropy as structure. The space between shapes IS information.
 
 ## Architecture
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details.
+See [docs/archive/ARCHITECTURE.md](docs/archive/ARCHITECTURE.md) for full details.
 
 ### The Channel Model
 
@@ -411,13 +416,13 @@ Low entropy = certainty = **LOOK AT THIS**.
 
 ## Related Documentation
 
-- [Pulse Arithmetic Engine](docs/PULSE_ARITHMETIC_ENGINE.md) - **5679 Hz inference, equilibrium propagation learning**
-- [The Silicon Grail](docs/SILICON_GRAIL.md) - Turing Complete ETM Fabric
-- [ETM Fabric CfC](docs/ETM_FABRIC_CFC.md) - 551 Hz hardware neural network
-- [Holographic Intelligence](docs/HOLOGRAPHIC_INTELLIGENCE.md) - Distributed mesh brain
+- [Pulse Arithmetic Engine](docs/archive/PULSE_ARITHMETIC_ENGINE.md) - **5679 Hz inference, equilibrium propagation learning**
+- [The Silicon Grail](docs/archive/SILICON_GRAIL.md) - Turing Complete ETM Fabric
+- [ETM Fabric CfC](docs/archive/ETM_FABRIC_CFC.md) - 551 Hz hardware neural network
+- [Holographic Intelligence](docs/archive/HOLOGRAPHIC_INTELLIGENCE.md) - Distributed mesh brain
 - [Lincoln Manifold: Reflex Becomes C6](../docs/LINCOLN_MANIFOLD_REFLEX_BECOMES_C6_SYNTH.md) - Design synthesis
 - [The Reflex (main)](../README.md) - Original 926ns P99 on Jetson Thor
-- [Architecture](docs/ARCHITECTURE.md) - Detailed system design
+- [Architecture](docs/archive/ARCHITECTURE.md) - Detailed system design
 - [API Reference](docs/API.md) - Complete API documentation
 
 ---

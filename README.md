@@ -2,6 +2,9 @@
 
 **Cache coherency signaling for 10kHz robotics control with 926ns P99 latency.**
 
+> **For a cold, honest assessment of what exists and what doesn't, read [`TECHNICAL_REALITY.md`](TECHNICAL_REALITY.md).**
+> That document is written for skeptics. This README is written for GitHub.
+
 ---
 
 <p align="center">
@@ -44,49 +47,41 @@ Sensor (Core 0) ──→ Controller (Core 1) ──→ Actuator (Core 2)
 
 ```
 the-reflex/
-├── reflex-os/                    # ESP32-C6: GIE + LP CORE + VDB
+├── TECHNICAL_REALITY.md          # Honest technical assessment (START HERE)
+├── README.md                     # This file (GitHub overview)
+│
+├── reflex-os/                    # ESP32-C6: GIE + LP CORE + VDB (THE ACTUAL SYSTEM)
 │   ├── main/
-│   │   ├── ulp/main.S            # LP core: hand-written RISC-V assembly
-│   │   │                         #   cmd 1-5 (CfC + VDB + feedback)
-│   │   ├── geometry_cfc_freerun.c  # Current entry point: free-running GIE + LP + VDB
+│   │   ├── ulp/main.S            # LP core: hand-written RISC-V assembly (cmd 1-5)
+│   │   ├── geometry_cfc_freerun.c  # Current entry point: GIE + LP + VDB + tests
 │   │   ├── reflex_vdb.c          # HP-side VDB API implementation
-│   │   ├── geometry_cfc.c        # M7: Original CfC (single-step)
-│   │   ├── geometry_layer.c      # M6: Multi-neuron layer
-│   │   ├── geometry_dot.c        # M5: 256-trit dot product
-│   │   ├── ternary_alu.c         # M4: Ternary TMUL
-│   │   ├── autonomous_alu.c      # M3: Autonomous ALU
-│   │   ├── alu_fabric.c          # M1: Sub-CPU ALU
-│   │   └── raid_etm_fabric.c     # M2: Autonomous fabric
+│   │   └── [earlier milestones]  # M1-M7 source files (historical, not active)
 │   ├── include/
-│   │   ├── reflex_vdb.h          # VDB API (insert/search/clear/pipeline)
+│   │   ├── reflex_vdb.h          # VDB API (insert/search/clear/pipeline/feedback)
 │   │   ├── reflex.h              # Core coordination primitive
-│   │   └── ...                   # GPIO, timer, spline headers
-│   └── docs/
-│       ├── GIE_ARCHITECTURE.md   # Three-layer GIE + LP architecture
-│       ├── HARDWARE_ERRATA.md    # 20+ errata discovered & resolved
-│       ├── REGISTER_REFERENCE.md # Bare-metal register addresses
-│       └── FLASH_GUIDE.md        # Build/flash procedure
+│   │   └── ...
+│   └── docs/                     # Technical docs (architecture, errata, registers)
 │
-├── reflex-robotics/              # 10kHz CONTROL LOOP (Jetson Thor)
-│   ├── src/reflex.h              # Core coordination primitive
-│   └── docs/                     # Phase 1-4 results, falsification
+├── reflex-robotics/              # Jetson Thor cache coherency work (separate system)
 │
-├── reflex_ros_bridge/            # ROS2 INTEGRATION
-│   └── README.md                 # Shared memory bridge architecture
-│
-├── docs/                         # PROJECT DOCUMENTATION
-│   ├── CURRENT_STATUS.md         # Complete project status
+├── docs/                         # Current project documentation
+│   ├── CURRENT_STATUS.md         # Up-to-date project status
 │   ├── MILESTONE_PROGRESSION.md  # All 27 milestones documented
-│   └── ...                       # PRDs, LMMs, design analysis
+│   ├── FALSIFICATION_COMPLETE.md # Adversarial test results
+│   ├── HARDWARE_INVENTORY.md     # Physical hardware list
+│   └── archive/                  # Historical docs (nothing deleted)
+│       ├── lmm/                  # 40 Lincoln Manifold Method explorations
+│       ├── prds/                 # 20 historical PRDs
+│       ├── sessions/             # Session notes, demo prep, deployment guides
+│       └── concepts/             # Speculative/philosophical docs
 │
-├── journal/                      # LINCOLN MANIFOLD METHOD JOURNAL
-│   ├── the_reflex_raw.md         # Phase 1: RAW
-│   ├── the_reflex_nodes.md       # Phase 2: NODES
-│   ├── the_reflex_reflect.md     # Phase 3: REFLECT
-│   └── the_reflex_synth.md       # Phase 4: SYNTHESIZE
+├── journal/                      # LMM journal (4 phases, current)
+├── notes/                        # Design notes, LMM method definition
+│   ├── LMM.md                    # The Lincoln Manifold Method (process)
+│   ├── lmm/                      # GIE-specific LMM analysis
+│   └── archive/                  # Business planning, evolution notes
 │
-├── the-reflex-tvdb.md            # VDB PRD (5 milestones, all complete)
-├── notes/                        # Design notes, LMM explorations
+├── the-reflex-tvdb.md            # VDB PRD (6 milestones, all complete)
 ├── delta-observer/               # Neural network observation research
 └── notebooks/                    # Colab demos
 ```
@@ -381,9 +376,9 @@ The Reflex extends beyond coordination into **awareness-inspired architecture**:
 > *"The field at rest models awareness. Perception models disturbance. The architecture sidesteps infinite regress by making the observer definitionally invariant."*
 
 See:
-- [`docs/PRIMORDIAL_STILLNESS.md`](docs/PRIMORDIAL_STILLNESS.md) - Stillness as computational substrate
-- [`docs/PHILOSOPHY.md`](docs/PHILOSOPHY.md) - Philosophical speculation (clearly marked)
-- [`docs/DELTA_STILLNESS_BRIDGE.md`](docs/DELTA_STILLNESS_BRIDGE.md) - The unified architecture
+- [`docs/archive/concepts/PRIMORDIAL_STILLNESS.md`](docs/archive/concepts/PRIMORDIAL_STILLNESS.md) - Stillness as computational substrate
+- [`docs/archive/concepts/PHILOSOPHY.md`](docs/archive/concepts/PHILOSOPHY.md) - Philosophical speculation (clearly marked)
+- [`docs/archive/concepts/DELTA_STILLNESS_BRIDGE.md`](docs/archive/concepts/DELTA_STILLNESS_BRIDGE.md) - The unified architecture
 - [Delta Observer (separate repo)](https://github.com/EntroMorphic/delta-observer) - The paper and code
 
 ---
