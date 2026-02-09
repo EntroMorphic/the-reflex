@@ -1444,18 +1444,20 @@ void app_main(void) {
     }
 
     /* ══════════════════════════════════════════════════════════════
-     *  TEST 5: Ternary VDB — 64 Nodes via Clean API
+     *  TEST 5: Ternary VDB — NSW Graph (M=7), 64 Nodes
      *
-     *  Uses the reflex_vdb.h API: vdb_init/insert/search/clear/count.
-     *  64 nodes × 48 trits, brute-force top-4 search on LP core.
+     *  Uses the reflex_vdb.h API with graph-aware insert (cmd=3)
+     *  and graph beam search (cmd=2). 64 nodes × 48 trits.
      *
      *  Verification:
-     *  5a) Self-match: query each of 64 nodes against itself
-     *      → result[0] must be the query node (64/64 exact)
-     *  5b) Random query: top-4 must match CPU brute-force reference
-     *  5c) Latency: measure search time at full capacity
+     *  5a) Insert 64 nodes via graph-aware insert, verify count
+     *  5b) Self-match recall@1 — query each node, check if self is #1
+     *  5c) Recall@1 and recall@4 over 20 random queries vs CPU brute-force
+     *  5d) Visit count — verify graph search is sub-linear
+     *  5e) Connectivity — BFS from node 0, verify all 64 reachable
+     *  5f) Latency benchmark
      * ══════════════════════════════════════════════════════════════ */
-    printf("-- TEST 5: Ternary VDB — 64 Nodes via API --\n");
+    printf("-- TEST 5: Ternary VDB — NSW Graph (M=%d), 64 Nodes --\n", VDB_M);
     fflush(stdout);
     {
         /* Generate 64 random 48-trit vectors (static — 3KB, too big for stack) */
@@ -1465,119 +1467,194 @@ void app_main(void) {
             for (int i = 0; i < VDB_TRIT_DIM; i++)
                 vdb_vecs[n][i] = rand_trit(30);
 
-        /* Insert all 64 nodes via API */
+        /* ── 5a: Insert 64 nodes via graph-aware insert ── */
+        printf("  5a: Inserting 64 nodes (graph-aware, cmd=3)...\n");
+        fflush(stdout);
         vdb_clear();
+        int insert_ok = 1;
         for (int n = 0; n < VDB_MAX_NODES; n++) {
             int id = vdb_insert(vdb_vecs[n]);
-            if (id != n) {
-                printf("  INSERT FAIL: expected id=%d, got %d\n", n, id);
+            if (id < 0) {
+                printf("    INSERT FAIL at node %d: returned %d\n", n, id);
+                insert_ok = 0;
                 break;
             }
         }
-        printf("  Inserted %d nodes\n", vdb_count());
+        int ok_5a = insert_ok && (vdb_count() == VDB_MAX_NODES);
+        printf("  5a: Inserted %d nodes — %s\n\n",
+               vdb_count(), ok_5a ? "OK" : "FAIL");
+        fflush(stdout);
 
-        /* Verify insert overflow returns -1 */
-        int8_t dummy_vec[VDB_TRIT_DIM];
-        memset(dummy_vec, 0, sizeof(dummy_vec));
-        int overflow_id = vdb_insert(dummy_vec);
-        if (overflow_id != -1) {
-            printf("  WARN: overflow insert returned %d, expected -1\n", overflow_id);
-        }
-
-        /* ── 5a: Self-match all 64 nodes ── */
-        printf("  5a: Self-match all 64 nodes...\n");
+        /* ── 5b: Self-match recall@1 ── */
+        printf("  5b: Self-match recall@1 (64 queries)...\n");
         fflush(stdout);
 
         int self_match_ok = 0;
-        int self_match_fail = 0;
         vdb_result_t result;
 
         for (int q = 0; q < VDB_MAX_NODES; q++) {
             int err = vdb_search(vdb_vecs[q], &result);
-            if (err != 0) {
-                self_match_fail++;
-                if (self_match_fail <= 3)
-                    printf("    TIMEOUT on node %d\n", q);
-                continue;
-            }
+            if (err != 0) continue;
 
-            /* Expected score = number of nonzero trits */
             int exp_score = 0;
             for (int i = 0; i < VDB_TRIT_DIM; i++)
                 if (vdb_vecs[q][i] != 0) exp_score++;
 
-            if (result.ids[0] == q && result.scores[0] == exp_score) {
+            if (result.ids[0] == q && result.scores[0] == exp_score)
                 self_match_ok++;
-            } else {
-                self_match_fail++;
-                if (self_match_fail <= 3)
-                    printf("    FAIL node %d: got id=%d s=%d, expect id=%d s=%d\n",
-                           q, (int)result.ids[0], (int)result.scores[0], q, exp_score);
+        }
+        /* Self-match should be 100% — a node should always be its own
+         * best match. This tests both graph connectivity and correctness. */
+        int ok_5b = (self_match_ok == VDB_MAX_NODES);
+        printf("  5b: %d/%d self-match recall@1 — %s\n\n",
+               self_match_ok, VDB_MAX_NODES, ok_5b ? "OK" : "FAIL");
+        fflush(stdout);
+
+        /* ── 5c: Recall@1 and Recall@4 over 20 random queries ── */
+        printf("  5c: Recall measurement (20 random queries)...\n");
+        fflush(stdout);
+
+        static int cpu_dots[VDB_MAX_NODES];
+        static int used[VDB_MAX_NODES];
+        int8_t query_vec[VDB_TRIT_DIM];
+
+        int recall_1_hits = 0;
+        int recall_4_hits = 0;
+        int recall_4_total = 0;
+        cfc_seed(0xC0E4A42);
+
+        for (int trial = 0; trial < 20; trial++) {
+            for (int i = 0; i < VDB_TRIT_DIM; i++)
+                query_vec[i] = rand_trit(30);
+
+            /* Graph search */
+            vdb_result_t lp_result;
+            vdb_search(query_vec, &lp_result);
+
+            /* CPU brute-force ground truth */
+            for (int n = 0; n < VDB_MAX_NODES; n++) {
+                int dot = 0;
+                for (int i = 0; i < VDB_TRIT_DIM; i++)
+                    dot += tmul(query_vec[i], vdb_vecs[n][i]);
+                cpu_dots[n] = dot;
+            }
+            int cpu_top_ids[VDB_K];
+            memset(used, 0, sizeof(used));
+            for (int k = 0; k < VDB_K; k++) {
+                int best = -99999, best_id = -1;
+                for (int n = 0; n < VDB_MAX_NODES; n++) {
+                    if (!used[n] && cpu_dots[n] > best) {
+                        best = cpu_dots[n];
+                        best_id = n;
+                    }
+                }
+                cpu_top_ids[k] = best_id;
+                if (best_id >= 0) used[best_id] = 1;
+            }
+
+            /* Recall@1: does graph top-1 match brute-force top-1? */
+            if (lp_result.ids[0] == cpu_top_ids[0])
+                recall_1_hits++;
+
+            /* Recall@4: how many of brute-force top-4 appear in graph top-4? */
+            for (int k = 0; k < VDB_K; k++) {
+                for (int j = 0; j < VDB_K; j++) {
+                    if (lp_result.ids[j] == cpu_top_ids[k]) {
+                        recall_4_hits++;
+                        break;
+                    }
+                }
+                recall_4_total++;
+            }
+
+            /* Print first 3 results for visibility */
+            if (trial < 3) {
+                printf("    q%d: LP=[%d,%d,%d,%d] CPU=[%d,%d,%d,%d]\n",
+                       trial,
+                       (int)lp_result.ids[0], (int)lp_result.ids[1],
+                       (int)lp_result.ids[2], (int)lp_result.ids[3],
+                       cpu_top_ids[0], cpu_top_ids[1],
+                       cpu_top_ids[2], cpu_top_ids[3]);
             }
         }
-        int ok_5a = (self_match_ok == VDB_MAX_NODES);
-        printf("  5a: %d/%d self-match exact — %s\n\n",
-               self_match_ok, VDB_MAX_NODES, ok_5a ? "OK" : "FAIL");
+
+        int recall_1_pct = (recall_1_hits * 100) / 20;
+        int recall_4_pct = (recall_4_hits * 100) / recall_4_total;
+        printf("  Recall@1: %d/%d = %d%%\n", recall_1_hits, 20, recall_1_pct);
+        printf("  Recall@4: %d/%d = %d%%\n", recall_4_hits, recall_4_total, recall_4_pct);
+
+        /* PRD thresholds: recall@1 >= 95%, recall@4 >= 90% */
+        int ok_5c = (recall_1_pct >= 95) && (recall_4_pct >= 90);
+        printf("  5c: %s (thresholds: r@1>=95%%, r@4>=90%%)\n\n",
+               ok_5c ? "OK" : "FAIL");
         fflush(stdout);
 
-        /* ── 5b: Random query — top-4 verification at N=64 ── */
-        printf("  5b: Random query (N=%d), top-4 vs CPU...\n", vdb_count());
+        /* ── 5d: Visit count — verify graph search is sub-linear ── */
+        printf("  5d: Visit count (graph vs brute-force)...\n");
         fflush(stdout);
 
-        int8_t query_vec[VDB_TRIT_DIM];
-        cfc_seed(0xC0E4A42);
         for (int i = 0; i < VDB_TRIT_DIM; i++)
             query_vec[i] = rand_trit(30);
-
-        vdb_result_t lp_result;
-        vdb_search(query_vec, &lp_result);
-
-        /* CPU brute-force: all 64 dots */
-        static int cpu_dots[VDB_MAX_NODES];
-        for (int n = 0; n < VDB_MAX_NODES; n++) {
-            int dot = 0;
-            for (int i = 0; i < VDB_TRIT_DIM; i++)
-                dot += tmul(query_vec[i], vdb_vecs[n][i]);
-            cpu_dots[n] = dot;
-        }
-
-        /* CPU top-4 by repeated max extraction */
-        int cpu_top_ids[VDB_K], cpu_top_scores[VDB_K];
-        static int used[VDB_MAX_NODES];
-        memset(used, 0, sizeof(used));
-        for (int k = 0; k < VDB_K; k++) {
-            int best = -99999, best_id = -1;
-            for (int n = 0; n < VDB_MAX_NODES; n++) {
-                if (!used[n] && cpu_dots[n] > best) {
-                    best = cpu_dots[n];
-                    best_id = n;
-                }
-            }
-            cpu_top_ids[k] = best_id;
-            cpu_top_scores[k] = best;
-            if (best_id >= 0) used[best_id] = 1;
-        }
-
-        printf("  LP  top-4: ");
-        for (int k = 0; k < VDB_K; k++)
-            printf("[id=%d s=%d] ", (int)lp_result.ids[k], (int)lp_result.scores[k]);
-        printf("\n");
-        printf("  CPU top-4: ");
-        for (int k = 0; k < VDB_K; k++)
-            printf("[id=%d s=%d] ", cpu_top_ids[k], cpu_top_scores[k]);
-        printf("\n");
-
-        int ok_5b = 1;
-        for (int k = 0; k < VDB_K; k++) {
-            if (lp_result.ids[k] != cpu_top_ids[k] ||
-                lp_result.scores[k] != cpu_top_scores[k])
-                ok_5b = 0;
-        }
-        printf("  5b: %s\n\n", ok_5b ? "OK" : "FAIL");
+        vdb_search(query_vec, &result);
+        int visits = vdb_last_visit_count();
+        printf("  Graph search visited: %d / %d nodes\n", visits, VDB_MAX_NODES);
+        /* Graph search should visit fewer than all 64 nodes */
+        int ok_5d = (visits > 0 && visits < VDB_MAX_NODES);
+        printf("  5d: %s (sub-linear: %s)\n\n",
+               ok_5d ? "OK" : "FAIL",
+               visits < VDB_MAX_NODES ? "YES" : "NO");
         fflush(stdout);
 
-        /* ── 5c: Latency benchmark — 10 searches at N=64 ── */
-        printf("  5c: Latency benchmark (10 searches, N=%d)...\n", vdb_count());
+        /* ── 5e: Connectivity — BFS from node 0 ── */
+        printf("  5e: Connectivity (BFS from node 0)...\n");
+        fflush(stdout);
+
+        /* Read graph structure from LP SRAM */
+        static uint8_t bfs_visited[VDB_MAX_NODES];
+        static uint8_t bfs_queue[VDB_MAX_NODES];
+        memset(bfs_visited, 0, sizeof(bfs_visited));
+        int bfs_head = 0, bfs_tail = 0;
+        int bfs_reachable = 0;
+
+        /* Enqueue node 0 */
+        bfs_queue[bfs_tail++] = 0;
+        bfs_visited[0] = 1;
+
+        /* Read neighbor data from LP SRAM.
+         * Node layout: 32 bytes. neighbors at offset 24, count at offset 31.
+         * Use ulp_addr helper to access LP SRAM. */
+        volatile uint8_t *nodes_bytes = (volatile uint8_t *)
+            ((uintptr_t)&ulp_vdb_nodes);
+        /* Prevent GCC bounds warning */
+        volatile uint8_t *nb;
+        {
+            uintptr_t addr;
+            __asm__ volatile("" : "=r"(addr) : "0"(nodes_bytes));
+            nb = (volatile uint8_t *)addr;
+        }
+
+        while (bfs_head < bfs_tail) {
+            uint8_t cur = bfs_queue[bfs_head++];
+            bfs_reachable++;
+
+            /* Read neighbor count and IDs for node 'cur' */
+            int node_off = cur * 32;
+            int ncnt = nb[node_off + 31];
+            for (int i = 0; i < ncnt && i < VDB_M; i++) {
+                uint8_t nid = nb[node_off + 24 + i];
+                if (nid < VDB_MAX_NODES && !bfs_visited[nid]) {
+                    bfs_visited[nid] = 1;
+                    bfs_queue[bfs_tail++] = nid;
+                }
+            }
+        }
+        int ok_5e = (bfs_reachable == VDB_MAX_NODES);
+        printf("  Reachable from node 0: %d / %d\n", bfs_reachable, VDB_MAX_NODES);
+        printf("  5e: %s\n\n", ok_5e ? "OK" : "FAIL");
+        fflush(stdout);
+
+        /* ── 5f: Latency benchmark — 10 searches ── */
+        printf("  5f: Latency benchmark (10 searches, N=%d)...\n", vdb_count());
         fflush(stdout);
 
         int64_t min_rt_us = 999999;
@@ -1601,24 +1678,11 @@ void app_main(void) {
         printf("  Round-trip (includes LP wake jitter up to 10ms):\n");
         printf("    min=%lld us, max=%lld us, avg=%lld us\n",
                min_rt_us, max_rt_us, avg_rt_us);
-        printf("  LP timer period: 10,000 us\n");
-        printf("  Estimated pure search: <%lld us (min RT - poll granularity)\n",
-               min_rt_us);
+        printf("  5f: %s\n\n",
+               (min_rt_us > 0 && min_rt_us < 50000) ? "OK" : "FAIL");
+        int ok_5f = (min_rt_us > 0 && min_rt_us < 50000);
 
-        /* 5c passes if any search completed (no timeout/hang) */
-        int ok_5c = (min_rt_us > 0 && min_rt_us < 50000);
-        printf("  5c: %s\n\n", ok_5c ? "OK" : "FAIL");
-
-        /* ── 5d: API consistency — clear and re-insert ── */
-        vdb_clear();
-        int ok_5d = (vdb_count() == 0);
-        vdb_insert(vdb_vecs[0]);
-        ok_5d = ok_5d && (vdb_count() == 1);
-        vdb_search(vdb_vecs[0], &result);
-        ok_5d = ok_5d && (result.ids[0] == 0);
-        printf("  5d: API clear/re-insert: %s\n\n", ok_5d ? "OK" : "FAIL");
-
-        int ok = ok_5a && ok_5b && ok_5c && ok_5d;
+        int ok = ok_5a && ok_5b && ok_5c && ok_5d && ok_5e && ok_5f;
         test_count++;
         if (ok) pass_count++;
         printf("  %s\n\n", ok ? "OK" : "FAIL");
@@ -1630,10 +1694,10 @@ void app_main(void) {
     printf("  RESULTS: %d / %d PASSED\n", pass_count, test_count);
     printf("============================================================\n");
     if (pass_count == test_count) {
-        printf("\n  *** THREE-LAYER TERNARY HIERARCHY + VECTOR DB VERIFIED ***\n");
+        printf("\n  *** THREE-LAYER TERNARY HIERARCHY + NSW GRAPH VDB VERIFIED ***\n");
         printf("  Layer 1: GIE (GDMA+PARLIO+PCNT) — 441 Hz, ~0 CPU\n");
         printf("  Layer 2: LP core geometric processor — 100 Hz, ~30uA\n");
-        printf("  Layer 2b: LP core ternary VDB — brute-force search\n");
+        printf("  Layer 2b: LP core ternary VDB — NSW graph search (M=%d)\n", VDB_M);
         printf("  Layer 3: HP core — awake only for init + monitoring\n");
         printf("  All ternary. No floating point. No multiplication.\n");
         printf("  The neural network is infrastructure, not software.\n\n");

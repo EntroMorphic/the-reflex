@@ -1,15 +1,25 @@
 /*
- * reflex_vdb.c — Ternary Vector Database API Implementation
+ * reflex_vdb.c — Ternary Vector Database API Implementation (NSW Graph)
  *
  * HP-side interface to the LP core's ternary vector database.
  * Handles trit packing, LP SRAM writes, command dispatch, and
- * result readback. The actual search runs on the LP core in
- * hand-written RISC-V assembly (main.S).
+ * result readback. The actual search and graph construction run
+ * on the LP core in hand-written RISC-V assembly (main.S).
  *
- * Node layout in LP SRAM (24 bytes, will grow to 32 for HNSW):
- *   [0..11]   pos_mask[3]   (3 x uint32_t)
- *   [12..23]  neg_mask[3]   (3 x uint32_t)
- *   16 trits per word, 3 words = 48 trits per vector.
+ * Node layout in LP SRAM (32 bytes):
+ *   [0..11]   pos_mask[3]      (3 x uint32_t)
+ *   [12..23]  neg_mask[3]      (3 x uint32_t)
+ *   [24..30]  neighbors[7]     (7 x uint8_t)
+ *   [31]      neighbor_count   (uint8_t)
+ *
+ * Insert flow:
+ *   1. HP packs vector into LP SRAM at node[new_id]
+ *   2. HP sets vdb_insert_id = new_id
+ *   3. HP sets lp_command = 3
+ *   4. LP wakes, brute-force scores all existing nodes
+ *   5. LP selects top-M=7 neighbors
+ *   6. LP writes forward + reverse edges
+ *   7. LP increments vdb_node_count and vdb_insert_count
  */
 
 #include "reflex_vdb.h"
@@ -51,8 +61,8 @@ static void pack_trits(const int8_t *trits, int n_trits,
 /* Internal: number of packed words per vector */
 #define VDB_PACKED_WORDS  3   /* ceil(48/16) */
 
-/* Internal: words per node in LP SRAM (24 bytes = 6 words) */
-#define VDB_NODE_WORDS    6
+/* Internal: words per node in LP SRAM (32 bytes = 8 words) */
+#define VDB_NODE_WORDS    8
 
 /* ══════════════════════════════════════════════════════════════════
  *  PUBLIC API
@@ -66,15 +76,29 @@ int vdb_insert(const int8_t *trit_vec) {
     uint32_t count = ulp_vdb_node_count;
     if (count >= VDB_MAX_NODES) return -1;
 
-    /* Write directly to the node slot in LP SRAM */
+    /* Write the vector portion to the node slot in LP SRAM.
+     * Node is 32 bytes: [pos 12B][neg 12B][neighbors 7B][ncnt 1B].
+     * We write to the first 24 bytes (vector), LP core handles the rest. */
     volatile uint32_t *nodes = (volatile uint32_t *)vdb_ulp_addr(&ulp_vdb_nodes);
     volatile uint32_t *node_pos = &nodes[count * VDB_NODE_WORDS];
     volatile uint32_t *node_neg = &nodes[count * VDB_NODE_WORDS + VDB_PACKED_WORDS];
 
     pack_trits(trit_vec, VDB_TRIT_DIM, node_pos, node_neg, VDB_PACKED_WORDS);
 
-    /* Increment count — this makes the node visible to LP core searches */
-    ulp_vdb_node_count = count + 1;
+    /* Tell LP core which node to insert and dispatch graph build */
+    ulp_vdb_insert_id = count;
+
+    uint32_t insert_before = ulp_vdb_insert_count;
+    ulp_lp_command = 3;
+
+    /* Wait for LP core to complete graph construction */
+    int timeout = 50;  /* 50 x 5ms = 250ms max */
+    while (ulp_vdb_insert_count == insert_before && timeout > 0) {
+        vTaskDelay(pdMS_TO_TICKS(5));
+        timeout--;
+    }
+
+    if (timeout == 0) return -2;
 
     return (int)count;
 }
@@ -89,7 +113,7 @@ int vdb_search(const int8_t *query, vdb_result_t *result) {
     uint32_t search_before = ulp_vdb_search_count;
     ulp_lp_command = 2;
 
-    /* Wait for LP core to complete (wakes every 10ms, search takes <1ms) */
+    /* Wait for LP core to complete */
     int timeout = 50;  /* 50 x 5ms = 250ms max */
     while (ulp_vdb_search_count == search_before && timeout > 0) {
         vTaskDelay(pdMS_TO_TICKS(5));
@@ -116,4 +140,8 @@ void vdb_clear(void) {
 
 int vdb_count(void) {
     return (int)ulp_vdb_node_count;
+}
+
+int vdb_last_visit_count(void) {
+    return (int)ulp_vdb_visit_count;
 }
