@@ -1,27 +1,20 @@
 # Main component for Reflex OS
 #
-# Select entry point by changing SRCS:
-#   - raid_etm_fabric.c : RAID ETM Fabric - multi-way branch via fan-out
-#   - falsify_turing_completeness.c : Rigorous falsification of TC claims
-#   - liquid_ship_demo.c : Liquid Ship with Navigator and Splined Mixer
-#   - etm_fabric_demo.c  : Turing Complete ETM Fabric benchmark
-#   - hologram_mesh_demo.c : 3-node holographic mesh demo
-#   - hologram_demo.c   : Holographic Intelligence single node demo
-#   - cfc_spine_demo.c  : CfC closed-loop spine demo
-#   - geometry_cfc_m8_etm.c : M8 v2 with ISR capture (per-neuron results)
-#   - geometry_cfc_m8.c   : M8 self-sequencing fabric experiments
-#   - geometry_cfc_20mhz.c : Ternary CfC at 20 MHz (M9 max performance)
-#   - geometry_cfc_10mhz.c : Ternary CfC at 10 MHz (M9 performance)
-#   - geometry_cfc_diff.c : Ternary CfC differentiation experiment (M10)
-#   - geometry_cfc.c    : Ternary CfC - liquid neural network on GIE (1 MHz)
-#   - cfc_demo.c        : Binary Ternary CfC - liquid neural network
-#   - spine_summit.c    : THE SUMMIT - zero libc, zero ESP-IDF HAL
-#   - spine_bare.c      : Bare metal (uses printf transitionally)
-#   - spine_main.c      : Pure spine CNS demo (ESP-IDF)
-#   - substrate_main.c  : Substrate discovery
-#   - layers_main.c     : Layered exploration
-#   - main.c            : Full benchmark suite
+# Build targets (set REFLEX_TARGET before building):
+#   - gie (default): GIE + LP core + VDB + feedback (Board A / receiver)
+#   - sender:        ESP-NOW pattern sender (Board B)
+#
+# Build sender:  idf.py -C reflex-os -DREFLEX_TARGET=sender build
+# Build GIE:     idf.py -C reflex-os build   (or -DREFLEX_TARGET=gie)
 
+# Build targets:
+#   Default:  GIE + LP core + VDB + feedback (Board A / receiver)
+#   Sender:   Swap app_sources line below to build ESP-NOW sender (Board B)
+#
+# To build sender: change app_sources to "espnow_sender.c", remove ulp block
+# To build GIE:    change app_sources back to "geometry_cfc_freerun.c" "reflex_vdb.c"
+
+#set(app_sources "espnow_sender.c")
 set(app_sources "geometry_cfc_freerun.c" "reflex_vdb.c")
 
 idf_component_register(
@@ -39,11 +32,15 @@ idf_component_register(
         esp_driver_parlio
         esp_driver_ledc
         esp_hw_support
+        esp_wifi
+        esp_event
+        esp_netif
+        nvs_flash
         ulp
     WHOLE_ARCHIVE
-    )
+)
 
-# LP Core geometric processor — built as separate RISC-V binary
+# LP Core geometric processor — comment out when building sender
 set(ulp_app_name ulp_${COMPONENT_NAME})
 set(ulp_sources "ulp/main.S")
 set(ulp_exp_dep_srcs ${app_sources})

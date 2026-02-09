@@ -56,6 +56,7 @@
 #include "ulp_main.h"
 #include "reflex_vdb.h"
 #include "reflex.h"
+#include "reflex_espnow.h"
 
 /* ── Register addresses ── */
 #define ETM_BASE            0x60013000
@@ -1070,6 +1071,15 @@ void app_main(void) {
     printf("[INIT] LP core weights (after binary load)...\n");
     init_lp_core_weights(0xCAFE1234);
     start_lp_core();
+    printf("[INIT] ESP-NOW receiver...\n");
+    {
+        esp_err_t err = espnow_receiver_init();
+        if (err != ESP_OK) {
+            printf("[ESPNOW] FAILED to init: %d\n", err);
+        } else {
+            printf("[ESPNOW] Listening on channel 1 (no AP connection)\n");
+        }
+    }
     printf("[INIT] Done.\n\n");
     fflush(stdout);
 
@@ -2515,20 +2525,73 @@ void app_main(void) {
         fflush(stdout);
     }
 
+    /* ══════════════════════════════════════════════════════════════
+     *  TEST 9: ESP-NOW Receive (Board B → Board A)
+     *
+     *  Verify we receive ESP-NOW packets from Board B with RSSI.
+     *  Board B must be running espnow_sender firmware.
+     *  Listen for 10 seconds, report packets received and RSSI range.
+     * ══════════════════════════════════════════════════════════════ */
+    printf("-- TEST 9: ESP-NOW Receive from Board B --\n");
+    fflush(stdout);
+    {
+        espnow_state_t state = {0};
+        uint32_t start_count = espnow_rx_count();
+        int8_t rssi_min = 0, rssi_max = -128;
+        uint8_t patterns_seen[4] = {0};
+        int unique_patterns = 0;
+
+        printf("  Listening for 10 seconds...\n");
+        fflush(stdout);
+
+        for (int i = 0; i < 100; i++) {  /* 100 x 100ms = 10 seconds */
+            vTaskDelay(pdMS_TO_TICKS(100));
+            if (espnow_get_latest(&state)) {
+                if (state.rssi < rssi_min) rssi_min = state.rssi;
+                if (state.rssi > rssi_max) rssi_max = state.rssi;
+                if (state.pattern_id < 4 && !patterns_seen[state.pattern_id]) {
+                    patterns_seen[state.pattern_id] = 1;
+                    unique_patterns++;
+                }
+            }
+        }
+
+        uint32_t total_rx = espnow_rx_count() - start_count;
+        printf("  Packets received: %lu\n", (unsigned long)total_rx);
+        if (total_rx > 0) {
+            printf("  RSSI range: [%d, %d] dBm\n", rssi_min, rssi_max);
+            printf("  Last pattern_id: %u, seq: %lu\n",
+                   state.pattern_id, (unsigned long)state.sequence);
+            printf("  Source MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
+                   state.src_mac[0], state.src_mac[1], state.src_mac[2],
+                   state.src_mac[3], state.src_mac[4], state.src_mac[5]);
+            printf("  Unique patterns seen: %d/4\n", unique_patterns);
+        }
+
+        /* Pass if we received at least 10 packets */
+        int ok = (total_rx >= 10);
+        test_count++;
+        if (ok) pass_count++;
+        printf("  %s (%lu packets in 10s)\n\n", ok ? "OK" : "FAIL",
+               (unsigned long)total_rx);
+        fflush(stdout);
+    }
+
     /* ── Summary ── */
     printf("============================================================\n");
     printf("  RESULTS: %d / %d PASSED\n", pass_count, test_count);
     printf("============================================================\n");
     if (pass_count == test_count) {
-        printf("\n  *** VDB -> CfC FEEDBACK LOOP VERIFIED ***\n");
+        printf("\n  *** FULL SYSTEM VERIFIED ***\n");
         printf("  Layer 1: GIE (GDMA+PARLIO+PCNT) — 428 Hz, ~0 CPU\n");
         printf("  Layer 2: LP core geometric processor — 100 Hz, ~30uA\n");
         printf("  Layer 2b: LP core ternary VDB — NSW graph search (M=%d)\n", VDB_M);
         printf("  Layer 2c: CfC -> VDB pipeline — perceive+think+remember\n");
         printf("  Layer 2d: VDB -> CfC feedback — memory shapes inference\n");
         printf("  Layer 3: HP core — reflex channel coordination\n");
+        printf("  Layer 4: ESP-NOW — Board B -> Board A wireless link\n");
         printf("  All ternary. No floating point. No multiplication.\n");
-        printf("  The circle is closed. Past experience shapes perception.\n\n");
+        printf("  Real-world input arriving via WiFi.\n\n");
     } else {
         printf("\n  SOME TESTS FAILED — see details above.\n\n");
     }
