@@ -958,7 +958,7 @@ static void init_lp_core_weights(uint32_t seed) {
     memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
     ulp_lp_step_count = 0;
     ulp_lp_decision = 0;
-    ulp_lp_data_ready = 0;
+    ulp_lp_command = 0;
 }
 
 static void start_lp_core(void) {
@@ -981,7 +981,7 @@ static void start_lp_core(void) {
  * NOT from ISR (LP SRAM bus contention stalls the ISR). */
 static void feed_lp_core(void) {
     memcpy(ulp_addr(&ulp_gie_hidden), (void*)cfc.hidden, CFC_HIDDEN_DIM);
-    ulp_lp_data_ready = 1;
+    ulp_lp_command = 1;
 }
 
 /* CPU reference: compute LP CfC dot products for verification */
@@ -1367,7 +1367,7 @@ void app_main(void) {
 
         /* Feed known GIE hidden state and trigger one LP step */
         memcpy(ulp_addr(&ulp_gie_hidden), known_gie_h, LP_GIE_HIDDEN);
-        ulp_lp_data_ready = 1;
+        ulp_lp_command = 1;
 
         /* Wait for LP core to process (wakes every 10ms) */
         int timeout = 50;
@@ -1433,14 +1433,159 @@ void app_main(void) {
         fflush(stdout);
     }
 
+    /* ══════════════════════════════════════════════════════════════
+     *  TEST 5: Ternary Vector Database on LP Core
+     *
+     *  The LP core runs a brute-force nearest-neighbor search over
+     *  ternary vectors packed as (pos_mask[3], neg_mask[3]).
+     *  Same INTERSECT primitive as CfC — AND+popcount, no multiply.
+     *
+     *  Verification:
+     *  5a) Insert 16 random ternary vectors, query = copy of node[7]
+     *      → LP must return id=7, score=48 (perfect self-match)
+     *  5b) Insert 16 vectors, query = random (not a copy)
+     *      → LP result must match CPU brute-force reference
+     * ══════════════════════════════════════════════════════════════ */
+    printf("-- TEST 5: Ternary Vector Database on LP Core --\n");
+    fflush(stdout);
+    {
+        /* ── 5a: Self-match test ── */
+        printf("  5a: Self-match (query = node[7])...\n");
+        fflush(stdout);
+
+        #define VDB_TEST_NODES  16
+        #define VDB_TRIT_DIM    48
+        #define VDB_WORDS       3
+
+        /* Generate 16 random 48-trit vectors */
+        cfc_seed(0xDB5EED01);
+        int8_t vdb_vecs[VDB_TEST_NODES][VDB_TRIT_DIM];
+        for (int n = 0; n < VDB_TEST_NODES; n++) {
+            for (int i = 0; i < VDB_TRIT_DIM; i++) {
+                vdb_vecs[n][i] = rand_trit(30);  /* 30% zero */
+            }
+        }
+
+        /* Pack and write to LP SRAM */
+        volatile uint32_t *nodes_base = (volatile uint32_t *)ulp_addr(&ulp_vdb_nodes);
+        for (int n = 0; n < VDB_TEST_NODES; n++) {
+            /* Node layout: pos[3] then neg[3] = 6 words = 24 bytes */
+            volatile uint32_t *node_pos = &nodes_base[n * 6];
+            volatile uint32_t *node_neg = &nodes_base[n * 6 + VDB_WORDS];
+            pack_trits_for_lp(vdb_vecs[n], VDB_TRIT_DIM,
+                              node_pos, node_neg, VDB_WORDS);
+        }
+        ulp_vdb_node_count = VDB_TEST_NODES;
+
+        /* Query = copy of node[7] → expect perfect self-match */
+        int target_node = 7;
+        volatile uint32_t *qpos = (volatile uint32_t *)ulp_addr(&ulp_vdb_query_pos);
+        volatile uint32_t *qneg = (volatile uint32_t *)ulp_addr(&ulp_vdb_query_neg);
+        pack_trits_for_lp(vdb_vecs[target_node], VDB_TRIT_DIM,
+                          qpos, qneg, VDB_WORDS);
+
+        /* Trigger VDB search */
+        uint32_t search_before = ulp_vdb_search_count;
+        ulp_lp_command = 2;
+
+        /* Wait for LP core to process */
+        int timeout = 50;
+        while (ulp_vdb_search_count == search_before && timeout > 0) {
+            vTaskDelay(pdMS_TO_TICKS(5));
+            timeout--;
+        }
+
+        /* Read results */
+        volatile uint8_t *result_ids = (volatile uint8_t *)ulp_addr(&ulp_vdb_result_ids);
+        volatile int32_t *result_scores = (volatile int32_t *)ulp_addr(&ulp_vdb_result_scores);
+        int lp_best_id = result_ids[0];
+        int lp_best_score = result_scores[0];
+        uint32_t search_after = ulp_vdb_search_count;
+
+        printf("  LP search count: %d -> %d\n",
+               (int)search_before, (int)search_after);
+        printf("  LP best: id=%d score=%d\n", lp_best_id, lp_best_score);
+
+        /* CPU reference: self-match should give max score */
+        /* dot(v, v) = popcount(pos&pos) + popcount(neg&neg) - 0 - 0
+         *           = count_nonzero(v) = 48 - count_zero(v)         */
+        int cpu_self_score = 0;
+        for (int i = 0; i < VDB_TRIT_DIM; i++) {
+            if (vdb_vecs[target_node][i] != 0) cpu_self_score++;
+        }
+        printf("  CPU self-match score: %d (nonzero trits)\n", cpu_self_score);
+
+        int ok_5a = (lp_best_id == target_node) && (lp_best_score == cpu_self_score);
+        printf("  5a: %s (expect id=%d score=%d)\n\n",
+               ok_5a ? "OK" : "FAIL", target_node, cpu_self_score);
+        fflush(stdout);
+
+        /* ── 5b: Random query test ── */
+        printf("  5b: Random query (brute-force verification)...\n");
+        fflush(stdout);
+
+        /* Generate a random query (not a copy of any node) */
+        int8_t query_vec[VDB_TRIT_DIM];
+        cfc_seed(0xC0E4A42);
+        for (int i = 0; i < VDB_TRIT_DIM; i++) {
+            query_vec[i] = rand_trit(30);
+        }
+        pack_trits_for_lp(query_vec, VDB_TRIT_DIM, qpos, qneg, VDB_WORDS);
+
+        /* Trigger VDB search */
+        search_before = ulp_vdb_search_count;
+        ulp_lp_command = 2;
+
+        timeout = 50;
+        while (ulp_vdb_search_count == search_before && timeout > 0) {
+            vTaskDelay(pdMS_TO_TICKS(5));
+            timeout--;
+        }
+
+        lp_best_id = result_ids[0];
+        lp_best_score = result_scores[0];
+
+        /* CPU brute-force reference */
+        int cpu_best_id = -1;
+        int cpu_best_score = -9999;
+        int cpu_dots[VDB_TEST_NODES];
+        for (int n = 0; n < VDB_TEST_NODES; n++) {
+            int dot = 0;
+            for (int i = 0; i < VDB_TRIT_DIM; i++) {
+                dot += tmul(query_vec[i], vdb_vecs[n][i]);
+            }
+            cpu_dots[n] = dot;
+            if (dot > cpu_best_score) {
+                cpu_best_score = dot;
+                cpu_best_id = n;
+            }
+        }
+        for (int n = 0; n < VDB_TEST_NODES; n++) {
+            printf("    node[%d] dot=%d%s\n", n, cpu_dots[n],
+                   (n == cpu_best_id) ? " <-- BEST" : "");
+        }
+        printf("  LP  best: id=%d score=%d\n", lp_best_id, lp_best_score);
+        printf("  CPU best: id=%d score=%d\n", cpu_best_id, cpu_best_score);
+
+        int ok_5b = (lp_best_id == cpu_best_id) && (lp_best_score == cpu_best_score);
+        printf("  5b: %s\n\n", ok_5b ? "OK" : "FAIL");
+
+        int ok = ok_5a && ok_5b;
+        test_count++;
+        if (ok) pass_count++;
+        printf("  %s\n\n", ok ? "OK" : "FAIL");
+        fflush(stdout);
+    }
+
     /* ── Summary ── */
     printf("============================================================\n");
     printf("  RESULTS: %d / %d PASSED\n", pass_count, test_count);
     printf("============================================================\n");
     if (pass_count == test_count) {
-        printf("\n  *** THREE-LAYER TERNARY HIERARCHY VERIFIED ***\n");
+        printf("\n  *** THREE-LAYER TERNARY HIERARCHY + VECTOR DB VERIFIED ***\n");
         printf("  Layer 1: GIE (GDMA+PARLIO+PCNT) — 441 Hz, ~0 CPU\n");
         printf("  Layer 2: LP core geometric processor — 100 Hz, ~30uA\n");
+        printf("  Layer 2b: LP core ternary VDB — brute-force search\n");
         printf("  Layer 3: HP core — awake only for init + monitoring\n");
         printf("  All ternary. No floating point. No multiplication.\n");
         printf("  The neural network is infrastructure, not software.\n\n");
