@@ -500,24 +500,33 @@ static void IRAM_ATTR isr_loop_boundary(void) {
     }
     gate_fires_total += fires;
     gate_steps_total += CFC_HIDDEN_DIM;
-    /* Commit new hidden state — this is the "register" the CPU reads */
-    memcpy((void*)cfc.hidden, h_new, CFC_HIDDEN_DIM);
 
-    /* ── 5. Re-premultiply hidden portion and re-encode ──
-     * Only the hidden portion (indices CFC_INPUT_DIM..CFC_CONCAT_DIM) changes
-     * between loops. The input portion stays the same.
-     * This takes ~20us — well within the 86us dummy window. */
-    for (int n = 0; n < CFC_HIDDEN_DIM; n++) {
-        /* f-pathway: neuron n */
-        for (int i = 0; i < CFC_HIDDEN_DIM; i++)
-            all_products[n][CFC_INPUT_DIM + i] = tmul(cfc.W_f[n][CFC_INPUT_DIM + i], cfc.hidden[i]);
-        isr_reencode_hidden_portion(n, all_products[n]);
+    /* ── 5. Commit hidden + re-premultiply + re-encode ──
+     * Phase 4 optimization: skip when gate_threshold == INT32_MAX (0x7FFFFFFF).
+     * When blend is disabled (Phase 3+), no neuron ever fires, hidden never
+     * changes, and the DMA buffers stay correct. Saves ~20us per loop.
+     * When blend IS active (Tests 1-10, gate_threshold = 0), this block
+     * executes normally regardless of fires count. */
+    if (thresh < 0x7FFFFFFF) {
+        /* Commit new hidden state — this is the "register" the CPU reads */
+        memcpy((void*)cfc.hidden, h_new, CFC_HIDDEN_DIM);
 
-        /* g-pathway: neuron n + 32 */
-        int g_idx = n + CFC_HIDDEN_DIM;
-        for (int i = 0; i < CFC_HIDDEN_DIM; i++)
-            all_products[g_idx][CFC_INPUT_DIM + i] = tmul(cfc.W_g[n][CFC_INPUT_DIM + i], cfc.hidden[i]);
-        isr_reencode_hidden_portion(g_idx, all_products[g_idx]);
+        /* Re-premultiply hidden portion and re-encode.
+         * Only the hidden portion (indices CFC_INPUT_DIM..CFC_CONCAT_DIM) changes
+         * between loops. The input portion stays the same.
+         * This takes ~20us — well within the 86us dummy window. */
+        for (int n = 0; n < CFC_HIDDEN_DIM; n++) {
+            /* f-pathway: neuron n */
+            for (int i = 0; i < CFC_HIDDEN_DIM; i++)
+                all_products[n][CFC_INPUT_DIM + i] = tmul(cfc.W_f[n][CFC_INPUT_DIM + i], cfc.hidden[i]);
+            isr_reencode_hidden_portion(n, all_products[n]);
+
+            /* g-pathway: neuron n + 32 */
+            int g_idx = n + CFC_HIDDEN_DIM;
+            for (int i = 0; i < CFC_HIDDEN_DIM; i++)
+                all_products[g_idx][CFC_INPUT_DIM + i] = tmul(cfc.W_g[n][CFC_INPUT_DIM + i], cfc.hidden[i]);
+            isr_reencode_hidden_portion(g_idx, all_products[g_idx]);
+        }
     }
 
     /* ── 5b. ISR-side input re-encode (when flagged by main loop) ──
