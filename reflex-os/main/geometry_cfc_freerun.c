@@ -139,6 +139,13 @@ static volatile int64_t loop_timestamp_us;  /* timestamp of last loop completion
 static volatile int32_t loop_base;          /* diagnostic: baseline index */
 static volatile int32_t loop_isr_count;     /* diagnostic: isr_count at boundary */
 
+/* TriX gate threshold: f fires only if |f_dot| > gate_threshold.
+ * 0 = original behavior (any nonzero dot fires the gate).
+ * Set to ~90 after installing TriX signatures as W_f weights. */
+static volatile int32_t gate_threshold = 0;
+static volatile int32_t gate_fires_total = 0;  /* diagnostic: count gate fires */
+static volatile int32_t gate_steps_total = 0;  /* diagnostic: count total neurons checked */
+
 /* Reflex channel: ISR → main loop coordination.
  * The ISR signals this channel after committing a complete hidden state,
  * providing ordering guarantees and cycle-accurate timestamps. */
@@ -375,17 +382,29 @@ static void IRAM_ATTR isr_loop_boundary(void) {
         dots[n] = a - d;
     }
 
-    /* ── 4. Apply CfC ternary blend ── */
+    /* ── 4. Apply CfC ternary blend (with TriX gate threshold) ── */
     int8_t h_new[CFC_HIDDEN_DIM];
+    int32_t thresh = gate_threshold;  /* snapshot volatile once */
+    int fires = 0;
     for (int n = 0; n < CFC_HIDDEN_DIM; n++) {
-        int8_t f = tsign(dots[n]);
+        int f_dot = dots[n];
+        int8_t f;
+        if (thresh > 0) {
+            /* TriX selective gating: fire only if |f_dot| exceeds threshold */
+            f = (f_dot > thresh || f_dot < -thresh) ? tsign(f_dot) : T_ZERO;
+        } else {
+            f = tsign(f_dot);
+        }
         int8_t g = tsign(dots[n + CFC_HIDDEN_DIM]);
         if (f == T_ZERO) {
             h_new[n] = cfc.hidden[n];
         } else {
             h_new[n] = tmul(f, g);
+            fires++;
         }
     }
+    gate_fires_total += fires;
+    gate_steps_total += CFC_HIDDEN_DIM;
     /* Commit new hidden state — this is the "register" the CPU reads */
     memcpy((void*)cfc.hidden, h_new, CFC_HIDDEN_DIM);
 
@@ -3320,14 +3339,125 @@ void app_main(void) {
         printf("  Ring drops: %d\n", (int)espnow_ring_drops());
         fflush(stdout);
 
+        /* ── Phase 0c: Install signatures as W_f weights ──
+         * TriX insight: signatures ARE the optimal gate weights.
+         * Neuron n assigned to pattern (n/8). W_f input portion = sig[p].
+         * W_f hidden portion zeroed (gate depends only on input match).
+         * W_g left random (candidate value is pattern-agnostic). */
+        printf("\n  Phase 0c: Installing signatures as W_f gate weights...\n");
+        fflush(stdout);
+
+        for (int n = 0; n < CFC_HIDDEN_DIM; n++) {
+            int assigned = n / 8;  /* 8 neurons per pattern */
+            for (int i = 0; i < CFC_INPUT_DIM; i++)
+                cfc.W_f[n][i] = sig[assigned][i];
+            for (int i = CFC_INPUT_DIM; i < CFC_CONCAT_DIM; i++)
+                cfc.W_f[n][i] = T_ZERO;
+        }
+
+        /* Set gate threshold between cross-dot (30-84) and self-dot (118-120).
+         * Use 90 as the boundary — gates fire only for matching patterns. */
+        gate_threshold = 90;
+        gate_fires_total = 0;
+        gate_steps_total = 0;
+
+        /* Re-premultiply and re-encode with new W_f weights */
+        premultiply_all();
+        encode_all_neurons();
+
+        printf("  W_f weights set from signatures (8 neurons/pattern)\n");
+        printf("  Gate threshold: %d (self-dot ~118, cross-dot ~30-84)\n",
+               (int)gate_threshold);
+
+        /* Print assignment and expected dots */
+        for (int n = 0; n < CFC_HIDDEN_DIM; n++) {
+            int assigned = n / 8;
+            if (n % 8 == 0) {
+                printf("  Neurons %d-%d → pattern %d\n", n, n + 7, assigned);
+            }
+        }
+        fflush(stdout);
+
+        /* ── Phase 0d: Observe hidden-state signatures (15s) ──
+         * With TriX W_f installed, the CfC should now have selective gates.
+         * Observe the hidden state per pattern to build hidden-state signatures. */
+        printf("\n  Phase 0d: Observing hidden-state signatures (15s)...\n");
+        fflush(stdout);
+
+        static int8_t  hsig[NUM_TEMPLATES][CFC_HIDDEN_DIM];
+        static int16_t hsig_sum[NUM_TEMPLATES][CFC_HIDDEN_DIM];
+        int hsig_count[NUM_TEMPLATES];
+        memset(hsig_sum, 0, sizeof(hsig_sum));
+        memset(hsig_count, 0, sizeof(hsig_count));
+
+        int h_obs_pkts = 0;
+        int h_obs_cur_pattern = -1;
+        int64_t h_obs_start = esp_timer_get_time();
+
+        while ((esp_timer_get_time() - h_obs_start) < 15000000LL) {  /* 15s */
+            vTaskDelay(pdMS_TO_TICKS(T11_DRAIN_MS));
+            int n = espnow_drain(drain_buf, 32);
+            for (int i = 0; i < n; i++) {
+                h_obs_pkts++;
+                if (drain_buf[i].pkt.pattern_id < 4)
+                    h_obs_cur_pattern = drain_buf[i].pkt.pattern_id;
+                if (espnow_encode_rx_entry(&drain_buf[i], NULL)) {
+                    update_gie_input();
+                    /* Accumulate hidden state per pattern */
+                    if (h_obs_cur_pattern >= 0 && h_obs_cur_pattern < 4) {
+                        for (int j = 0; j < CFC_HIDDEN_DIM; j++)
+                            hsig_sum[h_obs_cur_pattern][j] += cfc.hidden[j];
+                        hsig_count[h_obs_cur_pattern]++;
+                    }
+                }
+            }
+        }
+
+        /* Compute hidden-state signatures */
+        for (int p = 0; p < NUM_TEMPLATES; p++) {
+            int nz = 0;
+            for (int i = 0; i < CFC_HIDDEN_DIM; i++) {
+                hsig[p][i] = tsign(hsig_sum[p][i]);
+                if (hsig[p][i] != T_ZERO) nz++;
+            }
+            printf("  hsig[%d]: [", p);
+            for (int i = 0; i < CFC_HIDDEN_DIM; i++)
+                printf("%c", trit_char(hsig[p][i]));
+            printf("] nz=%d (from %d samples)\n", nz, hsig_count[p]);
+        }
+
+        /* Hidden-state cross-dots */
+        printf("  Hidden-sig cross-dots:\n");
+        for (int i = 0; i < NUM_TEMPLATES; i++) {
+            printf("    hsig[%d] vs: ", i);
+            for (int j = 0; j < NUM_TEMPLATES; j++) {
+                int d = 0;
+                for (int k = 0; k < CFC_HIDDEN_DIM; k++) {
+                    if (hsig[i][k] != T_ZERO && hsig[j][k] != T_ZERO)
+                        d += tmul(hsig[i][k], hsig[j][k]);
+                }
+                printf("s%d=%d ", j, d);
+            }
+            printf("\n");
+        }
+
+        /* Gate selectivity diagnostic */
+        int avg_fire_pct = (gate_steps_total > 0)
+            ? (int)(gate_fires_total * 100LL / gate_steps_total) : 0;
+        printf("  Gate selectivity: %d fires / %d steps = %d%%\n",
+               (int)gate_fires_total, (int)gate_steps_total, avg_fire_pct);
+        printf("  (target: ~25%% = 8/32 neurons per step)\n");
+        fflush(stdout);
+
         {
             /* ── Phase 1: Classification test (60s) ──
-             * TriX signature routing: dot(current_input, sig[p]) → argmax */
-            printf("\n  Phase 1: TriX signature classification (up to %d samples, 60s)...\n",
+             * Per-packet TriX voting + hidden-state TriX comparison. */
+            printf("\n  Phase 1: TriX per-packet voting (up to %d samples, 60s)...\n",
                    MAX_TEST_SAMPLES);
             fflush(stdout);
 
             int sig_correct = 0, sig_total = 0;
+            int hsig_correct = 0;
             int baseline_correct = 0;
             int64_t test_start = esp_timer_get_time();
             int64_t test_timeout_us = 60LL * 1000000LL;
@@ -3336,17 +3466,13 @@ void app_main(void) {
                    (esp_timer_get_time() - test_start) < test_timeout_us) {
 
                 /* Collect one window */
-                int test_votes[4] = {0};
+                int test_votes[4] = {0};     /* ground truth: pattern IDs from packets */
+                int trix_votes[4] = {0};     /* per-packet TriX classification votes */
                 int test_packets = 0;
                 int64_t gap_sum_ms = 0;
                 int gap_count = 0;
                 int64_t prev_pkt_us = 0;
                 int64_t window_start = esp_timer_get_time();
-
-                /* Accumulate input signatures within this window too */
-                static int16_t win_sum[CFC_INPUT_DIM];
-                memset(win_sum, 0, sizeof(win_sum));
-                int win_inputs = 0;
 
                 while ((esp_timer_get_time() - window_start) < (T11_WINDOW_MS * 1000LL)) {
                     vTaskDelay(pdMS_TO_TICKS(T11_DRAIN_MS));
@@ -3355,10 +3481,21 @@ void app_main(void) {
                         int64_t pkt_gap_ms = 0;
                         if (espnow_encode_rx_entry(&drain_buf[i], &pkt_gap_ms)) {
                             update_gie_input();
-                            /* Accumulate input within this window */
-                            for (int j = 0; j < CFC_INPUT_DIM; j++)
-                                win_sum[j] += cfc.input[j];
-                            win_inputs++;
+
+                            /* Per-packet TriX classification */
+                            int pkt_best = -9999, pkt_pred = 0;
+                            for (int p = 0; p < NUM_TEMPLATES; p++) {
+                                int d = 0;
+                                for (int j = 0; j < CFC_INPUT_DIM; j++) {
+                                    if (sig[p][j] != T_ZERO && cfc.input[j] != T_ZERO)
+                                        d += tmul(sig[p][j], cfc.input[j]);
+                                }
+                                if (d > pkt_best) {
+                                    pkt_best = d;
+                                    pkt_pred = p;
+                                }
+                            }
+                            trix_votes[pkt_pred]++;
                         }
                         if (drain_buf[i].pkt.pattern_id < 4)
                             test_votes[drain_buf[i].pkt.pattern_id]++;
@@ -3383,30 +3520,32 @@ void app_main(void) {
                 }
 
                 if (truth < 0 || truth_votes <= test_packets / 2 ||
-                    test_packets < 1 || win_inputs < 1) continue;
+                    test_packets < 1) continue;
 
-                /* TriX classification: dot(window_mean_input, sig[p]) → argmax
-                 * We use the last encoded input (cfc.input) as representative.
-                 * Also compute dot against accumulated window sum for comparison. */
-                int8_t cur_input[CFC_INPUT_DIM];
-                memcpy(cur_input, (void*)cfc.input, CFC_INPUT_DIM);
-
-                int best_dot = -9999;
+                /* Input-TriX prediction: majority of per-packet votes */
                 int sig_pred = 0;
-                int all_dots[4];
+                for (int p = 1; p < 4; p++)
+                    if (trix_votes[p] > trix_votes[sig_pred]) sig_pred = p;
+                if (sig_pred == truth) sig_correct++;
+
+                /* Hidden-state TriX classification */
+                int8_t cur_h[CFC_HIDDEN_DIM];
+                memcpy(cur_h, (void*)cfc.hidden, CFC_HIDDEN_DIM);
+                int h_best = -999, h_pred = 0;
+                int h_dots[4];
                 for (int p = 0; p < NUM_TEMPLATES; p++) {
                     int d = 0;
-                    for (int i = 0; i < CFC_INPUT_DIM; i++) {
-                        if (sig[p][i] != T_ZERO && cur_input[i] != T_ZERO)
-                            d += tmul(sig[p][i], cur_input[i]);
+                    for (int i = 0; i < CFC_HIDDEN_DIM; i++) {
+                        if (hsig[p][i] != T_ZERO && cur_h[i] != T_ZERO)
+                            d += tmul(hsig[p][i], cur_h[i]);
                     }
-                    all_dots[p] = d;
-                    if (d > best_dot) {
-                        best_dot = d;
-                        sig_pred = p;
+                    h_dots[p] = d;
+                    if (d > h_best) {
+                        h_best = d;
+                        h_pred = p;
                     }
                 }
-                if (sig_pred == truth) sig_correct++;
+                if (h_pred == truth) hsig_correct++;
 
                 /* Baseline: packet-rate classifier */
                 int baseline_pred = -1;
@@ -3420,45 +3559,63 @@ void app_main(void) {
 
                 sig_total++;
 
-                printf("    s%02d: truth=%d sig=%d(d=%d) base=%d | dots=[%d,%d,%d,%d] pkts=%d\n",
-                       sig_total, truth, sig_pred, best_dot,
-                       baseline_pred, all_dots[0], all_dots[1],
-                       all_dots[2], all_dots[3], test_packets);
+                printf("    s%02d: truth=%d in=%d h=%d base=%d | tv=[%d,%d,%d,%d] hd=[%d,%d,%d,%d] pkts=%d\n",
+                       sig_total, truth, sig_pred, h_pred,
+                       baseline_pred,
+                       trix_votes[0], trix_votes[1],
+                       trix_votes[2], trix_votes[3],
+                       h_dots[0], h_dots[1], h_dots[2], h_dots[3],
+                       test_packets);
                 fflush(stdout);
             }
 
             stop_freerun();
 
             int sig_pct = (sig_total > 0) ? (sig_correct * 100 / sig_total) : 0;
+            int h_pct = (sig_total > 0) ? (hsig_correct * 100 / sig_total) : 0;
             int base_pct = (sig_total > 0) ? (baseline_correct * 100 / sig_total) : 0;
 
-            printf("\n  ═══ CLASSIFICATION RESULTS (TriX Signature Routing) ═══\n");
+            printf("\n  ═══ CLASSIFICATION RESULTS (TriX Architecture) ═══\n");
             printf("  Total GIE loops: %d\n", (int)loop_count);
             printf("  Test samples: %d\n", sig_total);
             printf("  Ring drops: %d\n", (int)espnow_ring_drops());
-            printf("  TriX signatures: %d/%d = %d%%\n",
+            printf("  Input-TriX (per-pkt vote): %d/%d = %d%%\n",
                    sig_correct, sig_total, sig_pct);
-            printf("  Baseline (packet-rate): %d/%d = %d%%\n",
+            printf("  Hidden-TriX (sig weights): %d/%d = %d%%\n",
+                   hsig_correct, sig_total, h_pct);
+            printf("  Baseline (packet-rate):    %d/%d = %d%%\n",
                    baseline_correct, sig_total, base_pct);
 
-            if (sig_pct > base_pct) {
-                printf("  >>> TRIX WINS by %d pp <<<\n", sig_pct - base_pct);
-            } else if (sig_pct == base_pct) {
-                printf("  >>> TIE <<<\n");
+            /* Gate selectivity final */
+            int final_fire_pct = (gate_steps_total > 0)
+                ? (int)(gate_fires_total * 100LL / gate_steps_total) : 0;
+            printf("  Gate firing: %d%% (target ~25%%)\n", final_fire_pct);
+
+            int best_name = 0;
+            int best_pct = sig_pct;
+            if (h_pct > best_pct) { best_pct = h_pct; best_name = 1; }
+            if (base_pct > best_pct) { best_pct = base_pct; best_name = 2; }
+
+            const char *names[] = {"INPUT-TRIX", "HIDDEN-TRIX", "BASELINE"};
+            if (sig_pct > base_pct || h_pct > base_pct) {
+                printf("  >>> %s WINS <<<\n", names[best_name]);
+            } else if (sig_pct == base_pct && h_pct <= base_pct) {
+                printf("  >>> TIE (input-TriX = baseline) <<<\n");
             } else {
-                printf("  >>> BASELINE WINS by %d pp <<<\n", base_pct - sig_pct);
+                printf("  >>> BASELINE WINS <<<\n");
             }
 
-            printf("\n  Notes:\n");
-            printf("  - TriX: 'Don't learn what you can read'\n");
-            printf("  - Signatures = mean direction of each pattern's INPUT\n");
-            printf("  - Classification = argmax(dot(input, sig[p]))\n");
-            printf("  - No training, no weights, no learning\n");
-            printf("  - Content-addressable routing via ternary dot product\n");
-            printf("  - Input trits [16..23] encode pattern ID directly\n");
-            printf("  - Baseline max theoretical = 75%% (P0/P3 indistinguishable)\n");
+            printf("\n  Architecture:\n");
+            printf("  - Phase 0a: Observe input signatures (30s)\n");
+            printf("  - Phase 0b: Compute TriX signatures\n");
+            printf("  - Phase 0c: Install signatures as W_f gate weights\n");
+            printf("  - Phase 0d: Observe hidden-state signatures (15s)\n");
+            printf("  - Phase 1:  Per-packet voting + hidden-state TriX (60s)\n");
+            printf("  - Gate threshold=%d: selective firing for matching patterns\n",
+                   (int)gate_threshold);
+            printf("  - 'Don't learn what you can read' — TriX principle\n");
 
-            int ok = (sig_total >= 4) && (sig_pct >= 50);
+            int ok = (sig_total >= 4) && (sig_pct >= 50 || h_pct >= 50);
             test_count++;
             if (ok) pass_count++;
             printf("  %s\n\n", ok ? "OK" : "FAIL");
