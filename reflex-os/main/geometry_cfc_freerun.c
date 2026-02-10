@@ -3449,16 +3449,31 @@ void app_main(void) {
         printf("  (target: ~25%% = 8/32 neurons per step)\n");
         fflush(stdout);
 
+        /* Save original signatures for drift measurement */
+        static int8_t sig_orig[NUM_TEMPLATES][CFC_INPUT_DIM];
+        memcpy(sig_orig, sig, sizeof(sig));
+
+        #define RESIGN_INTERVAL   16   /* re-sign every 16 packets per pattern */
+        #define NOVELTY_THRESHOLD 60   /* min best-dot to accept classification */
+
         {
-            /* ── Phase 1: Classification test (60s) ──
-             * Per-packet TriX voting + hidden-state TriX comparison. */
-            printf("\n  Phase 1: TriX per-packet voting (up to %d samples, 60s)...\n",
+            /* ── Phase 1: Classification + Online Maintenance + Novelty (60s) ──
+             * Per-packet TriX voting with:
+             *   - Novelty detection: if best dot < NOVELTY_THRESHOLD, skip vote
+             *   - Online signature maintenance: accumulate + periodic re-sign
+             *   - Hidden-state TriX comparison */
+            printf("\n  Phase 1: TriX online + novelty (up to %d samples, 60s)...\n",
                    MAX_TEST_SAMPLES);
+            printf("  Novelty threshold: %d, Resign interval: %d pkts\n",
+                   NOVELTY_THRESHOLD, RESIGN_INTERVAL);
             fflush(stdout);
 
             int sig_correct = 0, sig_total = 0;
             int hsig_correct = 0;
             int baseline_correct = 0;
+            int total_novel = 0, total_classified = 0;
+            int total_resigns = 0;
+            int novel_windows = 0;
             int64_t test_start = esp_timer_get_time();
             int64_t test_timeout_us = 60LL * 1000000LL;
 
@@ -3469,6 +3484,7 @@ void app_main(void) {
                 int test_votes[4] = {0};     /* ground truth: pattern IDs from packets */
                 int trix_votes[4] = {0};     /* per-packet TriX classification votes */
                 int test_packets = 0;
+                int novel_in_window = 0;
                 int64_t gap_sum_ms = 0;
                 int gap_count = 0;
                 int64_t prev_pkt_us = 0;
@@ -3495,7 +3511,30 @@ void app_main(void) {
                                     pkt_pred = p;
                                 }
                             }
-                            trix_votes[pkt_pred]++;
+
+                            /* Novelty detection */
+                            if (pkt_best < NOVELTY_THRESHOLD) {
+                                novel_in_window++;
+                                total_novel++;
+                            } else {
+                                trix_votes[pkt_pred]++;
+                                total_classified++;
+
+                                /* Online signature maintenance:
+                                 * accumulate into winning pattern's sum */
+                                for (int j = 0; j < CFC_INPUT_DIM; j++)
+                                    sig_sum[pkt_pred][j] += cfc.input[j];
+                                sig_count[pkt_pred]++;
+
+                                /* Periodic re-sign with decay */
+                                if (sig_count[pkt_pred] % RESIGN_INTERVAL == 0) {
+                                    for (int j = 0; j < CFC_INPUT_DIM; j++) {
+                                        sig[pkt_pred][j] = tsign(sig_sum[pkt_pred][j]);
+                                        sig_sum[pkt_pred][j] /= 2;  /* decay */
+                                    }
+                                    total_resigns++;
+                                }
+                            }
                         }
                         if (drain_buf[i].pkt.pattern_id < 4)
                             test_votes[drain_buf[i].pkt.pattern_id]++;
@@ -3510,6 +3549,17 @@ void app_main(void) {
                     }
                 }
 
+                /* If more novel than classified, flag window as novel */
+                int classified_in_window = trix_votes[0] + trix_votes[1] +
+                                           trix_votes[2] + trix_votes[3];
+                if (novel_in_window > classified_in_window && novel_in_window > 0) {
+                    novel_windows++;
+                    printf("    [NOVEL window: %d novel, %d classified, %d pkts]\n",
+                           novel_in_window, classified_in_window, test_packets);
+                    fflush(stdout);
+                    continue;
+                }
+
                 /* Ground truth: majority vote of pattern IDs in window */
                 int truth = -1, truth_votes = 0;
                 for (int p = 0; p < 4; p++) {
@@ -3520,7 +3570,7 @@ void app_main(void) {
                 }
 
                 if (truth < 0 || truth_votes <= test_packets / 2 ||
-                    test_packets < 1) continue;
+                    test_packets < 1 || classified_in_window < 1) continue;
 
                 /* Input-TriX prediction: majority of per-packet votes */
                 int sig_pred = 0;
@@ -3528,9 +3578,20 @@ void app_main(void) {
                     if (trix_votes[p] > trix_votes[sig_pred]) sig_pred = p;
                 if (sig_pred == truth) sig_correct++;
 
-                /* Hidden-state TriX classification */
+                /* Online hidden-state signature maintenance */
                 int8_t cur_h[CFC_HIDDEN_DIM];
                 memcpy(cur_h, (void*)cfc.hidden, CFC_HIDDEN_DIM);
+                for (int j = 0; j < CFC_HIDDEN_DIM; j++)
+                    hsig_sum[sig_pred][j] += cur_h[j];
+                hsig_count[sig_pred]++;
+                if (hsig_count[sig_pred] % RESIGN_INTERVAL == 0) {
+                    for (int j = 0; j < CFC_HIDDEN_DIM; j++) {
+                        hsig[sig_pred][j] = tsign(hsig_sum[sig_pred][j]);
+                        hsig_sum[sig_pred][j] /= 2;
+                    }
+                }
+
+                /* Hidden-state TriX classification */
                 int h_best = -999, h_pred = 0;
                 int h_dots[4];
                 for (int p = 0; p < NUM_TEMPLATES; p++) {
@@ -3559,13 +3620,13 @@ void app_main(void) {
 
                 sig_total++;
 
-                printf("    s%02d: truth=%d in=%d h=%d base=%d | tv=[%d,%d,%d,%d] hd=[%d,%d,%d,%d] pkts=%d\n",
+                printf("    s%02d: truth=%d in=%d h=%d base=%d | tv=[%d,%d,%d,%d] hd=[%d,%d,%d,%d] nov=%d pkts=%d\n",
                        sig_total, truth, sig_pred, h_pred,
                        baseline_pred,
                        trix_votes[0], trix_votes[1],
                        trix_votes[2], trix_votes[3],
                        h_dots[0], h_dots[1], h_dots[2], h_dots[3],
-                       test_packets);
+                       novel_in_window, test_packets);
                 fflush(stdout);
             }
 
@@ -3585,6 +3646,37 @@ void app_main(void) {
                    hsig_correct, sig_total, h_pct);
             printf("  Baseline (packet-rate):    %d/%d = %d%%\n",
                    baseline_correct, sig_total, base_pct);
+
+            /* Novelty stats */
+            printf("\n  ── Novelty Detection ──\n");
+            printf("  Novel packets: %d / %d total (%d%%)\n",
+                   total_novel, total_novel + total_classified,
+                   (total_novel + total_classified) > 0
+                       ? (total_novel * 100 / (total_novel + total_classified)) : 0);
+            printf("  Novel windows (skipped): %d\n", novel_windows);
+
+            /* Online maintenance stats */
+            printf("\n  ── Online Signature Maintenance ──\n");
+            printf("  Re-signs: %d\n", total_resigns);
+
+            /* Signature drift: Hamming distance original vs updated */
+            printf("  Signature drift (Hamming original vs updated):\n");
+            for (int p = 0; p < NUM_TEMPLATES; p++) {
+                int drift = trit_hamming(sig_orig[p], sig[p], CFC_INPUT_DIM);
+                printf("    sig[%d]: %d/%d trits changed", p, drift, CFC_INPUT_DIM);
+                if (sig_count[p] > 0)
+                    printf(" (%d online samples)", sig_count[p]);
+                printf("\n");
+            }
+
+            /* Updated signatures pattern-ID region */
+            printf("  Updated pattern-ID trits [16..23]:\n");
+            for (int p = 0; p < NUM_TEMPLATES; p++) {
+                printf("    sig[%d][16..23]: ", p);
+                for (int i = 16; i < 24; i++)
+                    printf("%c", trit_char(sig[p][i]));
+                printf("\n");
+            }
 
             /* Gate selectivity final */
             int final_fire_pct = (gate_steps_total > 0)
@@ -3610,8 +3702,11 @@ void app_main(void) {
             printf("  - Phase 0b: Compute TriX signatures\n");
             printf("  - Phase 0c: Install signatures as W_f gate weights\n");
             printf("  - Phase 0d: Observe hidden-state signatures (15s)\n");
-            printf("  - Phase 1:  Per-packet voting + hidden-state TriX (60s)\n");
-            printf("  - Gate threshold=%d: selective firing for matching patterns\n",
+            printf("  - Phase 1:  Online TriX + novelty detection (60s)\n");
+            printf("  - Novelty threshold=%d: reject unclassifiable packets\n",
+                   NOVELTY_THRESHOLD);
+            printf("  - Online re-sign every %d pkts with decay\n", RESIGN_INTERVAL);
+            printf("  - Gate threshold=%d: selective firing\n",
                    (int)gate_threshold);
             printf("  - 'Don't learn what you can read' — TriX principle\n");
 
