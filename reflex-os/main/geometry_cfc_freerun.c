@@ -3563,12 +3563,18 @@ void app_main(void) {
                    MAX_TEST_SAMPLES);
             fflush(stdout);
 
-            int core_correct = 0, ens_correct = 0, sig_total = 0;
+            int core_correct = 0, sig_total = 0;
             int baseline_correct = 0;
             int total_novel = 0, total_classified = 0;
             int total_resigns = 0;
             int novel_windows = 0;
-            int face_contributed = 0;  /* times faces changed the outcome */
+            /* Global XOR mask accumulators (across all windows) */
+            int g_xor_total[TVOX_TOTAL] = {0};
+            int g_xor_rssi[TVOX_TOTAL] = {0};
+            int g_xor_patid[TVOX_TOTAL] = {0};
+            int g_xor_payload[TVOX_TOTAL] = {0};
+            int g_xor_timing[TVOX_TOTAL] = {0};
+            int g_xor_count[TVOX_TOTAL] = {0};
             int64_t test_start = esp_timer_get_time();
             int64_t test_timeout_us = 60LL * 1000000LL;
 
@@ -3578,12 +3584,19 @@ void app_main(void) {
                 /* Per-window accumulators */
                 int test_votes[4] = {0};
                 int core_votes[4] = {0};
-                int ens_votes_accum[4] = {0};  /* sum of all voxel votes */
+                
                 int test_packets = 0;
                 int novel_in_window = 0;
                 int64_t gap_sum_ms = 0;
                 int gap_count = 0;
                 int64_t prev_pkt_us = 0;
+                /* Per-window XOR mask accumulators per face */
+                int xor_mask_total[TVOX_TOTAL] = {0};
+                int xor_mask_rssi[TVOX_TOTAL] = {0};
+                int xor_mask_patid[TVOX_TOTAL] = {0};
+                int xor_mask_payload[TVOX_TOTAL] = {0};
+                int xor_mask_timing[TVOX_TOTAL] = {0};
+                int xor_mask_count[TVOX_TOTAL] = {0};
                 int64_t window_start = esp_timer_get_time();
 
                 while ((esp_timer_get_time() - window_start) < (T11_WINDOW_MS * 1000LL)) {
@@ -3629,30 +3642,40 @@ void app_main(void) {
                                 total_resigns++;
                             }
 
-                            /* Ensemble: all 7 voxels vote */
-                            int pkt_ens[4] = {0};
-                            for (int v = 0; v < TVOX_TOTAL; v++) {
-                                int v_best = -9999, v_pred = 0;
-                                int8_t (*v_sig)[CFC_INPUT_DIM] =
-                                    (v == 0) ? sig : cube[v].sig;
-                                for (int p = 0; p < TVOX_K; p++) {
-                                    int d = 0;
-                                    for (int j = 0; j < CFC_INPUT_DIM; j++) {
-                                        if (v_sig[p][j] != T_ZERO &&
-                                            cfc.input[j] != T_ZERO)
-                                            d += tmul(v_sig[p][j], cfc.input[j]);
+                            /* XOR masks: faces as intervention sensors.
+                             * Don't vote. Compute the MASK — where does each
+                             * face's signature for this pattern DIFFER from core?
+                             * mask = positions where core_sig[p] != face_sig[p]
+                             * The mask IS the temporal displacement signal.
+                             * Reversible: core XOR mask = face, face XOR mask = core. */
+                            /* Core always wins — faces are sensors, not voters */
+
+                            /* Accumulate XOR mask stats per face for this pattern */
+                            for (int v = 1; v < TVOX_TOTAL; v++) {
+                                if (cube[v].sig_count[core_pred] < 2) continue;
+                                int mask_weight = 0;  /* Hamming = # trits in mask */
+                                int mask_rssi = 0;    /* trits [0..15] */
+                                int mask_patid = 0;   /* trits [16..23] */
+                                int mask_payload = 0; /* trits [24..87] */
+                                int mask_timing = 0;  /* trits [88..127] */
+                                for (int j = 0; j < CFC_INPUT_DIM; j++) {
+                                    if (cube[v].sig[core_pred][j] !=
+                                        sig[core_pred][j]) {
+                                        mask_weight++;
+                                        if (j < 16)       mask_rssi++;
+                                        else if (j < 24)  mask_patid++;
+                                        else if (j < 88)  mask_payload++;
+                                        else               mask_timing++;
                                     }
-                                    if (d > v_best) { v_best = d; v_pred = p; }
                                 }
-                                /* Only count voxels with data */
-                                if (v == 0 || cube[v].total_samples > 0)
-                                    pkt_ens[v_pred]++;
+                                /* Accumulate into window stats */
+                                xor_mask_total[v] += mask_weight;
+                                xor_mask_rssi[v] += mask_rssi;
+                                xor_mask_patid[v] += mask_patid;
+                                xor_mask_payload[v] += mask_payload;
+                                xor_mask_timing[v] += mask_timing;
+                                xor_mask_count[v]++;
                             }
-                            /* Find ensemble winner for this packet */
-                            int ens_pred = 0;
-                            for (int p = 1; p < TVOX_K; p++)
-                                if (pkt_ens[p] > pkt_ens[ens_pred]) ens_pred = p;
-                            ens_votes_accum[ens_pred]++;
 
                             /* Online face signature maintenance */
                             for (int v = 1; v < TVOX_TOTAL; v++) {
@@ -3711,15 +3734,6 @@ void app_main(void) {
                     if (core_votes[p] > core_votes[c_pred]) c_pred = p;
                 if (c_pred == truth) core_correct++;
 
-                /* Ensemble prediction (majority of ensemble per-packet votes) */
-                int e_pred = 0;
-                for (int p = 1; p < 4; p++)
-                    if (ens_votes_accum[p] > ens_votes_accum[e_pred]) e_pred = p;
-                if (e_pred == truth) ens_correct++;
-
-                /* Track face contribution */
-                if (e_pred != c_pred) face_contributed++;
-
                 /* Baseline */
                 int baseline_pred = -1;
                 if (gap_count > 0) {
@@ -3732,20 +3746,37 @@ void app_main(void) {
 
                 sig_total++;
 
-                printf("    s%02d: truth=%d core=%d ens=%d base=%d | cv=[%d,%d,%d,%d] ev=[%d,%d,%d,%d] nov=%d\n",
-                       sig_total, truth, c_pred, e_pred, baseline_pred,
+                /* Accumulate window XOR masks into global */
+                for (int v = 1; v < TVOX_TOTAL; v++) {
+                    g_xor_total[v] += xor_mask_total[v];
+                    g_xor_rssi[v] += xor_mask_rssi[v];
+                    g_xor_patid[v] += xor_mask_patid[v];
+                    g_xor_payload[v] += xor_mask_payload[v];
+                    g_xor_timing[v] += xor_mask_timing[v];
+                    g_xor_count[v] += xor_mask_count[v];
+                }
+
+                /* Per-sample: core result + XOR mask summary */
+                printf("    s%02d: truth=%d core=%d base=%d | cv=[%d,%d,%d,%d]",
+                       sig_total, truth, c_pred, baseline_pred,
                        core_votes[0], core_votes[1],
-                       core_votes[2], core_votes[3],
-                       ens_votes_accum[0], ens_votes_accum[1],
-                       ens_votes_accum[2], ens_votes_accum[3],
-                       novel_in_window);
+                       core_votes[2], core_votes[3]);
+                /* Show XOR mask weight per face (avg trits displaced) */
+                printf(" xor=[");
+                for (int v = 1; v < TVOX_TOTAL; v++) {
+                    if (xor_mask_count[v] > 0)
+                        printf("%d", xor_mask_total[v] / xor_mask_count[v]);
+                    else
+                        printf("-");
+                    if (v < TVOX_TOTAL - 1) printf(",");
+                }
+                printf("]\n");
                 fflush(stdout);
             }
 
             stop_freerun();
 
             int core_pct = (sig_total > 0) ? (core_correct * 100 / sig_total) : 0;
-            int ens_pct = (sig_total > 0) ? (ens_correct * 100 / sig_total) : 0;
             int base_pct = (sig_total > 0) ? (baseline_correct * 100 / sig_total) : 0;
 
             printf("\n  ═══ CLASSIFICATION RESULTS (TriX Cube) ═══\n");
@@ -3754,12 +3785,8 @@ void app_main(void) {
             printf("  Ring drops: %d\n", (int)espnow_ring_drops());
             printf("  Core-only (per-pkt vote):  %d/%d = %d%%\n",
                    core_correct, sig_total, core_pct);
-            printf("  Ensemble (7-voxel vote):   %d/%d = %d%%\n",
-                   ens_correct, sig_total, ens_pct);
             printf("  Baseline (packet-rate):    %d/%d = %d%%\n",
                    baseline_correct, sig_total, base_pct);
-            printf("  Face contributed (changed outcome): %d/%d windows\n",
-                   face_contributed, sig_total);
 
             /* Novelty stats */
             printf("\n  ── Novelty Detection ──\n");
@@ -3776,6 +3803,45 @@ void app_main(void) {
             for (int p = 0; p < NUM_TEMPLATES; p++) {
                 int drift = trit_hamming(sig_orig[p], sig[p], CFC_INPUT_DIM);
                 printf("    sig[%d]: %d/%d trits\n", p, drift, CFC_INPUT_DIM);
+            }
+
+            /* XOR Mask Analysis — the temporal displacement signal */
+            printf("\n  ── XOR Masks (temporal displacement per face) ──\n");
+            printf("    Face              avg  | rssi patid payload timing\n");
+            for (int v = 1; v < TVOX_TOTAL; v++) {
+                if (g_xor_count[v] > 0) {
+                    int avg = g_xor_total[v] / g_xor_count[v];
+                    int ar  = g_xor_rssi[v] / g_xor_count[v];
+                    int ap  = g_xor_patid[v] / g_xor_count[v];
+                    int apl = g_xor_payload[v] / g_xor_count[v];
+                    int at  = g_xor_timing[v] / g_xor_count[v];
+                    printf("    %-18s %3d/128 | %2d/16 %2d/8  %2d/64   %2d/40\n",
+                           face_names[v], avg, ar, ap, apl, at);
+                } else {
+                    printf("    %-18s   -     | (no data)\n", face_names[v]);
+                }
+            }
+            /* Which trit regions carry the temporal signal? */
+            int total_xor_all = 0, total_xor_rssi = 0, total_xor_patid = 0;
+            int total_xor_payload = 0, total_xor_timing = 0, total_xor_n = 0;
+            for (int v = 1; v < TVOX_TOTAL; v++) {
+                total_xor_all += g_xor_total[v];
+                total_xor_rssi += g_xor_rssi[v];
+                total_xor_patid += g_xor_patid[v];
+                total_xor_payload += g_xor_payload[v];
+                total_xor_timing += g_xor_timing[v];
+                total_xor_n += g_xor_count[v];
+            }
+            if (total_xor_n > 0) {
+                printf("    ── Signal distribution ──\n");
+                printf("    RSSI:    %d%% of mask weight\n",
+                       total_xor_all > 0 ? total_xor_rssi * 100 / total_xor_all : 0);
+                printf("    PatID:   %d%% of mask weight\n",
+                       total_xor_all > 0 ? total_xor_patid * 100 / total_xor_all : 0);
+                printf("    Payload: %d%% of mask weight\n",
+                       total_xor_all > 0 ? total_xor_payload * 100 / total_xor_all : 0);
+                printf("    Timing:  %d%% of mask weight\n",
+                       total_xor_all > 0 ? total_xor_timing * 100 / total_xor_all : 0);
             }
 
             /* Face final divergence from core */
@@ -3799,26 +3865,16 @@ void app_main(void) {
                 ? (int)(gate_fires_total * 100LL / gate_steps_total) : 0;
             printf("  Gate firing: %d%%\n", final_fire_pct);
 
-            int best_pct = core_pct;
-            if (ens_pct > best_pct) best_pct = ens_pct;
-            if (ens_pct > core_pct) {
-                printf("  >>> ENSEMBLE WINS by %d pp <<<\n", ens_pct - core_pct);
-            } else if (ens_pct == core_pct) {
-                printf("  >>> CORE = ENSEMBLE <<<\n");
-            } else {
-                printf("  >>> CORE WINS by %d pp (ensemble hurt) <<<\n",
-                       core_pct - ens_pct);
-            }
-
             printf("\n  Architecture:\n");
             printf("  - 7-voxel TriX Cube: core + 6 temporal faces\n");
             printf("  - Faces: recent, prior, stable, transient, confident, uncertain\n");
-            printf("  - Per-packet: core classifies, 7 voxels vote ensemble\n");
+            printf("  - Core classifies alone. Faces compute XOR masks (intervention sensors)\n");
+            printf("  - XOR mask = trit positions where face sig != core sig\n");
             printf("  - Online maintenance + novelty detection\n");
             printf("  - Gate threshold=%d, novelty=%d\n",
                    (int)gate_threshold, NOVELTY_THRESHOLD);
 
-            int ok = (sig_total >= 4) && (best_pct >= 50);
+            int ok = (sig_total >= 4) && (core_pct >= 50);
             test_count++;
             if (ok) pass_count++;
             printf("  %s\n\n", ok ? "OK" : "FAIL");
