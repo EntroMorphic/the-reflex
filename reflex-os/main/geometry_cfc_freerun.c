@@ -453,21 +453,27 @@ static void IRAM_ATTR isr_loop_boundary(void) {
              * in group position g. Due to the GDMA circular chain
              * offset, group g may not correspond to pattern g.
              *
-             * We publish the raw values in trix_scores[0..3] and set
-             * trix_pred = -2 (sentinel meaning "valid but unresolved").
-             * The main loop resolves the pattern by matching these
-             * values against cpu_d[p] computed from sig[p] directly.
+             * Pack all 4 group dots into the channel value as bytes:
+             *   value = (d0 & 0xFF) | (d1 << 8) | (d2 << 16) | (d3 << 24)
+             * Consumer unpacks and matches against CPU-computed dots
+             * from sig[] to resolve the GDMA offset.
              *
-             * Note: we DON'T try to do argmax here because the group
-             * index ≠ pattern index when there's a GDMA offset. */
-            for (int g = 0; g < TRIX_NUM_PATTERNS; g++)
+             * Also publish to volatile globals for backward compat. */
+            uint32_t packed = 0;
+            for (int g = 0; g < TRIX_NUM_PATTERNS; g++) {
                 trix_scores[g] = group_val[g];
+                /* Clamp to int8 range for channel packing */
+                int v = group_val[g];
+                if (v > 127) v = 127;
+                if (v < -128) v = -128;
+                packed |= ((uint32_t)(v & 0xFF)) << (g * 8);
+            }
             trix_pred = -2;  /* valid but needs main-loop resolution */
             trix_confidence = 0;
             trix_timestamp_us = esp_timer_get_time();
             trix_count++;
             trix_valid_lc = loop_count + 1;
-            reflex_signal(&trix_channel, (uint32_t)(0xF)); /* signal with placeholder */
+            reflex_signal(&trix_channel, packed);
         }
     }
 
@@ -3767,40 +3773,38 @@ void app_main(void) {
                                     esp_rom_delay_us(5);
                                     spins++;
                                 }
-                                /* Wait for a CLEAN classification after the re-encode.
-                                 * The ISR validates dots by checking that all 8 neurons
-                                 * per pattern produce identical values. Only clean loops
-                                 * update trix_pred and trix_valid_lc. Shifted/stale loops
-                                 * are silently skipped. We wait until trix_valid_lc
-                                 * advances past the encode point (meaning a clean loop
-                                 * occurred with the new input data). */
-                                int32_t lc_after_enc = loop_count;
-                                while (trix_valid_lc <= lc_after_enc && spins < 20000) {
-                                    esp_rom_delay_us(5);
-                                    spins++;
-                                }
+                                /* Wait for a CLEAN classification via trix_channel.
+                                 * The ISR signals the channel on every clean loop with
+                                 * the 4 group dots packed into the channel value.
+                                 * We snapshot the sequence before the encode, then wait
+                                 * for it to advance (meaning a clean loop occurred with
+                                 * the new input data).
+                                 * Timeout: 100ms = 16,000,000 cycles at 160 MHz. */
+                                uint32_t seq_before = trix_channel.sequence;
+                                uint32_t new_seq = reflex_wait_timeout(
+                                    &trix_channel, seq_before, 16000000);
+                                int got_clean = (new_seq != 0);
+
                                 /* Resolve ISR classification — but ONLY if we got
-                                 * a fresh clean loop. If we timed out (spins >= 8000),
-                                 * trix_scores[] contains stale data from a previous
-                                 * packet and value-matching will be meaningless. */
+                                 * a fresh clean loop. If timed out, no clean data. */
                                 int isr_p = -1;
                                 int cpu_d[4] = {0};
-                                int got_clean = (trix_valid_lc > lc_after_enc);
                                 if (got_clean) {
                                     isr_pkt_clean++;
-                                    /* The ISR published 4 group dot values in trix_scores[0..3].
-                                     * Due to GDMA chain offset, trix_scores[g] may not correspond
-                                     * to pattern g. We match ISR values against CPU-computed dots
-                                     * to find the correct mapping, then take argmax. */
+                                    /* Unpack 4 group dots from channel value.
+                                     * Packed as signed bytes: d0|d1<<8|d2<<16|d3<<24 */
+                                    uint32_t packed = reflex_read(&trix_channel);
+                                    int32_t isr_ts[4];
+                                    for (int g = 0; g < 4; g++)
+                                        isr_ts[g] = (int8_t)((packed >> (g * 8)) & 0xFF);
+
+                                    /* Compute CPU reference dots from sig[] */
                                     for (int p = 0; p < 4; p++) {
                                         for (int j = 0; j < CFC_INPUT_DIM; j++) {
                                             if (sig[p][j] != T_ZERO && cfc.input[j] != T_ZERO)
                                                 cpu_d[p] += tmul(sig[p][j], cfc.input[j]);
                                         }
                                     }
-                                    int32_t isr_ts[4];
-                                    for (int g = 0; g < 4; g++)
-                                        isr_ts[g] = trix_scores[g];
                                     /* Find the ISR argmax group */
                                     int isr_best = -9999;
                                     for (int g = 0; g < 4; g++) {
@@ -3811,9 +3815,7 @@ void app_main(void) {
                                      * the closest dot. sig[] and W_f[] are always in
                                      * sync (both updated atomically at resign), so the
                                      * ISR max should exactly equal the CPU max for the
-                                     * correct pattern. Mismatch only possible if GDMA
-                                     * offset caused a boundary group to mix two
-                                     * patterns' neurons (detected as non-uniform). */
+                                     * correct pattern. */
                                     int best_dist = 9999;
                                     for (int p = 0; p < 4; p++) {
                                         int dist = isr_best - cpu_d[p];
@@ -4036,6 +4038,8 @@ void app_main(void) {
                    isr_correct, sig_total, isr_pct);
             printf("  ISR  (windows w/ data):    %d/%d = %d%% (%d pkts clean, %d pkts timeout)\n",
                    isr_correct, isr_attempted, isr_clean_pct, isr_pkt_clean, isr_pkt_timeout);
+            printf("  TriX channel signals:      %d (seq=%d)\n",
+                   (int)trix_count, (int)trix_channel.sequence);
             printf("  Baseline (packet-rate):    %d/%d = %d%%\n",
                    baseline_correct, sig_total, base_pct);
 
