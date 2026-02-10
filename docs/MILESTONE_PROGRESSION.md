@@ -1,8 +1,8 @@
 # Milestone Progression: The Reflex
 
-27 milestones verified on silicon. From boolean gates to a closed memory feedback loop. Each was verified on an ESP32-C6FH4 (QFN32) rev v0.2.
+35 milestones verified on silicon. From boolean gates to real-world wireless pattern classification at hardware rate. Each verified on an ESP32-C6FH4 (QFN32) rev v0.2.
 
-**Last Updated:** February 9, 2026
+**Last Updated:** February 10, 2026
 
 ---
 
@@ -436,7 +436,60 @@ The feedback loop is closed (commit `dc57d60`). The system now perceives, thinks
 | 6 | Y_pos (static level) | Output (CPU-driven) |
 | 7 | Y_neg (static level) | Output (CPU-driven) |
 
-## Peripheral Allocation (Current — Feedback Loop)
+---
+
+## Milestone 28: TriX Signature Routing
+
+**Tests:** 11/11 | **Commit:** `6b61da3` | **Result:** 78% classification
+
+**What it proved:** Ternary signatures computed from observed ESP-NOW packets can classify which transmission pattern is active. Signatures are the tsign of accumulated input trits across all packets of each pattern. Classification = argmax of dot(sig[p], input). No training, no learned weights.
+
+**Key learning:** The pattern-ID trits (bytes 16-23) provide 8 orthogonal features that guarantee signature separation. But the remaining 120 trits (RSSI, payload, timing) also contribute. Cross-dots between signatures range from 5 to 85 (vs self-dots of 96-120), providing clear separation.
+
+## Milestone 29: Signatures as W_f Weights
+
+**Tests:** 11/11 | **Commit:** `ce0f788` | **Result:** 90% classification
+
+**What it proved:** TriX signatures installed as `W_f` gate weights (8 neurons per pattern) achieve 90% accuracy with per-packet voting. The gate fires when |f_dot| > threshold, and the dot product is maximal for the matching pattern. This is nearest-centroid classification executed by the GIE hardware.
+
+## Milestone 30: Online Maintenance + Novelty Detection
+
+**Tests:** 11/11 | **Commit:** `ef9dc69` | **Result:** 100% input-TriX
+
+**What it proved:** Signatures re-signed every 16 packets per pattern (running average with exponential decay). Novelty gate rejects packets when best dot < 60. Both mechanisms maintain accuracy as the wireless channel drifts. Input-TriX (CPU-side classification from signatures) reaches 100%.
+
+## Milestone 31: 7-Voxel TriX Cube
+
+**Tests:** 11/11 | **Commit:** `d4f7ef0` | **Result:** Core 100%, ensemble 87%
+
+**What it proved:** Core signature + 6 temporal face signatures (recent, prior, stable, transient, confident, uncertain). Each face observes packets from a different temporal perspective. Faces compute XOR masks against core — measuring where temporal displacement changes the signature. Core classification is authoritative; faces are sensors, not voters.
+
+## Milestone 32: XOR Masks as Face Observables
+
+**Tests:** 11/11 | **Commit:** `b117955` | **Result:** Core 100%, XOR mask data
+
+**What it proved:** XOR masks decompose temporal displacement into RSSI (9%), PatID (6%), Payload (48%), Timing (37%) components. The payload and timing regions carry most of the temporal signal. Faces measure how the wireless channel changes over time — an intervention sensor.
+
+## Milestone 33: ISR TriX Classification
+
+**Tests:** 11/11 | **Commit:** `24ba035` → `fd338f5` | **Result:** ISR 100%, Core 100%
+
+**What it proved:** The GIE ISR can classify in hardware at 430 Hz. The DMA race condition (main loop writing neuron_bufs while DMA streams them) was solved by moving input re-encode into ISR step 5b (when PARLIO is stopped). Clean-loop validation (all 8 neurons per group uniform) reliably detects stale/shifted data. Timeout guard prevents stale trix_scores from poisoning votes.
+
+**Errata discovered:**
+- GDMA RST_BIT in ISR kills the free-running loop (ESP32-C6 GDMA doesn't recover from mid-operation manipulation in ISR context)
+- GDMA OUT_LINK restart doesn't actually reset the read pointer
+- Waiting N loops after re-encode doesn't help because the GDMA offset is structural, not temporal
+
+## Milestone 34: TriX Classification Channel
+
+**Tests:** 11/11 | **Commit:** `b79f09b` | **Result:** Core 100%, ISR 90%, channel seq=trix_count
+
+**What it proved:** The ISR packs 4 group dot values as signed bytes into `trix_channel.value` and signals via `reflex_signal()` with proper memory fences. The consumer uses `reflex_wait_timeout()` instead of raw volatile polling. Channel sequence number tracks exactly with trix_count (2108/2108 verified on silicon). This replaces the ad-hoc volatile-polling approach with the proven reflex channel primitive.
+
+---
+
+## Peripheral Allocation (Current — TriX Classification)
 
 | Peripheral | Usage |
 |------------|-------|

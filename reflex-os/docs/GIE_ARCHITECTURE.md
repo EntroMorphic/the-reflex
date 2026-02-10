@@ -1,6 +1,6 @@
 # Geometry Intersection Engine: Architecture
 
-**Last Updated:** February 9, 2026 (VDB→CfC Feedback, Reflex Channel)
+**Last Updated:** February 10, 2026 (TriX Classification Channel, CfC→TriX Migration Phase 2)
 
 ## Overview
 
@@ -77,6 +77,23 @@ The GIE ISR (producer) signals the HP main loop (consumer) via `reflex_channel_t
 - Channel itself: store + fence + increment ≈ ~10 cycles
 
 On the C6, this is SRAM ordering (no cache to snoop). On Thor, it's cache line invalidation. The primitive is the same; the physics underneath changes.
+
+### TriX Classification Path (ISR Step 3b, Verified Feb 10 2026)
+
+The ISR now performs TriX classification alongside the CfC blend. After decoding per-neuron dots (step 3), step 3b validates and publishes classification data:
+
+**ISR Step 3b flow:**
+1. Check all 4 groups of 8 neurons for uniformity (all 8 dots identical within each group)
+2. If all 4 groups are uniform → clean loop. If any group has mixed values → stale/shifted data from GDMA offset, skip.
+3. On clean loop: pack 4 group dot values as signed bytes into `trix_channel.value`, signal via `reflex_signal()`.
+
+**Why groups of 8?** TriX assigns the same signature to all 8 neurons of a pattern. If the GDMA offset hasn't shifted neurons across group boundaries, all 8 produce identical dots. Non-uniform dots indicate the GDMA read pointer crossed a pattern boundary, mixing neurons from different patterns.
+
+**GDMA chain offset:** The free-running GDMA circular chain never stops. When PARLIO restarts after each loop, the GDMA's internal read pointer is at an arbitrary descriptor. This means capture[0] may correspond to neuron K, not neuron 0. The offset permutes which group of 8 maps to which capture indices. The ISR publishes raw group values; the main loop resolves the permutation by matching against CPU-computed reference dots from `sig[]`.
+
+**trix_channel:** `reflex_channel_t` with packed 4×int8 dot values in `.value`. Consumer uses `reflex_wait_timeout()` with 100ms timeout (16M cycles at 160 MHz). Sequence number tracks exactly with `trix_count` (verified on silicon). Effective clean rate: ~62 Hz (2108 clean out of 33807 loops).
+
+**CfC blend (Step 4):** Still runs but `gate_threshold=90` blocks most updates. Being phased out in favor of pure TriX classification. Phase 3 of migration will fully disable it.
 
 ### Layer 3: HP Core (On-Demand)
 

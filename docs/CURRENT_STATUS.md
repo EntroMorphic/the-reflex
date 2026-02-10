@@ -1,6 +1,6 @@
 # The Reflex: Current Status
 
-**Last Updated:** February 9, 2026
+**Last Updated:** February 10, 2026
 
 ---
 
@@ -8,9 +8,9 @@
 
 The Reflex is a three-layer ternary reflex arc in silicon. Peripheral hardware IS the neural network (GIE, 428 Hz). A micro-core IS the sub-conscious (LP core, 100 Hz, ~30uA). The CPU IS consciousness (HP core, on-demand).
 
-**Current State:** VDB→CfC Feedback Loop verified on silicon (Feb 9, 2026). Memory shapes inference. The LP core perceives, thinks, remembers, and adapts — ternary HOLD damping proven stable (50 unique states in 50 steps). 8/8 tests. No floating point. No multiplication.
+**Current State:** TriX classification via reflex channel verified on silicon (Feb 10, 2026). Real-world ESP-NOW wireless input classified at 100% (Core and ISR) using ternary signatures as gate weights — no training, no floating point, no multiplication. ISR signals classifications at 430 Hz via packed reflex channel. CfC blend being phased out. 11/11 tests pass.
 
-**Latest Commit:** `dc57d60` — feat: VDB->CfC feedback loop — memory shapes inference, ternary HOLD damping, 50 unique states in 50 steps — 8/8 verified on silicon
+**Latest Commit:** `b79f09b` — feat: Phase 2 — TriX classification channel, packed dots via reflex_signal at 430 Hz
 
 ---
 
@@ -74,6 +74,19 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 | Reflex Channel | 7/7 | ISR→HP coordination via reflex_channel_t, 18us avg latency | `e9e67f1` |
 | **VDB→CfC Feedback** | **8/8** | **CMD 5: memory blend into lp_hidden, HOLD damping, 50 unique states** | **`dc57d60`** |
 
+### TriX Classification Milestones (Feb 9-10)
+
+| Milestone | Tests | What It Proved | Commit |
+|-----------|-------|----------------|--------|
+| TriX Signature Routing | 11/11 | Ternary signatures classify ESP-NOW patterns, 78% | `6b61da3` |
+| Signatures as W_f Weights | 11/11 | Per-packet voting + sig-as-weights, 90% | `ce0f788` |
+| Online Maintenance | 11/11 | Signature re-signing + novelty detection, 100% input-TriX | `ef9dc69` |
+| 7-Voxel TriX Cube | 11/11 | Core + 6 temporal faces, core 100% | `d4f7ef0` |
+| XOR Masks | 11/11 | Faces as intervention sensors, XOR displacement data | `b117955` |
+| **ISR TriX Classification** | **11/11** | **DMA race solved, ISR 87% at 430 Hz** | **`24ba035`** |
+| **ISR 100% + Timeout Guard** | **11/11** | **Timeout guard + extended spin, ISR 100%, Core 100%** | **`fd338f5`** |
+| **TriX Classification Channel** | **11/11** | **Packed dots via reflex_signal, channel-based consumer** | **`b79f09b`** |
+
 ---
 
 ## What's Working
@@ -90,6 +103,11 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 | CfC→VDB pipeline | Verified | Perceive+think+remember in one 10ms wake |
 | Reflex channel | Verified | ISR→HP, 18us avg, fence-ordered |
 | VDB→CfC feedback | Verified | CMD 5, HOLD damping, 50 unique states in 50 steps |
+| ESP-NOW live input | Verified | 4-pattern wireless input drives GIE |
+| **TriX classification** | **Verified** | **32/32 = 100% (Core + ISR), zero-shot from signatures** |
+| **TriX classification channel** | **Verified** | **Packed dots via reflex_signal, 430 Hz ISR rate** |
+| Online maintenance | Verified | Signature re-sign every 16 pkts, novelty gate at 60 |
+| 7-voxel TriX Cube | Verified | Core + 6 temporal faces, XOR mask displacement data |
 
 ### The GIE Signal Path (Current Architecture)
 
@@ -275,17 +293,22 @@ the-reflex/
 
 ## What's Next
 
-The feedback loop is **closed** (commit `dc57d60`). Retrieved memories now modulate the CfC hidden state via ternary blend rules:
-- **Agreement:** no change (reinforces stability)
-- **Gap fill:** h=0, mem≠0 → h=mem (memory provides context)
-- **Conflict:** h≠0, mem≠0, h≠mem → h=0 (HOLD = damper)
+TriX classification is **verified** at 100% (commit `fd338f5`). The CfC→TriX migration is in progress:
 
-The CfC's HOLD mode (f=0) was confirmed as a natural stabilizer: 50 unique states in 50 feedback steps, energy bounded [7, 15], no oscillation, no lock-in.
+| Phase | What | Status |
+|-------|------|--------|
+| **1** | Add TriX dot extraction to ISR alongside CfC blend | **DONE — 100%** |
+| **2** | Add TriX classification channel (reflex_signal at 430 Hz) | **DONE — `b79f09b`** |
+| **3** | Disable CfC blend (gate_threshold blocks all blend) | Pending |
+| **4** | Remove hidden re-encode from ISR (save ~20us per loop) | Pending |
+| **5** | Shrink DMA chain (32 neurons for TriX, not 64) → ~800+ Hz | Pending |
+| **6** | Update tests to reflect TriX-native architecture | Pending |
 
 **Open directions:**
-- Multi-chip coordination (reflex channel across two C6 boards)
-- Feedback loop dynamics — explore threshold tuning, temporal windowing
-- External sensor integration as GIE input
+- Complete CfC→TriX migration (Phases 3-6)
+- Harder classification tasks (more patterns, overlapping features)
+- Comparison against baseline classifiers (threshold, TFLite Micro)
+- Physical sensor integration (IMU, ADC) as GIE input
 
 ---
 

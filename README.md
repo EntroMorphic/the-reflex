@@ -20,11 +20,11 @@
 | **Jetson Thor** | P99 Latency | **926 ns** (255x improvement over baseline) |
 | **Jetson Thor** | Control Rate | **10 kHz** sustained |
 | **ESP32-C6** | GIE Free-Running | **428 Hz**, 64 neurons, ~0 CPU (peripheral hardware IS the neural network) |
+| **ESP32-C6** | **TriX Classification** | **32/32 = 100%** — ESP-NOW wireless input classified by hardware, zero training |
+| **ESP32-C6** | TriX ISR Channel | **430 Hz** loop rate, packed dots via `reflex_signal()`, 62 Hz effective clean rate |
 | **ESP32-C6** | LP Core CfC | **100 Hz**, 16 neurons, ~30uA (hand-written RISC-V assembly) |
 | **ESP32-C6** | Ternary VDB | **64 nodes**, NSW graph, recall@1=95%, recall@4=90% |
-| **ESP32-C6** | CfC→VDB Pipeline | **Perceive+think+remember** in one 10ms LP wake cycle |
-| **ESP32-C6** | VDB→CfC Feedback | **CMD 5: memory shapes inference**, HOLD damping, 50 unique states — 8/8 verified |
-| **ESP32-C6** | Verified Milestones | **27 milestones**, all verified exact on silicon |
+| **ESP32-C6** | Verified Milestones | **35 milestones**, all verified exact on silicon, 11/11 tests pass |
 | **ESP32-C6** | Signal Path | GDMA → PARLIO(2-bit, 10MHz) → GPIO loopback → PCNT(agree/disagree) |
 
 ## What is The Reflex?
@@ -255,7 +255,7 @@ No floating point. No multiplication. Verified exact on silicon.
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-### 27 Milestones Verified on Silicon
+### 35 Milestones Verified on Silicon
 
 Each verified on ESP32-C6FH4 (QFN32) rev v0.2. See [`docs/MILESTONE_PROGRESSION.md`](docs/MILESTONE_PROGRESSION.md) for the full narrative.
 
@@ -297,6 +297,14 @@ Each verified on ESP32-C6FH4 (QFN32) rev v0.2. See [`docs/MILESTONE_PROGRESSION.
 | **VDB M5: Pipeline** | **4/4** | **Perceive+think+remember in one LP wake** |
 | Reflex Channel | 7/7 | ISR→HP coordination, 18us avg latency |
 | **VDB→CfC Feedback** | **8/8** | **Memory shapes inference, HOLD damping stable** |
+
+**TriX Classification (ESP-NOW → hardware pattern recognition):**
+
+| Milestone | Tests | What It Proved |
+|-----------|-------|----------------|
+| TriX Signatures | 11/11 | Zero-shot classification from observed signatures, 78%→100% |
+| ISR TriX | 11/11 | DMA race solved, ISR classifies at 430 Hz, 87%→100% |
+| **TriX Channel** | **11/11** | **Packed dots via reflex_signal, channel-based consumer** |
 
 ### The CfC: Three Blend Modes
 
