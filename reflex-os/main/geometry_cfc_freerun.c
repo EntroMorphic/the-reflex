@@ -3710,7 +3710,10 @@ void app_main(void) {
             fflush(stdout);
 
             int core_correct = 0, sig_total = 0;
-            int isr_correct = 0;  /* ISR-level TriX classification */
+            int isr_correct = 0;  /* ISR-level TriX classification (window-level) */
+            int isr_attempted = 0; /* windows where ISR had at least one clean vote */
+            int isr_pkt_clean = 0; /* packets where ISR clean-loop was obtained */
+            int isr_pkt_timeout = 0; /* packets where ISR clean-loop wait timed out */
             int baseline_correct = 0;
             int total_novel = 0, total_classified = 0;
             int total_resigns = 0;
@@ -3772,94 +3775,58 @@ void app_main(void) {
                                  * advances past the encode point (meaning a clean loop
                                  * occurred with the new input data). */
                                 int32_t lc_after_enc = loop_count;
-                                while (trix_valid_lc <= lc_after_enc && spins < 8000) {
+                                while (trix_valid_lc <= lc_after_enc && spins < 20000) {
                                     esp_rom_delay_us(5);
                                     spins++;
                                 }
-                                /* Resolve ISR classification.
-                                 * The ISR published 4 group dot values in trix_scores[0..3].
-                                 * Due to GDMA chain offset, trix_scores[g] may not correspond
-                                 * to pattern g. We match ISR values against CPU-computed dots
-                                 * to find the correct mapping, then take argmax. */
-                                int cpu_d[4];
-                                {
+                                /* Resolve ISR classification — but ONLY if we got
+                                 * a fresh clean loop. If we timed out (spins >= 8000),
+                                 * trix_scores[] contains stale data from a previous
+                                 * packet and value-matching will be meaningless. */
+                                int isr_p = -1;
+                                int cpu_d[4] = {0};
+                                int got_clean = (trix_valid_lc > lc_after_enc);
+                                if (got_clean) {
+                                    isr_pkt_clean++;
+                                    /* The ISR published 4 group dot values in trix_scores[0..3].
+                                     * Due to GDMA chain offset, trix_scores[g] may not correspond
+                                     * to pattern g. We match ISR values against CPU-computed dots
+                                     * to find the correct mapping, then take argmax. */
                                     for (int p = 0; p < 4; p++) {
-                                        cpu_d[p] = 0;
                                         for (int j = 0; j < CFC_INPUT_DIM; j++) {
                                             if (sig[p][j] != T_ZERO && cfc.input[j] != T_ZERO)
                                                 cpu_d[p] += tmul(sig[p][j], cfc.input[j]);
                                         }
                                     }
-                                }
-                                /* Find the ISR group whose value matches each CPU pattern.
-                                 * Then take the argmax of the matched pattern dots. */
-                                int isr_p = -1;
-                                {
                                     int32_t isr_ts[4];
                                     for (int g = 0; g < 4; g++)
                                         isr_ts[g] = trix_scores[g];
-                                    /* Find argmax of cpu_d — that's the correct pattern */
-                                    int cpu_best = -9999, cpu_pred = 0;
-                                    for (int p = 0; p < 4; p++) {
-                                        if (cpu_d[p] > cpu_best) {
-                                            cpu_best = cpu_d[p];
-                                            cpu_pred = p;
-                                        }
-                                    }
-                                    /* Find the ISR group with value closest to cpu_best.
-                                     * If it matches, the ISR agrees with the CPU. */
-                                    int isr_best = -9999, isr_best_g = 0;
+                                    /* Find the ISR argmax group */
+                                    int isr_best = -9999;
                                     for (int g = 0; g < 4; g++) {
-                                        if (isr_ts[g] > isr_best) {
+                                        if (isr_ts[g] > isr_best)
                                             isr_best = isr_ts[g];
-                                            isr_best_g = g;
-                                        }
                                     }
-                                    /* The ISR's argmax group has value isr_best.
-                                     * Match this value to the CPU pattern whose dot
-                                     * is closest. Since dots are computed identically
-                                     * (same sig, same input), the max ISR value should
-                                     * equal the max CPU value (or be very close if
-                                     * W_f drift exists). */
-                                    int best_match = -1, best_dist = 9999;
+                                    /* Match ISR's max value to the CPU pattern with
+                                     * the closest dot. sig[] and W_f[] are always in
+                                     * sync (both updated atomically at resign), so the
+                                     * ISR max should exactly equal the CPU max for the
+                                     * correct pattern. Mismatch only possible if GDMA
+                                     * offset caused a boundary group to mix two
+                                     * patterns' neurons (detected as non-uniform). */
+                                    int best_dist = 9999;
                                     for (int p = 0; p < 4; p++) {
                                         int dist = isr_best - cpu_d[p];
                                         if (dist < 0) dist = -dist;
                                         if (dist < best_dist) {
                                             best_dist = dist;
-                                            best_match = p;
+                                            isr_p = p;
                                         }
                                     }
-                                    isr_p = best_match;
-                                }
-                                if (isr_p >= 0 && isr_p < 4)
-                                    isr_votes[isr_p]++;
-                                /* Diagnostic: first 2 windows, compare ISR vs CPU dots */
-                                if (sig_total < 2 && test_packets < 4) {
-                                    /* cpu_d[] already computed above for pattern resolution */
-                                    /* Snapshot ISR's published loop_dots for f-pathway neurons */
-                                    int32_t ld[32];
-                                    memcpy(ld, (const void*)loop_dots, 32 * sizeof(int32_t));
-                                    printf("      [diag] pkt%d: isr=%d isr_ts=[%d,%d,%d,%d]"
-                                           " cpu=[%d,%d,%d,%d] spins=%d lc=%d\n",
-                                           test_packets, isr_p,
-                                           (int)trix_scores[0], (int)trix_scores[1],
-                                           (int)trix_scores[2], (int)trix_scores[3],
-                                           cpu_d[0], cpu_d[1], cpu_d[2], cpu_d[3],
-                                           spins, (int)(trix_valid_lc - lc_after_enc));
-                                    printf("        ld[0-7]=%d,%d,%d,%d,%d,%d,%d,%d"
-                                           " [8-15]=%d,%d,%d,%d,%d,%d,%d,%d\n",
-                                           (int)ld[0],(int)ld[1],(int)ld[2],(int)ld[3],
-                                           (int)ld[4],(int)ld[5],(int)ld[6],(int)ld[7],
-                                           (int)ld[8],(int)ld[9],(int)ld[10],(int)ld[11],
-                                           (int)ld[12],(int)ld[13],(int)ld[14],(int)ld[15]);
-                                    printf("        ld[16-23]=%d,%d,%d,%d,%d,%d,%d,%d"
-                                           " [24-31]=%d,%d,%d,%d,%d,%d,%d,%d\n",
-                                           (int)ld[16],(int)ld[17],(int)ld[18],(int)ld[19],
-                                           (int)ld[20],(int)ld[21],(int)ld[22],(int)ld[23],
-                                           (int)ld[24],(int)ld[25],(int)ld[26],(int)ld[27],
-                                           (int)ld[28],(int)ld[29],(int)ld[30],(int)ld[31]);
-                                    fflush(stdout);
+                                    if (isr_p >= 0 && isr_p < 4)
+                                        isr_votes[isr_p]++;
+                                } else {
+                                    isr_pkt_timeout++;
                                 }
                             }
 
@@ -4002,7 +3969,10 @@ void app_main(void) {
                 for (int p = 1; p < 4; p++)
                     if (isr_votes[p] > isr_votes[isr_pred]) isr_pred = p;
                 int isr_total_votes = isr_votes[0] + isr_votes[1] + isr_votes[2] + isr_votes[3];
-                if (isr_total_votes > 0 && isr_pred == truth) isr_correct++;
+                if (isr_total_votes > 0) {
+                    isr_attempted++;  /* window had at least one clean ISR vote */
+                    if (isr_pred == truth) isr_correct++;
+                }
 
                 /* Baseline */
                 int baseline_pred = -1;
@@ -4050,6 +4020,7 @@ void app_main(void) {
 
             int core_pct = (sig_total > 0) ? (core_correct * 100 / sig_total) : 0;
             int isr_pct = (sig_total > 0) ? (isr_correct * 100 / sig_total) : 0;
+            int isr_clean_pct = (isr_attempted > 0) ? (isr_correct * 100 / isr_attempted) : 0;
             int base_pct = (sig_total > 0) ? (baseline_correct * 100 / sig_total) : 0;
 
             printf("\n  ═══ CLASSIFICATION RESULTS (TriX Cube) ═══\n");
@@ -4061,8 +4032,10 @@ void app_main(void) {
             printf("  Ring drops: %d\n", (int)espnow_ring_drops());
             printf("  Core (CPU per-pkt vote):   %d/%d = %d%%\n",
                    core_correct, sig_total, core_pct);
-            printf("  ISR  (HW 430 Hz TriX):     %d/%d = %d%%\n",
+            printf("  ISR  (HW 430 Hz TriX):     %d/%d = %d%% (all samples)\n",
                    isr_correct, sig_total, isr_pct);
+            printf("  ISR  (windows w/ data):    %d/%d = %d%% (%d pkts clean, %d pkts timeout)\n",
+                   isr_correct, isr_attempted, isr_clean_pct, isr_pkt_clean, isr_pkt_timeout);
             printf("  Baseline (packet-rate):    %d/%d = %d%%\n",
                    baseline_correct, sig_total, base_pct);
 
