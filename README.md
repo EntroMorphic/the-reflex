@@ -24,7 +24,7 @@
 | **ESP32-C6** | TriX ISR Channel | **430 Hz** loop rate, packed dots via `reflex_signal()`, 62 Hz effective clean rate |
 | **ESP32-C6** | LP Core CfC | **100 Hz**, 16 neurons, ~30uA (hand-written RISC-V assembly) |
 | **ESP32-C6** | Ternary VDB | **64 nodes**, NSW graph, recall@1=95%, recall@4=90% |
-| **ESP32-C6** | CfC Blend Disabled | **Phase 3** — TriX-only classification, 0% gate firing, CfC blend fully off |
+| **ESP32-C6** | CfC Stripped (Phases 3-4) | Blend disabled + re-encode skipped — TriX-only, 0% gate firing, ~20us saved/loop |
 | **ESP32-C6** | Verified Milestones | **37 milestones**, all verified exact on silicon, 11/11 tests pass |
 | **ESP32-C6** | Signal Path | GDMA → PARLIO(2-bit, 10MHz) → GPIO loopback → PCNT(agree/disagree) |
 
@@ -67,7 +67,7 @@ the-reflex/
 │
 ├── docs/                         # Current project documentation
 │   ├── CURRENT_STATUS.md         # Up-to-date project status
-│   ├── MILESTONE_PROGRESSION.md  # All 27 milestones documented
+│   ├── MILESTONE_PROGRESSION.md  # All 37 milestones documented
 │   ├── FALSIFICATION_COMPLETE.md # Adversarial test results
 │   ├── HARDWARE_INVENTORY.md     # Physical hardware list
 │   └── archive/                  # Historical docs (nothing deleted)
@@ -252,7 +252,7 @@ No floating point. No multiplication. Verified exact on silicon.
 ├──────────────────────────────────────────────────────────────────┤
 │  Operations: AND, popcount, add, sub, negate, branch, shift      │
 │  Absent: MUL, DIV, FP, gradients, backpropagation                │
-│  Verification: Exact, dot-for-dot, on silicon (27 milestones)    │
+│  Verification: Exact, dot-for-dot, on silicon (37 milestones)    │
 └──────────────────────────────────────────────────────────────────┘
 ```
 

@@ -493,7 +493,7 @@ The feedback loop is closed (commit `dc57d60`). The system now perceives, thinks
 
 **What it proved:** The CfC blend can be fully disabled without affecting TriX classification. Setting `gate_threshold = INT32_MAX` means no neuron's f_dot ever exceeds threshold, so every neuron takes the HOLD path (`h_new[n] = h_old[n]`). Hidden state freezes after input install. Classification is TriX-only.
 
-**The change:** One line — `gate_threshold = 0x7FFFFFFF` (was `90`). The blend code (step 4 in the ISR) still executes but produces no state changes: `fires = 0` every loop. Step 5 (hidden re-encode) still runs but is now wasted work since hidden never changes. Phase 4 will remove it.
+**The change:** One line — `gate_threshold = 0x7FFFFFFF` (was `90`). The blend code (step 4 in the ISR) still executes but produces no state changes: `fires = 0` every loop. Step 5 (hidden re-encode) still runs but is now wasted work since hidden never changes. Phase 4 (commit `8a33369`) skips it via `if (thresh < 0x7FFFFFFF)`.
 
 **What this confirms:**
 - The CfC blend contributed nothing to classification accuracy. TriX signatures alone are sufficient.
