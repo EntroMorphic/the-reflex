@@ -3227,6 +3227,32 @@ void app_main(void) {
         #define NUM_TEMPLATES      4
         #define MAX_TEST_SAMPLES   32     /* Test samples to collect */
 
+        /* ── TriX Cube: 7-voxel geometry (core + 6 faces) ──
+         * Each voxel holds 4 pattern signatures in input space (128 trits).
+         * The core observes raw input. Each face observes input under a
+         * different temporal filter condition. Ensemble vote for classification. */
+        #define TVOX_K         4     /* patterns per voxel */
+        #define TVOX_FACES     6
+        #define TVOX_TOTAL     7     /* [0]=core, [1..6]=faces */
+
+        /* Face filter IDs */
+        #define FACE_RECENT    1     /* +x: input from last 1s */
+        #define FACE_PRIOR     2     /* -x: input from 1-3s ago */
+        #define FACE_STABLE    3     /* +y: input during long dwell (>2s same pattern) */
+        #define FACE_TRANSIENT 4     /* -y: input within 500ms of pattern change */
+        #define FACE_CONFIDENT 5     /* +z: input when core score > 100 */
+        #define FACE_UNCERTAIN 6     /* -z: input when core score < 80 */
+
+        typedef struct {
+            int8_t  sig[TVOX_K][CFC_INPUT_DIM];
+            int16_t sig_sum[TVOX_K][CFC_INPUT_DIM];
+            int     sig_count[TVOX_K];
+            int     total_samples;
+        } trix_voxel_t;
+
+        static trix_voxel_t cube[TVOX_TOTAL];
+        /* Memory: 7 × (4×128 + 4×256 + 4×4 + 4) = 7 × 1556 = 10,892 bytes */
+
         /* Drain buffer — big enough for one drain cycle at max rate (static for stack) */
         static espnow_rx_entry_t drain_buf[32];
 
@@ -3378,78 +3404,151 @@ void app_main(void) {
         }
         fflush(stdout);
 
-        /* ── Phase 0d: Observe hidden-state signatures (15s) ──
-         * With TriX W_f installed, the CfC should now have selective gates.
-         * Observe the hidden state per pattern to build hidden-state signatures. */
-        printf("\n  Phase 0d: Observing hidden-state signatures (15s)...\n");
-        fflush(stdout);
-
-        static int8_t  hsig[NUM_TEMPLATES][CFC_HIDDEN_DIM];
-        static int16_t hsig_sum[NUM_TEMPLATES][CFC_HIDDEN_DIM];
-        int hsig_count[NUM_TEMPLATES];
-        memset(hsig_sum, 0, sizeof(hsig_sum));
-        memset(hsig_count, 0, sizeof(hsig_count));
-
-        int h_obs_pkts = 0;
-        int h_obs_cur_pattern = -1;
-        int64_t h_obs_start = esp_timer_get_time();
-
-        while ((esp_timer_get_time() - h_obs_start) < 15000000LL) {  /* 15s */
-            vTaskDelay(pdMS_TO_TICKS(T11_DRAIN_MS));
-            int n = espnow_drain(drain_buf, 32);
-            for (int i = 0; i < n; i++) {
-                h_obs_pkts++;
-                if (drain_buf[i].pkt.pattern_id < 4)
-                    h_obs_cur_pattern = drain_buf[i].pkt.pattern_id;
-                if (espnow_encode_rx_entry(&drain_buf[i], NULL)) {
-                    update_gie_input();
-                    /* Accumulate hidden state per pattern */
-                    if (h_obs_cur_pattern >= 0 && h_obs_cur_pattern < 4) {
-                        for (int j = 0; j < CFC_HIDDEN_DIM; j++)
-                            hsig_sum[h_obs_cur_pattern][j] += cfc.hidden[j];
-                        hsig_count[h_obs_cur_pattern]++;
-                    }
-                }
-            }
-        }
-
-        /* Compute hidden-state signatures */
-        for (int p = 0; p < NUM_TEMPLATES; p++) {
-            int nz = 0;
-            for (int i = 0; i < CFC_HIDDEN_DIM; i++) {
-                hsig[p][i] = tsign(hsig_sum[p][i]);
-                if (hsig[p][i] != T_ZERO) nz++;
-            }
-            printf("  hsig[%d]: [", p);
-            for (int i = 0; i < CFC_HIDDEN_DIM; i++)
-                printf("%c", trit_char(hsig[p][i]));
-            printf("] nz=%d (from %d samples)\n", nz, hsig_count[p]);
-        }
-
-        /* Hidden-state cross-dots */
-        printf("  Hidden-sig cross-dots:\n");
-        for (int i = 0; i < NUM_TEMPLATES; i++) {
-            printf("    hsig[%d] vs: ", i);
-            for (int j = 0; j < NUM_TEMPLATES; j++) {
-                int d = 0;
-                for (int k = 0; k < CFC_HIDDEN_DIM; k++) {
-                    if (hsig[i][k] != T_ZERO && hsig[j][k] != T_ZERO)
-                        d += tmul(hsig[i][k], hsig[j][k]);
-                }
-                printf("s%d=%d ", j, d);
-            }
-            printf("\n");
-        }
-
         /* Gate selectivity diagnostic */
         int avg_fire_pct = (gate_steps_total > 0)
             ? (int)(gate_fires_total * 100LL / gate_steps_total) : 0;
         printf("  Gate selectivity: %d fires / %d steps = %d%%\n",
                (int)gate_fires_total, (int)gate_steps_total, avg_fire_pct);
-        printf("  (target: ~25%% = 8/32 neurons per step)\n");
         fflush(stdout);
 
-        /* Save original signatures for drift measurement */
+        /* ── Phase 0d: TriX Cube observation (15s) ──
+         * Initialize 7-voxel cube. Core (cube[0]) uses the already-computed
+         * signatures. 6 face voxels observe the input under temporal filters.
+         * All voxels share the 128-trit input space. */
+        printf("\n  Phase 0d: TriX Cube face observation (15s)...\n");
+        fflush(stdout);
+
+        /* Initialize cube — core copies from main signatures */
+        memset(cube, 0, sizeof(cube));
+        memcpy(cube[0].sig, sig, sizeof(sig));
+        /* Core sig_sum/sig_count already tracked in the main arrays */
+
+        /* Face observation state */
+        int face_obs_cur_pattern = -1;
+        int face_obs_prev_pattern = -1;
+        int64_t face_pattern_start_us = 0;    /* when current pattern started */
+        int64_t face_last_change_us = 0;      /* when last pattern change happened */
+        int face_obs_pkts = 0;
+        int64_t face_obs_start = esp_timer_get_time();
+
+        while ((esp_timer_get_time() - face_obs_start) < 15000000LL) {  /* 15s */
+            vTaskDelay(pdMS_TO_TICKS(T11_DRAIN_MS));
+            int n = espnow_drain(drain_buf, 32);
+            for (int i = 0; i < n; i++) {
+                face_obs_pkts++;
+                if (drain_buf[i].pkt.pattern_id < 4) {
+                    if (face_obs_cur_pattern != (int)drain_buf[i].pkt.pattern_id) {
+                        face_obs_prev_pattern = face_obs_cur_pattern;
+                        face_obs_cur_pattern = drain_buf[i].pkt.pattern_id;
+                        face_last_change_us = esp_timer_get_time();
+                        face_pattern_start_us = face_last_change_us;
+                    }
+                }
+
+                if (!espnow_encode_rx_entry(&drain_buf[i], NULL)) continue;
+                update_gie_input();
+                if (face_obs_cur_pattern < 0 || face_obs_cur_pattern >= 4) continue;
+
+                int p = face_obs_cur_pattern;
+                int64_t now_us = esp_timer_get_time();
+                int64_t dwell_us = now_us - face_pattern_start_us;
+                int64_t since_change_us = now_us - face_last_change_us;
+
+                /* Core dot for confidence filtering */
+                int core_score = 0;
+                for (int j = 0; j < CFC_INPUT_DIM; j++) {
+                    if (sig[p][j] != T_ZERO && cfc.input[j] != T_ZERO)
+                        core_score += tmul(sig[p][j], cfc.input[j]);
+                }
+
+                /* Face 1 (+x): Recent — all packets in this phase */
+                for (int j = 0; j < CFC_INPUT_DIM; j++)
+                    cube[FACE_RECENT].sig_sum[p][j] += cfc.input[j];
+                cube[FACE_RECENT].sig_count[p]++;
+                cube[FACE_RECENT].total_samples++;
+
+                /* Face 2 (-x): Prior — packets where prev pattern is known
+                 * (accumulates under the PREVIOUS pattern's label) */
+                if (face_obs_prev_pattern >= 0 && face_obs_prev_pattern < 4) {
+                    for (int j = 0; j < CFC_INPUT_DIM; j++)
+                        cube[FACE_PRIOR].sig_sum[face_obs_prev_pattern][j] += cfc.input[j];
+                    cube[FACE_PRIOR].sig_count[face_obs_prev_pattern]++;
+                    cube[FACE_PRIOR].total_samples++;
+                }
+
+                /* Face 3 (+y): Stable — dwell > 2s */
+                if (dwell_us > 2000000LL) {
+                    for (int j = 0; j < CFC_INPUT_DIM; j++)
+                        cube[FACE_STABLE].sig_sum[p][j] += cfc.input[j];
+                    cube[FACE_STABLE].sig_count[p]++;
+                    cube[FACE_STABLE].total_samples++;
+                }
+
+                /* Face 4 (-y): Transient — within 500ms of pattern change */
+                if (since_change_us < 500000LL) {
+                    for (int j = 0; j < CFC_INPUT_DIM; j++)
+                        cube[FACE_TRANSIENT].sig_sum[p][j] += cfc.input[j];
+                    cube[FACE_TRANSIENT].sig_count[p]++;
+                    cube[FACE_TRANSIENT].total_samples++;
+                }
+
+                /* Face 5 (+z): Confident — core match > 100 */
+                if (core_score > 100) {
+                    for (int j = 0; j < CFC_INPUT_DIM; j++)
+                        cube[FACE_CONFIDENT].sig_sum[p][j] += cfc.input[j];
+                    cube[FACE_CONFIDENT].sig_count[p]++;
+                    cube[FACE_CONFIDENT].total_samples++;
+                }
+
+                /* Face 6 (-z): Uncertain — core match < 80 */
+                if (core_score < 80) {
+                    for (int j = 0; j < CFC_INPUT_DIM; j++)
+                        cube[FACE_UNCERTAIN].sig_sum[p][j] += cfc.input[j];
+                    cube[FACE_UNCERTAIN].sig_count[p]++;
+                    cube[FACE_UNCERTAIN].total_samples++;
+                }
+            }
+        }
+
+        /* Compute face signatures */
+        const char *face_names[] = {"core", "+x:recent", "-x:prior",
+                                    "+y:stable", "-y:transient",
+                                    "+z:confident", "-z:uncertain"};
+        printf("  TriX Cube face signatures:\n");
+        for (int v = 1; v < TVOX_TOTAL; v++) {
+            for (int p = 0; p < TVOX_K; p++) {
+                int nz = 0;
+                for (int j = 0; j < CFC_INPUT_DIM; j++) {
+                    cube[v].sig[p][j] = tsign(cube[v].sig_sum[p][j]);
+                    if (cube[v].sig[p][j] != T_ZERO) nz++;
+                }
+            }
+            /* Print summary: total samples and per-pattern counts */
+            printf("    %s: %d samples [P0=%d P1=%d P2=%d P3=%d]\n",
+                   face_names[v], cube[v].total_samples,
+                   cube[v].sig_count[0], cube[v].sig_count[1],
+                   cube[v].sig_count[2], cube[v].sig_count[3]);
+        }
+
+        /* Face divergence from core: Hamming(face_sig[p], core_sig[p]) */
+        printf("  Face divergence from core (avg Hamming across patterns):\n");
+        for (int v = 1; v < TVOX_TOTAL; v++) {
+            int total_hamm = 0, counted = 0;
+            for (int p = 0; p < TVOX_K; p++) {
+                if (cube[v].sig_count[p] > 0) {
+                    total_hamm += trit_hamming(cube[0].sig[p],
+                                              cube[v].sig[p], CFC_INPUT_DIM);
+                    counted++;
+                }
+            }
+            printf("    %s: %d avg (%d patterns with data)\n",
+                   face_names[v],
+                   counted > 0 ? total_hamm / counted : 0, counted);
+        }
+        printf("  Ring drops: %d\n", (int)espnow_ring_drops());
+        fflush(stdout);
+
+        /* Save original core signatures for drift measurement */
         static int8_t sig_orig[NUM_TEMPLATES][CFC_INPUT_DIM];
         memcpy(sig_orig, sig, sizeof(sig));
 
@@ -3457,32 +3556,29 @@ void app_main(void) {
         #define NOVELTY_THRESHOLD 60   /* min best-dot to accept classification */
 
         {
-            /* ── Phase 1: Classification + Online Maintenance + Novelty (60s) ──
-             * Per-packet TriX voting with:
-             *   - Novelty detection: if best dot < NOVELTY_THRESHOLD, skip vote
-             *   - Online signature maintenance: accumulate + periodic re-sign
-             *   - Hidden-state TriX comparison */
-            printf("\n  Phase 1: TriX online + novelty (up to %d samples, 60s)...\n",
+            /* ── Phase 1: TriX Cube ensemble classification (60s) ──
+             * Core + 6 faces each vote per-packet. Ensemble = majority.
+             * Online maintenance on core. Novelty detection on core. */
+            printf("\n  Phase 1: TriX Cube ensemble (up to %d samples, 60s)...\n",
                    MAX_TEST_SAMPLES);
-            printf("  Novelty threshold: %d, Resign interval: %d pkts\n",
-                   NOVELTY_THRESHOLD, RESIGN_INTERVAL);
             fflush(stdout);
 
-            int sig_correct = 0, sig_total = 0;
-            int hsig_correct = 0;
+            int core_correct = 0, ens_correct = 0, sig_total = 0;
             int baseline_correct = 0;
             int total_novel = 0, total_classified = 0;
             int total_resigns = 0;
             int novel_windows = 0;
+            int face_contributed = 0;  /* times faces changed the outcome */
             int64_t test_start = esp_timer_get_time();
             int64_t test_timeout_us = 60LL * 1000000LL;
 
             while (sig_total < MAX_TEST_SAMPLES &&
                    (esp_timer_get_time() - test_start) < test_timeout_us) {
 
-                /* Collect one window */
-                int test_votes[4] = {0};     /* ground truth: pattern IDs from packets */
-                int trix_votes[4] = {0};     /* per-packet TriX classification votes */
+                /* Per-window accumulators */
+                int test_votes[4] = {0};
+                int core_votes[4] = {0};
+                int ens_votes_accum[4] = {0};  /* sum of all voxel votes */
                 int test_packets = 0;
                 int novel_in_window = 0;
                 int64_t gap_sum_ms = 0;
@@ -3498,44 +3594,85 @@ void app_main(void) {
                         if (espnow_encode_rx_entry(&drain_buf[i], &pkt_gap_ms)) {
                             update_gie_input();
 
-                            /* Per-packet TriX classification */
-                            int pkt_best = -9999, pkt_pred = 0;
-                            for (int p = 0; p < NUM_TEMPLATES; p++) {
+                            /* Core classification */
+                            int core_best = -9999, core_pred = 0;
+                            for (int p = 0; p < TVOX_K; p++) {
                                 int d = 0;
                                 for (int j = 0; j < CFC_INPUT_DIM; j++) {
                                     if (sig[p][j] != T_ZERO && cfc.input[j] != T_ZERO)
                                         d += tmul(sig[p][j], cfc.input[j]);
                                 }
-                                if (d > pkt_best) {
-                                    pkt_best = d;
-                                    pkt_pred = p;
-                                }
+                                if (d > core_best) { core_best = d; core_pred = p; }
                             }
 
-                            /* Novelty detection */
-                            if (pkt_best < NOVELTY_THRESHOLD) {
+                            /* Novelty gate on core */
+                            if (core_best < NOVELTY_THRESHOLD) {
                                 novel_in_window++;
                                 total_novel++;
-                            } else {
-                                trix_votes[pkt_pred]++;
-                                total_classified++;
+                                goto next_pkt;
+                            }
 
-                                /* Online signature maintenance:
-                                 * accumulate into winning pattern's sum */
-                                for (int j = 0; j < CFC_INPUT_DIM; j++)
-                                    sig_sum[pkt_pred][j] += cfc.input[j];
-                                sig_count[pkt_pred]++;
+                            core_votes[core_pred]++;
+                            total_classified++;
 
-                                /* Periodic re-sign with decay */
-                                if (sig_count[pkt_pred] % RESIGN_INTERVAL == 0) {
+                            /* Online core signature maintenance */
+                            for (int j = 0; j < CFC_INPUT_DIM; j++)
+                                sig_sum[core_pred][j] += cfc.input[j];
+                            sig_count[core_pred]++;
+                            if (sig_count[core_pred] % RESIGN_INTERVAL == 0) {
+                                for (int j = 0; j < CFC_INPUT_DIM; j++) {
+                                    sig[core_pred][j] = tsign(sig_sum[core_pred][j]);
+                                    sig_sum[core_pred][j] /= 2;
+                                }
+                                /* Update cube[0] to match */
+                                memcpy(cube[0].sig, sig, sizeof(sig));
+                                total_resigns++;
+                            }
+
+                            /* Ensemble: all 7 voxels vote */
+                            int pkt_ens[4] = {0};
+                            for (int v = 0; v < TVOX_TOTAL; v++) {
+                                int v_best = -9999, v_pred = 0;
+                                int8_t (*v_sig)[CFC_INPUT_DIM] =
+                                    (v == 0) ? sig : cube[v].sig;
+                                for (int p = 0; p < TVOX_K; p++) {
+                                    int d = 0;
                                     for (int j = 0; j < CFC_INPUT_DIM; j++) {
-                                        sig[pkt_pred][j] = tsign(sig_sum[pkt_pred][j]);
-                                        sig_sum[pkt_pred][j] /= 2;  /* decay */
+                                        if (v_sig[p][j] != T_ZERO &&
+                                            cfc.input[j] != T_ZERO)
+                                            d += tmul(v_sig[p][j], cfc.input[j]);
                                     }
-                                    total_resigns++;
+                                    if (d > v_best) { v_best = d; v_pred = p; }
+                                }
+                                /* Only count voxels with data */
+                                if (v == 0 || cube[v].total_samples > 0)
+                                    pkt_ens[v_pred]++;
+                            }
+                            /* Find ensemble winner for this packet */
+                            int ens_pred = 0;
+                            for (int p = 1; p < TVOX_K; p++)
+                                if (pkt_ens[p] > pkt_ens[ens_pred]) ens_pred = p;
+                            ens_votes_accum[ens_pred]++;
+
+                            /* Online face signature maintenance */
+                            for (int v = 1; v < TVOX_TOTAL; v++) {
+                                if (cube[v].total_samples > 0) {
+                                    for (int j = 0; j < CFC_INPUT_DIM; j++)
+                                        cube[v].sig_sum[core_pred][j] += cfc.input[j];
+                                    cube[v].sig_count[core_pred]++;
+                                    cube[v].total_samples++;
+                                    /* Re-sign faces periodically */
+                                    if (cube[v].sig_count[core_pred] % (RESIGN_INTERVAL * 2) == 0) {
+                                        for (int j = 0; j < CFC_INPUT_DIM; j++) {
+                                            cube[v].sig[core_pred][j] =
+                                                tsign(cube[v].sig_sum[core_pred][j]);
+                                            cube[v].sig_sum[core_pred][j] /= 2;
+                                        }
+                                    }
                                 }
                             }
                         }
+                        next_pkt:
                         if (drain_buf[i].pkt.pattern_id < 4)
                             test_votes[drain_buf[i].pkt.pattern_id]++;
                         test_packets++;
@@ -3549,18 +3686,15 @@ void app_main(void) {
                     }
                 }
 
-                /* If more novel than classified, flag window as novel */
-                int classified_in_window = trix_votes[0] + trix_votes[1] +
-                                           trix_votes[2] + trix_votes[3];
+                /* Novel window check */
+                int classified_in_window = core_votes[0] + core_votes[1] +
+                                           core_votes[2] + core_votes[3];
                 if (novel_in_window > classified_in_window && novel_in_window > 0) {
                     novel_windows++;
-                    printf("    [NOVEL window: %d novel, %d classified, %d pkts]\n",
-                           novel_in_window, classified_in_window, test_packets);
-                    fflush(stdout);
                     continue;
                 }
 
-                /* Ground truth: majority vote of pattern IDs in window */
+                /* Ground truth */
                 int truth = -1, truth_votes = 0;
                 for (int p = 0; p < 4; p++) {
                     if (test_votes[p] > truth_votes) {
@@ -3568,47 +3702,25 @@ void app_main(void) {
                         truth = p;
                     }
                 }
-
                 if (truth < 0 || truth_votes <= test_packets / 2 ||
                     test_packets < 1 || classified_in_window < 1) continue;
 
-                /* Input-TriX prediction: majority of per-packet votes */
-                int sig_pred = 0;
+                /* Core prediction (majority of core per-packet votes) */
+                int c_pred = 0;
                 for (int p = 1; p < 4; p++)
-                    if (trix_votes[p] > trix_votes[sig_pred]) sig_pred = p;
-                if (sig_pred == truth) sig_correct++;
+                    if (core_votes[p] > core_votes[c_pred]) c_pred = p;
+                if (c_pred == truth) core_correct++;
 
-                /* Online hidden-state signature maintenance */
-                int8_t cur_h[CFC_HIDDEN_DIM];
-                memcpy(cur_h, (void*)cfc.hidden, CFC_HIDDEN_DIM);
-                for (int j = 0; j < CFC_HIDDEN_DIM; j++)
-                    hsig_sum[sig_pred][j] += cur_h[j];
-                hsig_count[sig_pred]++;
-                if (hsig_count[sig_pred] % RESIGN_INTERVAL == 0) {
-                    for (int j = 0; j < CFC_HIDDEN_DIM; j++) {
-                        hsig[sig_pred][j] = tsign(hsig_sum[sig_pred][j]);
-                        hsig_sum[sig_pred][j] /= 2;
-                    }
-                }
+                /* Ensemble prediction (majority of ensemble per-packet votes) */
+                int e_pred = 0;
+                for (int p = 1; p < 4; p++)
+                    if (ens_votes_accum[p] > ens_votes_accum[e_pred]) e_pred = p;
+                if (e_pred == truth) ens_correct++;
 
-                /* Hidden-state TriX classification */
-                int h_best = -999, h_pred = 0;
-                int h_dots[4];
-                for (int p = 0; p < NUM_TEMPLATES; p++) {
-                    int d = 0;
-                    for (int i = 0; i < CFC_HIDDEN_DIM; i++) {
-                        if (hsig[p][i] != T_ZERO && cur_h[i] != T_ZERO)
-                            d += tmul(hsig[p][i], cur_h[i]);
-                    }
-                    h_dots[p] = d;
-                    if (d > h_best) {
-                        h_best = d;
-                        h_pred = p;
-                    }
-                }
-                if (h_pred == truth) hsig_correct++;
+                /* Track face contribution */
+                if (e_pred != c_pred) face_contributed++;
 
-                /* Baseline: packet-rate classifier */
+                /* Baseline */
                 int baseline_pred = -1;
                 if (gap_count > 0) {
                     int avg_gap = (int)(gap_sum_ms / gap_count);
@@ -3620,97 +3732,93 @@ void app_main(void) {
 
                 sig_total++;
 
-                printf("    s%02d: truth=%d in=%d h=%d base=%d | tv=[%d,%d,%d,%d] hd=[%d,%d,%d,%d] nov=%d pkts=%d\n",
-                       sig_total, truth, sig_pred, h_pred,
-                       baseline_pred,
-                       trix_votes[0], trix_votes[1],
-                       trix_votes[2], trix_votes[3],
-                       h_dots[0], h_dots[1], h_dots[2], h_dots[3],
-                       novel_in_window, test_packets);
+                printf("    s%02d: truth=%d core=%d ens=%d base=%d | cv=[%d,%d,%d,%d] ev=[%d,%d,%d,%d] nov=%d\n",
+                       sig_total, truth, c_pred, e_pred, baseline_pred,
+                       core_votes[0], core_votes[1],
+                       core_votes[2], core_votes[3],
+                       ens_votes_accum[0], ens_votes_accum[1],
+                       ens_votes_accum[2], ens_votes_accum[3],
+                       novel_in_window);
                 fflush(stdout);
             }
 
             stop_freerun();
 
-            int sig_pct = (sig_total > 0) ? (sig_correct * 100 / sig_total) : 0;
-            int h_pct = (sig_total > 0) ? (hsig_correct * 100 / sig_total) : 0;
+            int core_pct = (sig_total > 0) ? (core_correct * 100 / sig_total) : 0;
+            int ens_pct = (sig_total > 0) ? (ens_correct * 100 / sig_total) : 0;
             int base_pct = (sig_total > 0) ? (baseline_correct * 100 / sig_total) : 0;
 
-            printf("\n  ═══ CLASSIFICATION RESULTS (TriX Architecture) ═══\n");
+            printf("\n  ═══ CLASSIFICATION RESULTS (TriX Cube) ═══\n");
             printf("  Total GIE loops: %d\n", (int)loop_count);
             printf("  Test samples: %d\n", sig_total);
             printf("  Ring drops: %d\n", (int)espnow_ring_drops());
-            printf("  Input-TriX (per-pkt vote): %d/%d = %d%%\n",
-                   sig_correct, sig_total, sig_pct);
-            printf("  Hidden-TriX (sig weights): %d/%d = %d%%\n",
-                   hsig_correct, sig_total, h_pct);
+            printf("  Core-only (per-pkt vote):  %d/%d = %d%%\n",
+                   core_correct, sig_total, core_pct);
+            printf("  Ensemble (7-voxel vote):   %d/%d = %d%%\n",
+                   ens_correct, sig_total, ens_pct);
             printf("  Baseline (packet-rate):    %d/%d = %d%%\n",
                    baseline_correct, sig_total, base_pct);
+            printf("  Face contributed (changed outcome): %d/%d windows\n",
+                   face_contributed, sig_total);
 
             /* Novelty stats */
             printf("\n  ── Novelty Detection ──\n");
-            printf("  Novel packets: %d / %d total (%d%%)\n",
+            printf("  Novel packets: %d / %d (%d%%)\n",
                    total_novel, total_novel + total_classified,
                    (total_novel + total_classified) > 0
                        ? (total_novel * 100 / (total_novel + total_classified)) : 0);
-            printf("  Novel windows (skipped): %d\n", novel_windows);
+            printf("  Novel windows: %d\n", novel_windows);
 
-            /* Online maintenance stats */
-            printf("\n  ── Online Signature Maintenance ──\n");
-            printf("  Re-signs: %d\n", total_resigns);
-
-            /* Signature drift: Hamming distance original vs updated */
-            printf("  Signature drift (Hamming original vs updated):\n");
+            /* Online maintenance */
+            printf("\n  ── Online Maintenance ──\n");
+            printf("  Core re-signs: %d\n", total_resigns);
+            printf("  Core drift (Hamming):\n");
             for (int p = 0; p < NUM_TEMPLATES; p++) {
                 int drift = trit_hamming(sig_orig[p], sig[p], CFC_INPUT_DIM);
-                printf("    sig[%d]: %d/%d trits changed", p, drift, CFC_INPUT_DIM);
-                if (sig_count[p] > 0)
-                    printf(" (%d online samples)", sig_count[p]);
-                printf("\n");
+                printf("    sig[%d]: %d/%d trits\n", p, drift, CFC_INPUT_DIM);
             }
 
-            /* Updated signatures pattern-ID region */
-            printf("  Updated pattern-ID trits [16..23]:\n");
-            for (int p = 0; p < NUM_TEMPLATES; p++) {
-                printf("    sig[%d][16..23]: ", p);
-                for (int i = 16; i < 24; i++)
-                    printf("%c", trit_char(sig[p][i]));
-                printf("\n");
+            /* Face final divergence from core */
+            printf("\n  ── TriX Cube Geometry ──\n");
+            for (int v = 1; v < TVOX_TOTAL; v++) {
+                int total_hamm = 0, counted = 0;
+                for (int p = 0; p < TVOX_K; p++) {
+                    if (cube[v].sig_count[p] > 0) {
+                        total_hamm += trit_hamming(sig[p],
+                                                   cube[v].sig[p], CFC_INPUT_DIM);
+                        counted++;
+                    }
+                }
+                printf("    %s: %d samples, %d avg hamming from core\n",
+                       face_names[v], cube[v].total_samples,
+                       counted > 0 ? total_hamm / counted : 0);
             }
 
-            /* Gate selectivity final */
+            /* Gate selectivity */
             int final_fire_pct = (gate_steps_total > 0)
                 ? (int)(gate_fires_total * 100LL / gate_steps_total) : 0;
-            printf("  Gate firing: %d%% (target ~25%%)\n", final_fire_pct);
+            printf("  Gate firing: %d%%\n", final_fire_pct);
 
-            int best_name = 0;
-            int best_pct = sig_pct;
-            if (h_pct > best_pct) { best_pct = h_pct; best_name = 1; }
-            if (base_pct > best_pct) { best_pct = base_pct; best_name = 2; }
-
-            const char *names[] = {"INPUT-TRIX", "HIDDEN-TRIX", "BASELINE"};
-            if (sig_pct > base_pct || h_pct > base_pct) {
-                printf("  >>> %s WINS <<<\n", names[best_name]);
-            } else if (sig_pct == base_pct && h_pct <= base_pct) {
-                printf("  >>> TIE (input-TriX = baseline) <<<\n");
+            int best_pct = core_pct;
+            if (ens_pct > best_pct) best_pct = ens_pct;
+            if (ens_pct > core_pct) {
+                printf("  >>> ENSEMBLE WINS by %d pp <<<\n", ens_pct - core_pct);
+            } else if (ens_pct == core_pct) {
+                printf("  >>> CORE = ENSEMBLE <<<\n");
             } else {
-                printf("  >>> BASELINE WINS <<<\n");
+                printf("  >>> CORE WINS by %d pp (ensemble hurt) <<<\n",
+                       core_pct - ens_pct);
             }
 
             printf("\n  Architecture:\n");
-            printf("  - Phase 0a: Observe input signatures (30s)\n");
-            printf("  - Phase 0b: Compute TriX signatures\n");
-            printf("  - Phase 0c: Install signatures as W_f gate weights\n");
-            printf("  - Phase 0d: Observe hidden-state signatures (15s)\n");
-            printf("  - Phase 1:  Online TriX + novelty detection (60s)\n");
-            printf("  - Novelty threshold=%d: reject unclassifiable packets\n",
-                   NOVELTY_THRESHOLD);
-            printf("  - Online re-sign every %d pkts with decay\n", RESIGN_INTERVAL);
-            printf("  - Gate threshold=%d: selective firing\n",
-                   (int)gate_threshold);
-            printf("  - 'Don't learn what you can read' — TriX principle\n");
+            printf("  - 7-voxel TriX Cube: core + 6 temporal faces\n");
+            printf("  - Faces: recent, prior, stable, transient, confident, uncertain\n");
+            printf("  - Per-packet: core classifies, 7 voxels vote ensemble\n");
+            printf("  - Online maintenance + novelty detection\n");
+            printf("  - Gate threshold=%d, novelty=%d\n",
+                   (int)gate_threshold, NOVELTY_THRESHOLD);
 
-            int ok = (sig_total >= 4) && (sig_pct >= 50 || h_pct >= 50);
+            int ok = (sig_total >= 4) && (best_pct >= 50);
             test_count++;
             if (ok) pass_count++;
             printf("  %s\n\n", ok ? "OK" : "FAIL");
