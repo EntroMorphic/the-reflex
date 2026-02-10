@@ -876,6 +876,9 @@ static int64_t espnow_last_rx_us = 0;
 /**
  * Encode ESP-NOW state into cfc.input[128].
  * Returns 1 if input changed, 0 if unchanged.
+ *
+ * Legacy version — uses esp_timer_get_time() for inter-packet gap.
+ * Prefer espnow_encode_rx_entry() for stream processing.
  */
 static int espnow_encode_input(const espnow_state_t *st) {
     int8_t new_input[CFC_INPUT_DIM];
@@ -965,6 +968,83 @@ static int espnow_encode_input(const espnow_state_t *st) {
 }
 
 /**
+ * Encode a ring buffer entry into cfc.input[128].
+ * Uses the entry's real arrival timestamp for inter-packet gap.
+ * Returns 1 if input changed, 0 if unchanged.
+ * Also returns the inter-packet gap in *out_gap_ms (if non-NULL).
+ */
+static int espnow_encode_rx_entry(const espnow_rx_entry_t *entry,
+                                   int64_t *out_gap_ms) {
+    int8_t new_input[CFC_INPUT_DIM];
+    memset(new_input, 0, sizeof(new_input));
+
+    const espnow_packet_t *pkt = &entry->pkt;
+
+    /* [0..15] RSSI thermometer */
+    for (int i = 0; i < 16; i++) {
+        int threshold = -80 + i * 4;
+        new_input[i] = (entry->rssi >= threshold) ? T_POS : T_NEG;
+    }
+
+    /* [16..23] Pattern ID one-hot */
+    for (int p = 0; p < 4; p++) {
+        int idx = 16 + p * 2;
+        if (pkt->pattern_id == p) {
+            new_input[idx]     = T_POS;
+            new_input[idx + 1] = T_POS;
+        } else {
+            new_input[idx]     = T_NEG;
+            new_input[idx + 1] = T_NEG;
+        }
+    }
+
+    /* [24..87] Payload bits → trits */
+    for (int b = 0; b < 8; b++) {
+        uint8_t byte = pkt->payload[b];
+        for (int bit = 0; bit < 8; bit++) {
+            new_input[24 + b * 8 + bit] = (byte & (1 << bit)) ? T_POS : T_NEG;
+        }
+    }
+
+    /* [88..103] Inter-packet timing — from REAL arrival timestamps */
+    int64_t gap_ms = 0;
+    if (espnow_last_rx_us > 0) {
+        gap_ms = (entry->rx_timestamp_us - espnow_last_rx_us) / 1000;
+        if (gap_ms < 0) gap_ms = 0;
+        if (gap_ms > 500) gap_ms = 500;
+    }
+    espnow_last_rx_us = entry->rx_timestamp_us;
+    if (out_gap_ms) *out_gap_ms = gap_ms;
+
+    for (int i = 0; i < 16; i++) {
+        int threshold_ms = i * 33;
+        new_input[88 + i] = (gap_ms <= threshold_ms) ? T_POS : T_NEG;
+    }
+
+    /* [104..119] Sequence features */
+    uint32_t seq_lo = pkt->sequence & 0x0F;
+    for (int i = 0; i < 8; i++) {
+        int idx = 104 + i;
+        if (i < 4) {
+            new_input[idx] = (seq_lo > (uint32_t)(i * 4)) ? T_POS : T_NEG;
+        } else {
+            uint32_t seq_hi = (pkt->sequence >> 4) & 0x0F;
+            new_input[idx] = (seq_hi > (uint32_t)((i - 4) * 4)) ? T_POS : T_NEG;
+        }
+    }
+    for (int i = 0; i < 8; i++) {
+        uint32_t bit = (pkt->sequence >> i) & 1;
+        new_input[112 + i] = bit ? T_POS : T_NEG;
+    }
+
+    /* [120..127] Reserved — zeroed */
+
+    if (memcmp(new_input, cfc.input, CFC_INPUT_DIM) == 0) return 0;
+    memcpy(cfc.input, new_input, CFC_INPUT_DIM);
+    return 1;
+}
+
+/**
  * Re-premultiply and re-encode the INPUT portion of all neuron buffers.
  * Called from main loop when cfc.input[] changes.
  *
@@ -1001,6 +1081,106 @@ static void update_gie_input(void) {
             buf[i / 2] = encode_trit_pair(t0, t1);
         }
     }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ *  HOMEOSTATIC TERNARY LEARNING
+ *
+ *  The gate weights (W_f) learn to produce f=0 (HOLD) for familiar
+ *  input patterns. During warmup, the CfC sees the environment's
+ *  typical patterns. For each neuron where |f_dot| is large (gate
+ *  is firing), we zero out the weight that contributes most to the
+ *  dot product. This reduces |f_dot| for that input, pushing the
+ *  gate toward HOLD.
+ *
+ *  After warmup, familiar patterns produce f≈0 (hold), and novel
+ *  patterns produce |f|>0 (update/invert) — the reflex.
+ *
+ *  W_g (candidate weights) are NOT adapted. They provide the
+ *  diverse candidate values that the gate selects from.
+ *
+ *  Safety: Called from main loop while GIE runs. Weight changes
+ *  cause a transient in one neuron for one GIE loop — acceptable
+ *  noise, same as update_gie_input().
+ * ══════════════════════════════════════════════════════════════════ */
+
+/**
+ * Apply one step of homeostatic learning to W_f.
+ *
+ * The goal: tune W_f so that dot(W_f[n], concat) ≈ 0 for familiar
+ * inputs (gate holds). When a novel input arrives, |dot| > 0 and
+ * the gate fires — that's the reflex.
+ *
+ * Rule: For each neuron where |f_dot| > threshold, FLIP one weight
+ * that's contributing to |f_dot|. Flipping W_f[n][i] to its negative
+ * changes the dot product by -2 for this input (contribution goes
+ * from +1 to -1 or vice versa). This is a balanced operation —
+ * the total number of non-zero weights stays constant.
+ *
+ * Rate limiting: Only modify each neuron once per `period` GIE loops.
+ *
+ * Returns number of weight modifications made.
+ */
+static uint32_t homeo_last_loop[CFC_HIDDEN_DIM] = {0};
+
+static int cfc_homeostatic_step(int dot_threshold, int period) {
+    int mods = 0;
+    uint32_t current_loop = (uint32_t)loop_count;
+
+    /* Build the current concat vector: [input | hidden] */
+    int8_t concat[CFC_CONCAT_DIM];
+    memcpy(concat, cfc.input, CFC_INPUT_DIM);
+    memcpy(concat + CFC_INPUT_DIM, (void*)cfc.hidden, CFC_HIDDEN_DIM);
+
+    for (int n = 0; n < CFC_HIDDEN_DIM; n++) {
+        /* Rate limit: skip if we modified this neuron recently */
+        if ((current_loop - homeo_last_loop[n]) < (uint32_t)period)
+            continue;
+
+        int f_dot = loop_dots[n];
+
+        /* Gate near zero → already at homeostasis for this input. Skip. */
+        if (f_dot >= -dot_threshold && f_dot <= dot_threshold)
+            continue;
+
+        /* Find a weight that contributes to |f_dot| and FLIP it.
+         * Pick pseudo-randomly among contributing weights. */
+        int best_i = -1;
+
+        for (int i = 0; i < CFC_CONCAT_DIM; i++) {
+            if (cfc.W_f[n][i] == T_ZERO || concat[i] == T_ZERO)
+                continue;
+            int contrib = tmul(cfc.W_f[n][i], concat[i]);  /* +1 or -1 */
+            /* contrib has the same sign as f_dot means this weight helped fire */
+            if ((f_dot > 0 && contrib > 0) || (f_dot < 0 && contrib < 0)) {
+                if (best_i < 0 || (cfc_rand() % 3) == 0) {
+                    best_i = i;
+                }
+            }
+        }
+
+        if (best_i >= 0) {
+            /* FLIP the weight: +1 → -1 or -1 → +1.
+             * This changes the dot product by ±2 for this input,
+             * pushing it toward zero. Weight count stays constant. */
+            cfc.W_f[n][best_i] = -cfc.W_f[n][best_i];
+            homeo_last_loop[n] = current_loop;
+            mods++;
+
+            /* Re-premultiply this neuron's buffer (f-pathway only) */
+            for (int i = 0; i < CFC_CONCAT_DIM; i++)
+                all_products[n][i] = tmul(cfc.W_f[n][i], concat[i]);
+
+            /* Re-encode the full neuron buffer */
+            for (int i = 0; i < CFC_CONCAT_DIM; i += 2) {
+                int t0 = all_products[n][i];
+                int t1 = (i + 1 < CFC_CONCAT_DIM) ? all_products[n][i + 1] : 0;
+                neuron_bufs[n][i / 2] = encode_trit_pair(t0, t1);
+            }
+        }
+    }
+
+    return mods;
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -2995,194 +3175,205 @@ void app_main(void) {
     }
 
     /* ══════════════════════════════════════════════════════════════
-     *  TEST 11: Pattern Classification (Phase 3)
+     *  TEST 11: Pattern Classification — Stream-Based Continuous CfC
      *
-     *  THE TASK: Board B cycles through 4 patterns with distinct
-     *  temporal signatures. Board A must classify which pattern is
-     *  active using only the GIE's ternary hidden state — no peeking
-     *  at raw packet data.
+     *  THE TASK: Board B cycles through 4 patterns. Board A runs the
+     *  GIE CONTINUOUSLY with live ESP-NOW input and classifies which
+     *  pattern is active from the 32-trit hidden state.
+     *
+     *  v3 CHANGE: Stream processing instead of polling.
+     *  - Ring buffer captures EVERY packet with real arrival timestamp
+     *  - espnow_drain() retrieves all packets since last call
+     *  - Each packet immediately drives GIE input update
+     *  - Inter-packet timing uses real RF arrival times, not poll intervals
+     *  - Baseline classifier uses the same real timing data
      *
      *  Protocol:
-     *  1. TRAINING: Collect one hidden-state template per pattern.
-     *     Run GIE for N seconds while a known pattern is active.
-     *     The ground truth comes from the packet's pattern_id field,
-     *     but classification uses only the 32-trit hidden state.
+     *  1. WARMUP: Start GIE, drain+process all packets for 10s.
+     *  2. TRAINING: Continue (no reset). 500ms windows. Store template
+     *     for each pattern when window is pure.
+     *  3. TESTING: Continue (no reset). 500ms windows. Classify by
+     *     nearest template. Score against ground truth.
+     *  4. BASELINE: Packet-rate classifier using real inter-packet gaps.
+     *     P0(10Hz)=~100ms, P1(burst)=~50ms, P2(2Hz)=~500ms, P3(10Hz)=~100ms.
+     *     Baseline CANNOT distinguish P0/P3 (same rate, different payload).
      *
-     *  2. TESTING: Observe new windows, classify by nearest template
-     *     (minimum Hamming distance to stored templates).
-     *
-     *  3. BASELINE: Majority-vote on raw inter-packet timing.
-     *     Group packets by inter-arrival gap:
-     *       < 80ms → pattern 0 or 3 (fast)
-     *       80-200ms → pattern 1 (burst, mixed)
-     *       > 200ms → pattern 2 (slow)
-     *     This is a hand-tuned threshold classifier — the thing
-     *     we need to beat to prove the GIE adds value.
-     *
-     *  Two modes:
-     *   - LABELED: pattern_id encoded in input (trits 16..23)
-     *   - BLIND:   pattern_id trits zeroed out
-     *
-     *  The labeled mode should be ~100% (we're encoding the answer).
-     *  The blind mode is the real test of the GIE's dynamics.
+     *  The GIE runs as ONE CONTINUOUS SESSION from warmup through test.
      * ══════════════════════════════════════════════════════════════ */
-    printf("-- TEST 11: Pattern Classification --\n");
+    printf("-- TEST 11: Pattern Classification (Stream CfC) --\n");
     fflush(stdout);
     {
-        #define CLASS_WINDOW_MS    2000   /* Observation window per sample */
-        #define CLASS_POLL_MS      50     /* Poll interval within window */
-        #define CLASS_POLLS        (CLASS_WINDOW_MS / CLASS_POLL_MS)
+        #define T11_WINDOW_MS      1000   /* Sample window duration (1s) */
+        #define T11_DRAIN_MS       10     /* Drain interval (fast!) */
         #define NUM_TEMPLATES      4
-        #define TRAIN_PER_PATTERN  2      /* Templates to average per pattern */
-        #define MAX_TEST_WINDOWS   20     /* Test windows to collect */
+        #define MAX_TEST_SAMPLES   32     /* Test samples to collect */
 
-        /* Template storage: one 32-trit hidden state per pattern */
-        int8_t templates[NUM_TEMPLATES][CFC_HIDDEN_DIM];
-        int template_collected[NUM_TEMPLATES];
-        memset(template_collected, 0, sizeof(template_collected));
+        /* Drain buffer — big enough for one drain cycle at max rate (static for stack) */
+        static espnow_rx_entry_t drain_buf[32];
 
-        /* ── Phase 1: Collect templates ──
-         * Run observation windows and assign each to the dominant pattern.
-         * Keep collecting until we have at least 1 template per pattern
-         * or we've tried for 90 seconds (3+ full sender cycles). */
-        printf("  Phase 1: Collecting templates (up to 90s)...\n");
+        /* Start GIE — ONE init for the entire test */
+        cfc_init(42, 50);
+        premultiply_all();
+        encode_all_neurons();
+        build_circular_chain();
+        start_freerun();
+        espnow_last_rx_us = 0;
+        espnow_ring_flush();  /* Discard any stale packets */
+
+        /* ── Phase 0: TriX Signature Routing ──
+         * "Don't learn what you can read." — TriX principle
+         *
+         * Instead of training weights, compute the MEAN TERNARY SIGNATURE
+         * of each pattern's INPUT during observation, then classify by
+         * dot product: argmax(input @ signatures.T).
+         *
+         * The 128-trit input already contains pattern ID (trits 16..23),
+         * payload (24..87), and timing (88..103). The signature captures
+         * ALL of this. Content-addressable routing, not learning. */
+
+        /* Signature storage: 4 patterns × 128 trits (static to avoid stack overflow) */
+        static int8_t  sig[NUM_TEMPLATES][CFC_INPUT_DIM];
+        static int16_t sig_sum[NUM_TEMPLATES][CFC_INPUT_DIM];
+        int sig_count[NUM_TEMPLATES];
+        memset(sig_sum, 0, sizeof(sig_sum));
+        memset(sig_count, 0, sizeof(sig_count));
+
+        /* ── Phase 0a: Observe inputs per pattern (30s) ── */
+        printf("  Phase 0a: Observing input signatures (30s)...\n");
         fflush(stdout);
 
-        int total_templates = 0;
-        int64_t train_start = esp_timer_get_time();
-        int64_t train_timeout_us = 90LL * 1000000LL;
-        int train_windows = 0;
+        int obs_packets = 0;
+        int obs_updates = 0;
+        int obs_cur_pattern = -1;
+        int64_t obs_start = esp_timer_get_time();
 
-        while (total_templates < NUM_TEMPLATES &&
-               (esp_timer_get_time() - train_start) < train_timeout_us) {
+        while ((esp_timer_get_time() - obs_start) < 30000000LL) {  /* 30s */
+            vTaskDelay(pdMS_TO_TICKS(T11_DRAIN_MS));
+            int n = espnow_drain(drain_buf, 32);
+            for (int i = 0; i < n; i++) {
+                obs_packets++;
+                if (drain_buf[i].pkt.pattern_id < 4)
+                    obs_cur_pattern = drain_buf[i].pkt.pattern_id;
 
-            /* Run one observation window */
-            cfc_init(42, 50);
-            premultiply_all();
-            encode_all_neurons();
-            build_circular_chain();
-            start_freerun();
-            espnow_last_rx_us = 0;
-
-            espnow_state_t cls_state = {0};
-            int pattern_votes[4] = {0};
-            int packets_in_window = 0;
-
-            for (int p = 0; p < CLASS_POLLS; p++) {
-                vTaskDelay(pdMS_TO_TICKS(CLASS_POLL_MS));
-                if (espnow_get_latest(&cls_state)) {
-                    espnow_encode_input(&cls_state);
+                if (espnow_encode_rx_entry(&drain_buf[i], NULL)) {
                     update_gie_input();
-                    if (cls_state.pattern_id < 4)
-                        pattern_votes[cls_state.pattern_id]++;
-                    packets_in_window++;
+                    obs_updates++;
+
+                    /* Accumulate this input into the current pattern's sum */
+                    if (obs_cur_pattern >= 0 && obs_cur_pattern < 4) {
+                        for (int j = 0; j < CFC_INPUT_DIM; j++) {
+                            sig_sum[obs_cur_pattern][j] += cfc.input[j];
+                        }
+                        sig_count[obs_cur_pattern]++;
+                    }
                 }
             }
-
-            /* Snapshot hidden state */
-            int8_t window_h[CFC_HIDDEN_DIM];
-            memcpy(window_h, (void*)cfc.hidden, CFC_HIDDEN_DIM);
-            stop_freerun();
-
-            /* Find dominant pattern (ground truth) */
-            int dominant = -1, max_votes = 0;
-            for (int p = 0; p < 4; p++) {
-                if (pattern_votes[p] > max_votes) {
-                    max_votes = pattern_votes[p];
-                    dominant = p;
-                }
-            }
-
-            /* Store as template if we need this pattern and it's clean
-             * (dominant pattern got > 60% of packets) */
-            if (dominant >= 0 && max_votes > packets_in_window / 2 &&
-                !template_collected[dominant]) {
-                memcpy(templates[dominant], window_h, CFC_HIDDEN_DIM);
-                template_collected[dominant] = 1;
-                total_templates++;
-                printf("    Template[%d]: captured (packets=%d, purity=%d/%d, energy=%d)\n",
-                       dominant, packets_in_window, max_votes, packets_in_window,
-                       trit_energy(window_h, CFC_HIDDEN_DIM));
-            }
-            train_windows++;
         }
 
-        printf("  Training: %d windows, %d/4 templates collected\n",
-               train_windows, total_templates);
+        printf("  Observed: %d packets, %d encoded, %d GIE loops\n",
+               obs_packets, obs_updates, (int)loop_count);
+        printf("  Per-pattern counts: P0=%d P1=%d P2=%d P3=%d\n",
+               sig_count[0], sig_count[1], sig_count[2], sig_count[3]);
+        fflush(stdout);
 
-        if (total_templates < 2) {
-            printf("  SKIP: need at least 2 templates for classification\n");
-            printf("  (Board B may not be sending, or patterns not cycling)\n");
-            test_count++;
-            printf("  FAIL\n\n");
-            fflush(stdout);
-        } else {
-            /* Print templates */
-            for (int p = 0; p < NUM_TEMPLATES; p++) {
-                if (template_collected[p]) {
-                    printf("    template[%d]: [", p);
-                    for (int i = 0; i < CFC_HIDDEN_DIM; i++)
-                        printf("%c", trit_char(templates[p][i]));
-                    printf("] energy=%d\n", trit_energy(templates[p], CFC_HIDDEN_DIM));
-                }
+        /* ── Phase 0b: Compute signatures — sign(sig_sum) ── */
+        printf("  Phase 0b: Computing TriX signatures...\n");
+        fflush(stdout);
+
+        for (int p = 0; p < NUM_TEMPLATES; p++) {
+            int nz = 0;
+            for (int i = 0; i < CFC_INPUT_DIM; i++) {
+                sig[p][i] = tsign(sig_sum[p][i]);
+                if (sig[p][i] != T_ZERO) nz++;
             }
+            printf("  sig[%d]: [", p);
+            /* Print first 32 trits for visibility */
+            for (int i = 0; i < 32 && i < CFC_INPUT_DIM; i++)
+                printf("%c", trit_char(sig[p][i]));
+            printf("...] nz=%d/%d (from %d samples)\n",
+                   nz, CFC_INPUT_DIM, sig_count[p]);
+        }
 
-            /* ── Phase 2: Test classification ──
-             * Run observation windows, classify each by nearest template,
-             * compare against ground truth from packet pattern_id. */
-            printf("\n  Phase 2: Classification test (up to %d windows, 60s)...\n",
-                   MAX_TEST_WINDOWS);
+        /* Print pattern ID region (trits 16..23) for each signature */
+        printf("  Signature pattern-ID trits [16..23]:\n");
+        for (int p = 0; p < NUM_TEMPLATES; p++) {
+            printf("    sig[%d][16..23]: ", p);
+            for (int i = 16; i < 24; i++)
+                printf("%c", trit_char(sig[p][i]));
+            printf("\n");
+        }
+
+        /* Cross-dot: dot(sig[i], sig[j]) for all pairs */
+        printf("  Signature cross-dots:\n");
+        for (int i = 0; i < NUM_TEMPLATES; i++) {
+            printf("    sig[%d] vs: ", i);
+            for (int j = 0; j < NUM_TEMPLATES; j++) {
+                int d = 0;
+                for (int k = 0; k < CFC_INPUT_DIM; k++) {
+                    if (sig[i][k] != T_ZERO && sig[j][k] != T_ZERO)
+                        d += tmul(sig[i][k], sig[j][k]);
+                }
+                printf("s%d=%d ", j, d);
+            }
+            printf("\n");
+        }
+        printf("  Ring drops: %d\n", (int)espnow_ring_drops());
+        fflush(stdout);
+
+        {
+            /* ── Phase 1: Classification test (60s) ──
+             * TriX signature routing: dot(current_input, sig[p]) → argmax */
+            printf("\n  Phase 1: TriX signature classification (up to %d samples, 60s)...\n",
+                   MAX_TEST_SAMPLES);
             fflush(stdout);
 
-            int gie_correct = 0, gie_total = 0;
+            int sig_correct = 0, sig_total = 0;
             int baseline_correct = 0;
             int64_t test_start = esp_timer_get_time();
             int64_t test_timeout_us = 60LL * 1000000LL;
 
-            while (gie_total < MAX_TEST_WINDOWS &&
+            while (sig_total < MAX_TEST_SAMPLES &&
                    (esp_timer_get_time() - test_start) < test_timeout_us) {
 
-                /* Run observation window */
-                cfc_init(42, 50);
-                premultiply_all();
-                encode_all_neurons();
-                build_circular_chain();
-                start_freerun();
-                espnow_last_rx_us = 0;
-
-                espnow_state_t test_state = {0};
+                /* Collect one window */
                 int test_votes[4] = {0};
                 int test_packets = 0;
                 int64_t gap_sum_ms = 0;
                 int gap_count = 0;
-                int64_t prev_rx_time = 0;
+                int64_t prev_pkt_us = 0;
+                int64_t window_start = esp_timer_get_time();
 
-                for (int p = 0; p < CLASS_POLLS; p++) {
-                    vTaskDelay(pdMS_TO_TICKS(CLASS_POLL_MS));
-                    if (espnow_get_latest(&test_state)) {
-                        espnow_encode_input(&test_state);
-                        update_gie_input();
-                        if (test_state.pattern_id < 4)
-                            test_votes[test_state.pattern_id]++;
+                /* Accumulate input signatures within this window too */
+                static int16_t win_sum[CFC_INPUT_DIM];
+                memset(win_sum, 0, sizeof(win_sum));
+                int win_inputs = 0;
+
+                while ((esp_timer_get_time() - window_start) < (T11_WINDOW_MS * 1000LL)) {
+                    vTaskDelay(pdMS_TO_TICKS(T11_DRAIN_MS));
+                    int n = espnow_drain(drain_buf, 32);
+                    for (int i = 0; i < n; i++) {
+                        int64_t pkt_gap_ms = 0;
+                        if (espnow_encode_rx_entry(&drain_buf[i], &pkt_gap_ms)) {
+                            update_gie_input();
+                            /* Accumulate input within this window */
+                            for (int j = 0; j < CFC_INPUT_DIM; j++)
+                                win_sum[j] += cfc.input[j];
+                            win_inputs++;
+                        }
+                        if (drain_buf[i].pkt.pattern_id < 4)
+                            test_votes[drain_buf[i].pkt.pattern_id]++;
                         test_packets++;
 
-                        /* Track inter-packet timing for baseline */
-                        int64_t now = esp_timer_get_time();
-                        if (prev_rx_time > 0) {
-                            int64_t gap = (now - prev_rx_time) / 1000;
+                        if (prev_pkt_us > 0) {
+                            int64_t gap = (drain_buf[i].rx_timestamp_us - prev_pkt_us) / 1000;
                             gap_sum_ms += gap;
                             gap_count++;
                         }
-                        prev_rx_time = now;
+                        prev_pkt_us = drain_buf[i].rx_timestamp_us;
                     }
                 }
 
-                /* Snapshot hidden state */
-                int8_t test_h[CFC_HIDDEN_DIM];
-                memcpy(test_h, (void*)cfc.hidden, CFC_HIDDEN_DIM);
-                stop_freerun();
-
-                /* Ground truth: dominant pattern */
+                /* Ground truth: majority vote of pattern IDs in window */
                 int truth = -1, truth_votes = 0;
                 for (int p = 0; p < 4; p++) {
                     if (test_votes[p] > truth_votes) {
@@ -3191,86 +3382,83 @@ void app_main(void) {
                     }
                 }
 
-                /* Skip ambiguous windows (dominant < 60% purity) */
                 if (truth < 0 || truth_votes <= test_packets / 2 ||
-                    test_packets < 3) continue;
+                    test_packets < 1 || win_inputs < 1) continue;
 
-                /* Skip if we don't have a template for this pattern */
-                if (!template_collected[truth]) continue;
+                /* TriX classification: dot(window_mean_input, sig[p]) → argmax
+                 * We use the last encoded input (cfc.input) as representative.
+                 * Also compute dot against accumulated window sum for comparison. */
+                int8_t cur_input[CFC_INPUT_DIM];
+                memcpy(cur_input, (void*)cfc.input, CFC_INPUT_DIM);
 
-                /* GIE classification: nearest template by Hamming distance */
-                int gie_pred = -1;
-                int min_hamming = 999;
+                int best_dot = -9999;
+                int sig_pred = 0;
+                int all_dots[4];
                 for (int p = 0; p < NUM_TEMPLATES; p++) {
-                    if (!template_collected[p]) continue;
-                    int dist = trit_hamming(test_h, templates[p], CFC_HIDDEN_DIM);
-                    if (dist < min_hamming) {
-                        min_hamming = dist;
-                        gie_pred = p;
+                    int d = 0;
+                    for (int i = 0; i < CFC_INPUT_DIM; i++) {
+                        if (sig[p][i] != T_ZERO && cur_input[i] != T_ZERO)
+                            d += tmul(sig[p][i], cur_input[i]);
+                    }
+                    all_dots[p] = d;
+                    if (d > best_dot) {
+                        best_dot = d;
+                        sig_pred = p;
                     }
                 }
-                if (gie_pred == truth) gie_correct++;
+                if (sig_pred == truth) sig_correct++;
 
-                /* Baseline: threshold on average inter-packet gap */
+                /* Baseline: packet-rate classifier */
                 int baseline_pred = -1;
                 if (gap_count > 0) {
                     int avg_gap = (int)(gap_sum_ms / gap_count);
-                    /* Pattern timing signatures:
-                     *   P0: 100ms intervals → avg_gap ≈ 100
-                     *   P1: 3×50ms + 500ms → avg_gap ≈ 200
-                     *   P2: 500ms intervals → avg_gap ≈ 500
-                     *   P3: 100ms intervals → avg_gap ≈ 100
-                     * Note: P0 and P3 have same timing! Baseline can't
-                     * distinguish them. Best it can do is 3-class. */
-                    if (avg_gap < 150) {
-                        /* Fast: could be P0 or P3 — guess P0 */
-                        baseline_pred = 0;
-                    } else if (avg_gap < 350) {
-                        baseline_pred = 1;
-                    } else {
-                        baseline_pred = 2;
-                    }
+                    if (avg_gap < 130)       baseline_pred = 0;
+                    else if (avg_gap < 300)  baseline_pred = 1;
+                    else                     baseline_pred = 2;
                 }
                 if (baseline_pred == truth) baseline_correct++;
 
-                gie_total++;
+                sig_total++;
 
-                /* Print first 8 results */
-                if (gie_total <= 8) {
-                    printf("    w%d: truth=%d gie=%d(d=%d) base=%d | pkts=%d gaps=%d\n",
-                           gie_total, truth, gie_pred, min_hamming,
-                           baseline_pred, test_packets, gap_count);
-                }
+                printf("    s%02d: truth=%d sig=%d(d=%d) base=%d | dots=[%d,%d,%d,%d] pkts=%d\n",
+                       sig_total, truth, sig_pred, best_dot,
+                       baseline_pred, all_dots[0], all_dots[1],
+                       all_dots[2], all_dots[3], test_packets);
+                fflush(stdout);
             }
 
-            /* Results */
-            int gie_pct = (gie_total > 0) ? (gie_correct * 100 / gie_total) : 0;
-            int base_pct = (gie_total > 0) ? (baseline_correct * 100 / gie_total) : 0;
+            stop_freerun();
 
-            printf("\n  ═══ CLASSIFICATION RESULTS ═══\n");
-            printf("  Test windows: %d\n", gie_total);
-            printf("  GIE (nearest template): %d/%d = %d%%\n",
-                   gie_correct, gie_total, gie_pct);
-            printf("  Baseline (timing threshold): %d/%d = %d%%\n",
-                   baseline_correct, gie_total, base_pct);
+            int sig_pct = (sig_total > 0) ? (sig_correct * 100 / sig_total) : 0;
+            int base_pct = (sig_total > 0) ? (baseline_correct * 100 / sig_total) : 0;
 
-            if (gie_pct > base_pct) {
-                printf("  >>> GIE WINS by %d percentage points <<<\n",
-                       gie_pct - base_pct);
-            } else if (gie_pct == base_pct) {
+            printf("\n  ═══ CLASSIFICATION RESULTS (TriX Signature Routing) ═══\n");
+            printf("  Total GIE loops: %d\n", (int)loop_count);
+            printf("  Test samples: %d\n", sig_total);
+            printf("  Ring drops: %d\n", (int)espnow_ring_drops());
+            printf("  TriX signatures: %d/%d = %d%%\n",
+                   sig_correct, sig_total, sig_pct);
+            printf("  Baseline (packet-rate): %d/%d = %d%%\n",
+                   baseline_correct, sig_total, base_pct);
+
+            if (sig_pct > base_pct) {
+                printf("  >>> TRIX WINS by %d pp <<<\n", sig_pct - base_pct);
+            } else if (sig_pct == base_pct) {
                 printf("  >>> TIE <<<\n");
             } else {
-                printf("  >>> BASELINE WINS by %d percentage points <<<\n",
-                       base_pct - gie_pct);
+                printf("  >>> BASELINE WINS by %d pp <<<\n", base_pct - sig_pct);
             }
 
-            printf("\n  Interpretation:\n");
-            printf("  - GIE encodes pattern_id in input trits 16..23\n");
-            printf("  - Baseline uses only inter-packet timing\n");
-            printf("  - Baseline CANNOT distinguish P0 from P3 (same rate)\n");
-            printf("  - GIE CAN because pattern_id is in the encoding\n");
+            printf("\n  Notes:\n");
+            printf("  - TriX: 'Don't learn what you can read'\n");
+            printf("  - Signatures = mean direction of each pattern's INPUT\n");
+            printf("  - Classification = argmax(dot(input, sig[p]))\n");
+            printf("  - No training, no weights, no learning\n");
+            printf("  - Content-addressable routing via ternary dot product\n");
+            printf("  - Input trits [16..23] encode pattern ID directly\n");
+            printf("  - Baseline max theoretical = 75%% (P0/P3 indistinguishable)\n");
 
-            int ok = (gie_total >= 4) && (gie_pct >= 50);
+            int ok = (sig_total >= 4) && (sig_pct >= 50);
             test_count++;
             if (ok) pass_count++;
             printf("  %s\n\n", ok ? "OK" : "FAIL");

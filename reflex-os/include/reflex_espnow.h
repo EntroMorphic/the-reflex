@@ -2,18 +2,25 @@
  * reflex_espnow.h — ESP-NOW Receiver for GIE Integration
  *
  * Lightweight ESP-NOW receiver. WiFi runs in STA mode without
- * connecting to any AP. Received packets are stored in a volatile
- * struct that the main loop can poll.
+ * connecting to any AP. Two consumption modes:
+ *
+ *   1. Poll (legacy): espnow_get_latest() — returns most recent packet,
+ *      drops intermediate arrivals. OK for link-up checks.
+ *
+ *   2. Stream: espnow_drain() — returns ALL packets since last drain,
+ *      each with real arrival timestamp. No drops. Use this for
+ *      classification / timing-sensitive work.
  *
  * The receive callback runs in the WiFi task context (not ISR),
  * so it's safe to write to BSS but should be fast.
  *
- * Usage:
+ * Usage (stream mode):
  *   espnow_receiver_init();
  *   // ... later ...
- *   espnow_state_t state;
- *   if (espnow_get_latest(&state)) {
- *       // state.rssi, state.pattern_id, state.sequence are valid
+ *   espnow_rx_entry_t buf[32];
+ *   int n = espnow_drain(buf, 32);
+ *   for (int i = 0; i < n; i++) {
+ *       // buf[i].rx_timestamp_us, buf[i].rssi, buf[i].pkt are valid
  *   }
  */
 
@@ -29,6 +36,7 @@
 #include "esp_netif.h"
 #include "nvs_flash.h"
 #include "esp_mac.h"
+#include "esp_timer.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,7 +50,22 @@ typedef struct __attribute__((packed)) {
     uint8_t  payload[8];
 } espnow_packet_t;
 
-/* ── Receiver state (polled by main loop) ── */
+/* ── Ring buffer entry (one per received packet) ── */
+typedef struct {
+    int64_t  rx_timestamp_us;  /* esp_timer_get_time() at arrival */
+    int8_t   rssi;
+    espnow_packet_t pkt;
+} espnow_rx_entry_t;
+
+#define ESPNOW_RING_SIZE  64  /* Power of 2, holds ~6s at 10 Hz */
+
+/* ── Ring buffer (single writer = WiFi task, single reader = main loop) ── */
+static volatile espnow_rx_entry_t _espnow_ring[ESPNOW_RING_SIZE];
+static volatile uint32_t _espnow_ring_head = 0;  /* Next write position (writer only) */
+static volatile uint32_t _espnow_ring_tail = 0;  /* Next read position (reader only) */
+static volatile uint32_t _espnow_ring_drops = 0; /* Packets dropped when ring full */
+
+/* ── Receiver state (polled by main loop — legacy, kept for Tests 9/10) ── */
 typedef struct {
     int8_t   rssi;           /* Signal strength of last packet (dBm) */
     uint8_t  pattern_id;     /* Pattern ID from last packet */
@@ -63,8 +86,22 @@ static void espnow_recv_cb(const esp_now_recv_info_t *info,
     if (data_len < (int)sizeof(espnow_packet_t)) return;
 
     const espnow_packet_t *pkt = (const espnow_packet_t *)data;
+    int64_t now_us = esp_timer_get_time();
 
-    /* Write state atomically-ish (single writer, main loop is reader) */
+    /* ── Push into ring buffer ── */
+    uint32_t head = _espnow_ring_head;
+    uint32_t next = (head + 1) & (ESPNOW_RING_SIZE - 1);
+    if (next == _espnow_ring_tail) {
+        /* Ring full — drop oldest (advance tail) */
+        _espnow_ring_tail = (_espnow_ring_tail + 1) & (ESPNOW_RING_SIZE - 1);
+        _espnow_ring_drops++;
+    }
+    _espnow_ring[head].rx_timestamp_us = now_us;
+    _espnow_ring[head].rssi = info->rx_ctrl->rssi;
+    memcpy((void *)&_espnow_ring[head].pkt, pkt, sizeof(espnow_packet_t));
+    _espnow_ring_head = next;
+
+    /* ── Legacy single-state update (for get_latest) ── */
     _espnow_state.rssi = info->rx_ctrl->rssi;
     _espnow_state.pattern_id = pkt->pattern_id;
     _espnow_state.sequence = pkt->sequence;
@@ -115,6 +152,8 @@ static inline esp_err_t espnow_receiver_init(void) {
 /**
  * Check if new data is available and copy it out.
  * Returns true if state was updated since last call.
+ * NOTE: This is the legacy poll API — drops intermediate packets.
+ * For stream processing, use espnow_drain() instead.
  */
 static inline bool espnow_get_latest(espnow_state_t *out) {
     uint32_t current_seq = _espnow_state.update_seq;
@@ -133,10 +172,51 @@ static inline bool espnow_get_latest(espnow_state_t *out) {
 }
 
 /**
+ * Drain all buffered packets into caller's array.
+ * Returns the number of packets copied (0 if none available).
+ * Each entry has the real arrival timestamp from esp_timer_get_time().
+ *
+ * max_entries: size of the output buffer.
+ * If more packets are buffered than max_entries, only max_entries are
+ * returned; remaining stay in the ring for the next drain call.
+ */
+static inline int espnow_drain(espnow_rx_entry_t *out, int max_entries) {
+    int count = 0;
+    uint32_t tail = _espnow_ring_tail;
+    uint32_t head = _espnow_ring_head;
+
+    while (tail != head && count < max_entries) {
+        out[count].rx_timestamp_us = _espnow_ring[tail].rx_timestamp_us;
+        out[count].rssi = _espnow_ring[tail].rssi;
+        memcpy(&out[count].pkt, (const void *)&_espnow_ring[tail].pkt,
+               sizeof(espnow_packet_t));
+        tail = (tail + 1) & (ESPNOW_RING_SIZE - 1);
+        count++;
+    }
+    _espnow_ring_tail = tail;
+    return count;
+}
+
+/**
+ * Flush the ring buffer (discard all unread packets).
+ * Call before starting a timed collection phase.
+ */
+static inline void espnow_ring_flush(void) {
+    _espnow_ring_tail = _espnow_ring_head;
+}
+
+/**
  * Get total received packet count.
  */
 static inline uint32_t espnow_rx_count(void) {
     return _espnow_state.rx_count;
+}
+
+/**
+ * Get number of packets dropped due to ring overflow.
+ */
+static inline uint32_t espnow_ring_drops(void) {
+    return _espnow_ring_drops;
 }
 
 #ifdef __cplusplus
