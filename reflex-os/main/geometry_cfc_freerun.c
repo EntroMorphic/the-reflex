@@ -3529,9 +3529,13 @@ void app_main(void) {
                 cfc.W_f[n][i] = T_ZERO;
         }
 
-        /* Set gate threshold between cross-dot (30-84) and self-dot (118-120).
-         * Use 90 as the boundary — gates fire only for matching patterns. */
-        gate_threshold = 90;
+        /* Phase 3: Disable CfC blend entirely — all neurons HOLD.
+         * gate_threshold = INT32_MAX means no f_dot ever exceeds threshold,
+         * so every neuron takes f=T_ZERO → h_new[n] = h_old[n].
+         * Hidden state freezes after input install; classification is TriX-only.
+         * Previous value: 90 (selective gating, ~10% fire rate).
+         * Reversible: set back to 90 to re-enable CfC blend. */
+        gate_threshold = 0x7FFFFFFF;  /* INT32_MAX — no neuron fires */
         gate_fires_total = 0;
         gate_steps_total = 0;
 
@@ -3544,7 +3548,7 @@ void app_main(void) {
         trix_enabled = 1;
 
         printf("  W_f weights set from signatures (8 neurons/pattern)\n");
-        printf("  Gate threshold: %d (self-dot ~118, cross-dot ~30-84)\n",
+        printf("  Gate threshold: %d (Phase 3: blend DISABLED, all neurons HOLD)\n",
                (int)gate_threshold);
 
         /* Print assignment and expected dots */
@@ -4121,7 +4125,7 @@ void app_main(void) {
             printf("  Gate firing: %d%%\n", final_fire_pct);
 
             printf("\n  Architecture:\n");
-            printf("  - TriX ISR: HW classifies at 430 Hz (parallel to CfC blend)\n");
+            printf("  - TriX ISR: HW classifies at 430 Hz (CfC blend DISABLED — Phase 3)\n");
             printf("  - 7-voxel TriX Cube: core + 6 temporal faces\n");
             printf("  - Faces: recent, prior, stable, transient, confident, uncertain\n");
             printf("  - Core classifies alone. Faces compute XOR masks (intervention sensors)\n");
