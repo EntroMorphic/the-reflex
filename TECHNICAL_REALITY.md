@@ -162,6 +162,7 @@ For each of 16 lp_hidden trits:
 | Real-world wireless input classified by GIE | **Proven** | ESP-NOW 4-pattern, 32/32 = 100%, commit `fd338f5` |
 | ISR-level classification via reflex channel | **Proven** | trix_channel seq matches trix_count, commit `b79f09b` |
 | TriX signatures = optimal gate weights (no training) | **Proven** | 100% accuracy, zero-shot from 30s observation |
+| CfC blend disabled, TriX-only classification | **Proven** | 0% gate firing, hidden frozen, 11/11 PASS, commit `c6fd284` |
 | The system is a "neural network" | **Overstated** | TriX classification is nearest-centroid, not a trained network |
 | The system "learns" or "adapts" | **Overstated** | Online signature maintenance ≠ learning; no loss function |
 | The architecture scales beyond 64 nodes / 16 neurons | **Unproven** | Constrained by 16KB SRAM |
@@ -178,7 +179,7 @@ For each of 16 lp_hidden trits:
 
 3. **ISR-level classification at hardware rate.** The GIE classifies real-world wireless input at 430 Hz loop rate (62 Hz effective clean rate). Classification results delivered via reflex channel with memory-fence ordering. The ISR validates data integrity (uniform-group check) and the main loop resolves GDMA offset via value matching.
 
-4. **Three-mode ternary blend.** The INVERT mode (f=-1) in the gated recurrent unit creates first-class oscillatory dynamics that two-mode systems cannot express as a first-class operation. Narrow but real. (Note: the CfC blend is being phased out in favor of pure TriX classification.)
+4. **Three-mode ternary blend.** The INVERT mode (f=-1) in the gated recurrent unit creates first-class oscillatory dynamics that two-mode systems cannot express as a first-class operation. Narrow but real. (Note: the CfC blend has been disabled as of Phase 3 — `gate_threshold = INT32_MAX`, 0% gate firing. Classification is now pure TriX.)
 
 5. **Three-layer power hierarchy.** Peripherals (~0 active CPU) / ULP core (~30uA) / full CPU (~15mA) as tiered compute layers with ternary operations native to each. Original embedded architecture pattern.
 
@@ -208,7 +209,7 @@ For each of 16 lp_hidden trits:
 
 7. **GDMA chain offset limits ISR autonomy.** The ISR can validate and extract dot values, but cannot determine the winning pattern because the GDMA circular chain permutes the neuron-to-capture mapping. The main loop CPU must resolve this by matching ISR values against CPU-computed reference dots. Full ISR autonomy requires either fixing the GDMA offset (failed — kills the loop) or encoding pattern identity into the dot values themselves.
 
-8. **CfC blend is vestigial.** The CfC blend (step 4 in the ISR) still runs but gate_threshold=90 blocks most updates. The system classifies via TriX signatures, not CfC dynamics. The CfC machinery is being phased out. The "ternary gated recurrent unit" has not demonstrated value for the classification task.
+8. ~~**CfC blend is vestigial.**~~ **RESOLVED (Feb 10, 2026).** Phase 3 of CfC→TriX migration set `gate_threshold = INT32_MAX`, disabling all blend activity. Gate firing: 0%. Every neuron HOLDs — hidden state freezes after input install. Classification is TriX-only. The CfC blend code still executes (step 4 in the ISR) but produces no state changes. Phase 4 will remove the hidden re-encode to reclaim ~20us per loop. Commit `c6fd284`.
 
 ### Minor (worth noting)
 
@@ -328,7 +329,7 @@ Listed in order of impact:
 
 3. **Compare against a baseline.** Same task, same chip: a timing-threshold detector, a lookup table, a TFLite Micro binary network. The timing baseline achieves 78-93% — show the TriX advantage is real and not just because the task is easy.
 
-4. **Strip the CfC.** The CfC blend is vestigial — gate_threshold=90 blocks most activity. Remove it entirely (Phase 3-4 of CfC→TriX migration) to reduce ISR latency and enable shrinking the DMA chain from 64 to 32 neurons, potentially doubling the loop rate to ~800+ Hz.
+4. **Strip the CfC.** ~~The CfC blend is vestigial — gate_threshold=90 blocks most activity.~~ **Phase 3 DONE** — blend fully disabled (`gate_threshold = INT32_MAX`, 0% gate firing, commit `c6fd284`). Next: Phase 4 (remove hidden re-encode, save ~20us/loop), Phase 5 (shrink DMA chain 64→32 neurons, potentially ~800+ Hz).
 
 5. **Harder classification tasks.** More patterns, noisier data, pattern transitions, concept drift. The current 4-pattern task has orthogonal pattern-ID trits that guarantee separation. A real test would use patterns distinguished only by statistical properties of the payload.
 
@@ -359,6 +360,7 @@ Listed in order of impact:
 | `24ba035` | ISR TriX classification (DMA race solved) | ISR 87%, 11/11 |
 | `fd338f5` | Timeout guard + extended spin wait | ISR 100%, Core 100%, 11/11 |
 | `b79f09b` | TriX classification channel (reflex_signal) | Core 100%, ISR 90%, 11/11 |
+| `c6fd284` | Phase 3 — CfC blend disabled, TriX-only | Core 100%, ISR 93%, 11/11, 0% gate firing |
 
 ---
 

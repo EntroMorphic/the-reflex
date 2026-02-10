@@ -8,9 +8,9 @@
 
 The Reflex is a three-layer ternary reflex arc in silicon. Peripheral hardware IS the neural network (GIE, 428 Hz). A micro-core IS the sub-conscious (LP core, 100 Hz, ~30uA). The CPU IS consciousness (HP core, on-demand).
 
-**Current State:** TriX classification via reflex channel verified on silicon (Feb 10, 2026). Real-world ESP-NOW wireless input classified at 100% (Core and ISR) using ternary signatures as gate weights — no training, no floating point, no multiplication. ISR signals classifications at 430 Hz via packed reflex channel. CfC blend being phased out. 11/11 tests pass.
+**Current State:** CfC blend fully disabled (Phase 3, Feb 10, 2026). Classification is now TriX-only — `gate_threshold = INT32_MAX`, 0% gate firing, every neuron HOLDs. Real-world ESP-NOW wireless input classified at 100% (Core) / 93% (ISR) using ternary signatures as gate weights — no training, no floating point, no multiplication. ISR signals classifications at 430 Hz via packed reflex channel. 11/11 tests pass.
 
-**Latest Commit:** `b79f09b` — feat: Phase 2 — TriX classification channel, packed dots via reflex_signal at 430 Hz
+**Latest Commit:** `c6fd284` — feat: Phase 3 — disable CfC blend, classification is TriX-only, 0% gate firing, 11/11 PASS on silicon
 
 ---
 
@@ -86,6 +86,7 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 | **ISR TriX Classification** | **11/11** | **DMA race solved, ISR 87% at 430 Hz** | **`24ba035`** |
 | **ISR 100% + Timeout Guard** | **11/11** | **Timeout guard + extended spin, ISR 100%, Core 100%** | **`fd338f5`** |
 | **TriX Classification Channel** | **11/11** | **Packed dots via reflex_signal, channel-based consumer** | **`b79f09b`** |
+| **CfC Blend Disabled (Phase 3)** | **11/11** | **gate_threshold=INT32_MAX, 0% firing, TriX-only classification** | **`c6fd284`** |
 
 ---
 
@@ -127,7 +128,7 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 │     200-loop drain (clock domain crossing)                       │
 │     dot = agree - disagree                                       │
 │     Re-encode next neuron's W×X products                         │
-│     CfC blend: h_new = (f==0) ? h_old : f*g                     │
+│     CfC blend: DISABLED (Phase 3, all neurons HOLD)              │
 │                              │                                   │
 │   428 Hz continuous, CPU-free after init                         │
 │                                                                  │
@@ -293,19 +294,19 @@ the-reflex/
 
 ## What's Next
 
-TriX classification is **verified** at 100% (commit `fd338f5`). The CfC→TriX migration is in progress:
+TriX classification is **verified** at 100% (commit `fd338f5`). CfC blend is **disabled** (Phase 3, commit `c6fd284`). The CfC→TriX migration continues:
 
 | Phase | What | Status |
 |-------|------|--------|
 | **1** | Add TriX dot extraction to ISR alongside CfC blend | **DONE — 100%** |
 | **2** | Add TriX classification channel (reflex_signal at 430 Hz) | **DONE — `b79f09b`** |
-| **3** | Disable CfC blend (gate_threshold blocks all blend) | Pending |
+| **3** | Disable CfC blend (gate_threshold = INT32_MAX, 0% firing) | **DONE — `c6fd284`** |
 | **4** | Remove hidden re-encode from ISR (save ~20us per loop) | Pending |
 | **5** | Shrink DMA chain (32 neurons for TriX, not 64) → ~800+ Hz | Pending |
 | **6** | Update tests to reflect TriX-native architecture | Pending |
 
 **Open directions:**
-- Complete CfC→TriX migration (Phases 3-6)
+- Complete CfC→TriX migration (Phases 4-6)
 - Harder classification tasks (more patterns, overlapping features)
 - Comparison against baseline classifiers (threshold, TFLite Micro)
 - Physical sensor integration (IMU, ADC) as GIE input

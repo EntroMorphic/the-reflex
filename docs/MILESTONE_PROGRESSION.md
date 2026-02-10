@@ -1,6 +1,6 @@
 # Milestone Progression: The Reflex
 
-35 milestones verified on silicon. From boolean gates to real-world wireless pattern classification at hardware rate. Each verified on an ESP32-C6FH4 (QFN32) rev v0.2.
+36 milestones verified on silicon. From boolean gates to real-world wireless pattern classification at hardware rate. Each verified on an ESP32-C6FH4 (QFN32) rev v0.2.
 
 **Last Updated:** February 10, 2026
 
@@ -486,6 +486,21 @@ The feedback loop is closed (commit `dc57d60`). The system now perceives, thinks
 **Tests:** 11/11 | **Commit:** `b79f09b` | **Result:** Core 100%, ISR 90%, channel seq=trix_count
 
 **What it proved:** The ISR packs 4 group dot values as signed bytes into `trix_channel.value` and signals via `reflex_signal()` with proper memory fences. The consumer uses `reflex_wait_timeout()` instead of raw volatile polling. Channel sequence number tracks exactly with trix_count (2108/2108 verified on silicon). This replaces the ad-hoc volatile-polling approach with the proven reflex channel primitive.
+
+## Milestone 35: CfC Blend Disabled (Phase 3)
+
+**Tests:** 11/11 | **Commit:** `c6fd284` | **Result:** Core 100%, ISR 93%, 0% gate firing
+
+**What it proved:** The CfC blend can be fully disabled without affecting TriX classification. Setting `gate_threshold = INT32_MAX` means no neuron's f_dot ever exceeds threshold, so every neuron takes the HOLD path (`h_new[n] = h_old[n]`). Hidden state freezes after input install. Classification is TriX-only.
+
+**The change:** One line — `gate_threshold = 0x7FFFFFFF` (was `90`). The blend code (step 4 in the ISR) still executes but produces no state changes: `fires = 0` every loop. Step 5 (hidden re-encode) still runs but is now wasted work since hidden never changes. Phase 4 will remove it.
+
+**What this confirms:**
+- The CfC blend contributed nothing to classification accuracy. TriX signatures alone are sufficient.
+- The system is safe to strip further: removing step 5 will save ~20us per loop.
+- The path to shrinking the DMA chain from 64 to 32 neurons (TriX only needs 32) is clear.
+
+**Key result:** `Gate firing: 0%` in serial output. `Gate selectivity: 0 fires / 64 steps = 0%` at install time. This is the point where the GIE transitions from "CfC neural network with TriX classification added" to "TriX classification engine with CfC machinery still present."
 
 ---
 

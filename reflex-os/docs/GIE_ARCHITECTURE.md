@@ -1,6 +1,6 @@
 # Geometry Intersection Engine: Architecture
 
-**Last Updated:** February 10, 2026 (TriX Classification Channel, CfC→TriX Migration Phase 2)
+**Last Updated:** February 10, 2026 (CfC Blend Disabled, CfC→TriX Migration Phase 3)
 
 ## Overview
 
@@ -31,15 +31,17 @@ Circular DMA chain loops forever: `[dummy×5][neuron×64][separator EOF=1 → ba
 - GPTimer 0: kickoff (ETM-enabled)
 - ISR: LEVEL3 priority, source ETS_DMA_OUT_CH0_INTR_SOURCE=69
 
-**CfC blend in ISR:**
+**CfC blend in ISR (DISABLED — Phase 3):**
 ```
 dot = agree - disagree
 f = sign(dot_f)    // gate:      {-1, 0, +1}
 g = sign(dot_g)    // candidate: {-1, 0, +1}
 h_new = (f == 0) ? h_old : f * g   // ternary blend
+// Phase 3: gate_threshold = INT32_MAX → f is ALWAYS T_ZERO → every neuron HOLDs
+// Gate firing: 0%. Hidden state freezes after input install.
 ```
 
-Three blend modes: UPDATE (f=+1), HOLD (f=0), INVERT (f=-1). The inversion mode creates natural oscillation and convergence resistance.
+Three blend modes exist: UPDATE (f=+1), HOLD (f=0), INVERT (f=-1). As of Phase 3, only HOLD executes — `gate_threshold = INT32_MAX` blocks all gate activations. The blend code still runs but produces no state changes. Classification is TriX-only.
 
 ### Layer 2: LP Core Geometric Processor (Verified, 100 Hz)
 
@@ -93,7 +95,7 @@ The ISR now performs TriX classification alongside the CfC blend. After decoding
 
 **trix_channel:** `reflex_channel_t` with packed 4×int8 dot values in `.value`. Consumer uses `reflex_wait_timeout()` with 100ms timeout (16M cycles at 160 MHz). Sequence number tracks exactly with `trix_count` (verified on silicon). Effective clean rate: ~62 Hz (2108 clean out of 33807 loops).
 
-**CfC blend (Step 4):** Still runs but `gate_threshold=90` blocks most updates. Being phased out in favor of pure TriX classification. Phase 3 of migration will fully disable it.
+**CfC blend (Step 4):** DISABLED as of Phase 3 (commit `c6fd284`). `gate_threshold = INT32_MAX` — 0% gate firing. Every neuron HOLDs. The blend code still executes but produces no state changes. Hidden state freezes after input install. Phase 4 will remove the hidden re-encode (step 5) to save ~20us per loop.
 
 ### Layer 3: HP Core (On-Demand)
 
