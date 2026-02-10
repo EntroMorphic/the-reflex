@@ -25,7 +25,7 @@
 | **ESP32-C6** | LP Core CfC | **100 Hz**, 16 neurons, ~30uA (hand-written RISC-V assembly) |
 | **ESP32-C6** | Ternary VDB | **64 nodes**, NSW graph, recall@1=95%, recall@4=90% |
 | **ESP32-C6** | CfC Blend Disabled | **Phase 3** — TriX-only classification, 0% gate firing, CfC blend fully off |
-| **ESP32-C6** | Verified Milestones | **36 milestones**, all verified exact on silicon, 11/11 tests pass |
+| **ESP32-C6** | Verified Milestones | **37 milestones**, all verified exact on silicon, 11/11 tests pass |
 | **ESP32-C6** | Signal Path | GDMA → PARLIO(2-bit, 10MHz) → GPIO loopback → PCNT(agree/disagree) |
 
 ## What is The Reflex?
@@ -256,7 +256,7 @@ No floating point. No multiplication. Verified exact on silicon.
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-### 36 Milestones Verified on Silicon
+### 37 Milestones Verified on Silicon
 
 Each verified on ESP32-C6FH4 (QFN32) rev v0.2. See [`docs/MILESTONE_PROGRESSION.md`](docs/MILESTONE_PROGRESSION.md) for the full narrative.
 
@@ -307,6 +307,7 @@ Each verified on ESP32-C6FH4 (QFN32) rev v0.2. See [`docs/MILESTONE_PROGRESSION.
 | ISR TriX | 11/11 | DMA race solved, ISR classifies at 430 Hz, 87%→100% |
 | **TriX Channel** | **11/11** | **Packed dots via reflex_signal, channel-based consumer** |
 | **CfC Blend Disabled** | **11/11** | **Phase 3: gate_threshold=INT32_MAX, 0% firing, TriX-only** |
+| **Re-encode Skipped** | **11/11** | **Phase 4: step 5 gated out, saves ~20us/loop** |
 
 ### The CfC: Three Blend Modes (DISABLED — Phase 3)
 

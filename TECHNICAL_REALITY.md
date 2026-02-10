@@ -209,7 +209,7 @@ For each of 16 lp_hidden trits:
 
 7. **GDMA chain offset limits ISR autonomy.** The ISR can validate and extract dot values, but cannot determine the winning pattern because the GDMA circular chain permutes the neuron-to-capture mapping. The main loop CPU must resolve this by matching ISR values against CPU-computed reference dots. Full ISR autonomy requires either fixing the GDMA offset (failed — kills the loop) or encoding pattern identity into the dot values themselves.
 
-8. ~~**CfC blend is vestigial.**~~ **RESOLVED (Feb 10, 2026).** Phase 3 of CfC→TriX migration set `gate_threshold = INT32_MAX`, disabling all blend activity. Gate firing: 0%. Every neuron HOLDs — hidden state freezes after input install. Classification is TriX-only. The CfC blend code still executes (step 4 in the ISR) but produces no state changes. Phase 4 will remove the hidden re-encode to reclaim ~20us per loop. Commit `c6fd284`.
+8. ~~**CfC blend is vestigial.**~~ **RESOLVED (Feb 10, 2026).** Phase 3 disabled all blend (`gate_threshold = INT32_MAX`, 0% firing, commit `c6fd284`). Phase 4 skips hidden re-encode when blend is disabled, saving ~20us per ISR loop (commit `8a33369`). The blend code and re-encode still exist for Tests 1-10 (where `gate_threshold = 0`), gated by `if (thresh < 0x7FFFFFFF)`. Classification is TriX-only.
 
 ### Minor (worth noting)
 
@@ -329,7 +329,7 @@ Listed in order of impact:
 
 3. **Compare against a baseline.** Same task, same chip: a timing-threshold detector, a lookup table, a TFLite Micro binary network. The timing baseline achieves 78-93% — show the TriX advantage is real and not just because the task is easy.
 
-4. **Strip the CfC.** ~~The CfC blend is vestigial — gate_threshold=90 blocks most activity.~~ **Phase 3 DONE** — blend fully disabled (`gate_threshold = INT32_MAX`, 0% gate firing, commit `c6fd284`). Next: Phase 4 (remove hidden re-encode, save ~20us/loop), Phase 5 (shrink DMA chain 64→32 neurons, potentially ~800+ Hz).
+4. **Strip the CfC.** **Phases 3-4 DONE** — blend disabled (`gate_threshold = INT32_MAX`, commit `c6fd284`), hidden re-encode skipped (commit `8a33369`). Next: Phase 5 (shrink DMA chain 64→32 neurons, potentially ~800+ Hz).
 
 5. **Harder classification tasks.** More patterns, noisier data, pattern transitions, concept drift. The current 4-pattern task has orthogonal pattern-ID trits that guarantee separation. A real test would use patterns distinguished only by statistical properties of the payload.
 
@@ -361,6 +361,7 @@ Listed in order of impact:
 | `fd338f5` | Timeout guard + extended spin wait | ISR 100%, Core 100%, 11/11 |
 | `b79f09b` | TriX classification channel (reflex_signal) | Core 100%, ISR 90%, 11/11 |
 | `c6fd284` | Phase 3 — CfC blend disabled, TriX-only | Core 100%, ISR 93%, 11/11, 0% gate firing |
+| `8a33369` | Phase 4 — skip hidden re-encode when blend off | Core 100%, ISR 71%, 11/11 |
 
 ---
 

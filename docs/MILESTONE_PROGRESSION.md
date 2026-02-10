@@ -1,6 +1,6 @@
 # Milestone Progression: The Reflex
 
-36 milestones verified on silicon. From boolean gates to real-world wireless pattern classification at hardware rate. Each verified on an ESP32-C6FH4 (QFN32) rev v0.2.
+37 milestones verified on silicon. From boolean gates to real-world wireless pattern classification at hardware rate. Each verified on an ESP32-C6FH4 (QFN32) rev v0.2.
 
 **Last Updated:** February 10, 2026
 
@@ -501,6 +501,19 @@ The feedback loop is closed (commit `dc57d60`). The system now perceives, thinks
 - The path to shrinking the DMA chain from 64 to 32 neurons (TriX only needs 32) is clear.
 
 **Key result:** `Gate firing: 0%` in serial output. `Gate selectivity: 0 fires / 64 steps = 0%` at install time. This is the point where the GIE transitions from "CfC neural network with TriX classification added" to "TriX classification engine with CfC machinery still present."
+
+## Milestone 36: Hidden Re-encode Skipped (Phase 4)
+
+**Tests:** 11/11 | **Commit:** `8a33369` | **Result:** Core 100%, ISR 71%, 11/11 PASS
+
+**What it proved:** Step 5 (hidden re-premultiply + re-encode, ~20us per loop) can be safely skipped when the CfC blend is disabled. The guard `if (thresh < 0x7FFFFFFF)` ensures Tests 1-10 (where `gate_threshold = 0`) still execute step 5 normally.
+
+**Why not `if (fires > 0)`:** The initial attempt used `fires == 0` as the guard condition. This caused the GIE loop to stall at 1 iteration during Tests 2-10 for reasons that were not fully diagnosed remotely (possibly related to PCNT/PARLIO state dependencies during the ISR boundary). The threshold-based guard is safer — it only skips step 5 when explicitly in TriX-only mode.
+
+**Performance impact:** 38041 total GIE loops (vs 34640 in Phase 3) during the classification test, indicating the ISR completes faster without the re-encode work. The loop rate remains PARLIO-limited at 430 Hz, but the ISR has more headroom — important for Phase 5 when the chain shrinks.
+
+**Errata discovered:**
+- `if (fires > 0)` guard killed the free-running loop during Tests 2-10 despite `gate_threshold = 0`. Root cause unclear — may be related to ISR timing, PARLIO state, or GDMA prefetch behavior when the re-encode write pattern changes. Do not use fires-based gating for step 5.
 
 ---
 

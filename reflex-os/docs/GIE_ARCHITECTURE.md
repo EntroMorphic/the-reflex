@@ -95,7 +95,9 @@ The ISR now performs TriX classification alongside the CfC blend. After decoding
 
 **trix_channel:** `reflex_channel_t` with packed 4×int8 dot values in `.value`. Consumer uses `reflex_wait_timeout()` with 100ms timeout (16M cycles at 160 MHz). Sequence number tracks exactly with `trix_count` (verified on silicon). Effective clean rate: ~62 Hz (2108 clean out of 33807 loops).
 
-**CfC blend (Step 4):** DISABLED as of Phase 3 (commit `c6fd284`). `gate_threshold = INT32_MAX` — 0% gate firing. Every neuron HOLDs. The blend code still executes but produces no state changes. Hidden state freezes after input install. Phase 4 will remove the hidden re-encode (step 5) to save ~20us per loop.
+**CfC blend (Step 4):** DISABLED as of Phase 3 (commit `c6fd284`). `gate_threshold = INT32_MAX` — 0% gate firing. Every neuron HOLDs. The blend code still executes but produces no state changes. Hidden state freezes after input install.
+
+**Hidden re-encode (Step 5):** SKIPPED as of Phase 4 (commit `8a33369`). Gated by `if (thresh < 0x7FFFFFFF)` — only executes when blend is active (Tests 1-10). When blend is disabled, hidden never changes, so the DMA buffers encoding W×hidden products remain valid. Saves ~20us per ISR loop.
 
 ### Layer 3: HP Core (On-Demand)
 
