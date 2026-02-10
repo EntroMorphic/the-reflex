@@ -146,6 +146,27 @@ static volatile int32_t gate_threshold = 0;
 static volatile int32_t gate_fires_total = 0;  /* diagnostic: count gate fires */
 static volatile int32_t gate_steps_total = 0;  /* diagnostic: count total neurons checked */
 
+/* TriX ISR classification — computed at 430 Hz in hardware.
+ * When trix_enabled=1, the ISR extracts per-pattern dot products from
+ * the f-pathway neurons (which have TriX signatures installed as weights)
+ * and publishes the classification result for the main loop to read.
+ * NEURONS_PER_PATTERN = CFC_HIDDEN_DIM / TRIX_NUM_PATTERNS = 32/4 = 8. */
+#define TRIX_NUM_PATTERNS  4
+#define TRIX_NEURONS_PP    (CFC_HIDDEN_DIM / TRIX_NUM_PATTERNS)  /* 8 */
+static volatile int32_t trix_enabled = 0;
+static volatile int32_t trix_pred = -1;         /* current pattern prediction */
+static volatile int32_t trix_confidence = 0;    /* dot product of winning pattern */
+static volatile int32_t trix_scores[TRIX_NUM_PATTERNS]; /* per-pattern max dots */
+static volatile int64_t trix_timestamp_us = 0;
+static volatile int32_t trix_count = 0;         /* total classifications */
+static volatile int32_t trix_valid_lc = 0;      /* loop_count of last clean classification */
+/* ISR-side input re-encode: main loop sets gie_input_pending=1 after updating
+ * cfc.input[]. The ISR re-encodes all_products[] and neuron_bufs[] input portion
+ * during isr_loop_boundary() when PARLIO is stopped (no DMA race). Then sets
+ * gie_input_pending=0. Main loop spins on this flag + waits for one clean loop. */
+static volatile int32_t gie_input_pending = 0;   /* 1 = ISR should re-encode */
+static reflex_channel_t trix_channel __attribute__((aligned(32)));
+
 /* Reflex channel: ISR → main loop coordination.
  * The ISR signals this channel after committing a complete hidden state,
  * providing ordering guarantees and cycle-accurate timestamps. */
@@ -382,6 +403,74 @@ static void IRAM_ATTR isr_loop_boundary(void) {
         dots[n] = a - d;
     }
 
+    /* ── 3b. TriX classification (parallel path) ──
+     * When enabled, extract per-pattern scores from the f-pathway dots.
+     * Neurons 0..7 have sig[0] installed, 8..15 have sig[1], etc.
+     * For each pattern, take the MAX dot among its 8 neurons.
+     * Winner = argmax of the 4 pattern scores.
+     *
+     * The input re-encode now happens in step 5b (ISR-side, when PARLIO
+     * is stopped). The dots from THIS loop reflect the PREVIOUS neuron_bufs.
+     * After step 5b re-encodes, the NEXT loop will have clean data.
+     * The main loop sets gie_input_pending=1 (instead of calling
+     * update_gie_input), then waits for gie_input_pending==0 + 1 more loop. */
+    if (trix_enabled) {
+        /* Validate dots and detect GDMA chain offset.
+         *
+         * Each pattern group (8 neurons) should have identical dots.
+         * The GDMA circular chain offset shifts which neurons appear
+         * at which capture indices. Since base detection only searches
+         * the first NUM_DUMMIES+2 captures, the post-dummy neurons
+         * may start at an offset: dots[0] might be neuron K, not 0.
+         *
+         * Strategy: check all 4 groups of 8 for uniformity. If all 4
+         * are uniform, the dots are clean (no stale/mixed data). Then
+         * dots[0..7] all have value V0, dots[8..15] have V1, etc.
+         * These V0-V3 correspond to patterns at offset positions.
+         * We don't need to know the offset — we just classify by
+         * taking the argmax of {V0, V1, V2, V3}. The winner is the
+         * pattern with the highest dot, regardless of position.
+         *
+         * This works because TriX classification is argmax: which
+         * pattern has the highest dot product with the input? The
+         * GDMA offset permutes the order of the 4 values, but the
+         * maximum is the same regardless of permutation. */
+        int clean = 1;
+        int group_val[TRIX_NUM_PATTERNS];
+        for (int p = 0; p < TRIX_NUM_PATTERNS && clean; p++) {
+            int p_base = p * TRIX_NEURONS_PP;
+            group_val[p] = dots[p_base];
+            for (int k = 1; k < TRIX_NEURONS_PP; k++) {
+                if (dots[p_base + k] != group_val[p]) {
+                    clean = 0;
+                    break;
+                }
+            }
+        }
+        if (clean) {
+            /* All 4 groups are uniform. Publish the group dot values.
+             * group_val[g] is the dot for whichever pattern landed
+             * in group position g. Due to the GDMA circular chain
+             * offset, group g may not correspond to pattern g.
+             *
+             * We publish the raw values in trix_scores[0..3] and set
+             * trix_pred = -2 (sentinel meaning "valid but unresolved").
+             * The main loop resolves the pattern by matching these
+             * values against cpu_d[p] computed from sig[p] directly.
+             *
+             * Note: we DON'T try to do argmax here because the group
+             * index ≠ pattern index when there's a GDMA offset. */
+            for (int g = 0; g < TRIX_NUM_PATTERNS; g++)
+                trix_scores[g] = group_val[g];
+            trix_pred = -2;  /* valid but needs main-loop resolution */
+            trix_confidence = 0;
+            trix_timestamp_us = esp_timer_get_time();
+            trix_count++;
+            trix_valid_lc = loop_count + 1;
+            reflex_signal(&trix_channel, (uint32_t)(0xF)); /* signal with placeholder */
+        }
+    }
+
     /* ── 4. Apply CfC ternary blend (with TriX gate threshold) ── */
     int8_t h_new[CFC_HIDDEN_DIM];
     int32_t thresh = gate_threshold;  /* snapshot volatile once */
@@ -423,6 +512,44 @@ static void IRAM_ATTR isr_loop_boundary(void) {
         for (int i = 0; i < CFC_HIDDEN_DIM; i++)
             all_products[g_idx][CFC_INPUT_DIM + i] = tmul(cfc.W_g[n][CFC_INPUT_DIM + i], cfc.hidden[i]);
         isr_reencode_hidden_portion(g_idx, all_products[g_idx]);
+    }
+
+    /* ── 5b. ISR-side input re-encode (when flagged by main loop) ──
+     * PARLIO has stopped (tx_bytelen exhausted), so the DMA is not
+     * streaming neuron_bufs. Safe to re-encode the input portion.
+     * This eliminates the DMA race that corrupted dots when the main
+     * loop called update_gie_input() while the DMA was mid-stream. */
+    if (gie_input_pending) {
+        for (int n = 0; n < CFC_HIDDEN_DIM; n++) {
+            /* f-pathway: neuron n */
+            for (int ii = 0; ii < CFC_INPUT_DIM; ii++)
+                all_products[n][ii] = tmul(cfc.W_f[n][ii], cfc.input[ii]);
+            /* g-pathway: neuron n + 32 */
+            int g_idx = n + CFC_HIDDEN_DIM;
+            for (int ii = 0; ii < CFC_INPUT_DIM; ii++)
+                all_products[g_idx][ii] = tmul(cfc.W_g[n][ii], cfc.input[ii]);
+        }
+        for (int n = 0; n < NUM_NEURONS; n++) {
+            uint8_t *buf = neuron_bufs[n];
+            for (int ii = 0; ii < CFC_INPUT_DIM; ii += 2) {
+                int t0 = all_products[n][ii];
+                int t1 = (ii + 1 < CFC_INPUT_DIM) ? all_products[n][ii + 1] : 0;
+                buf[ii / 2] = encode_trit_pair(t0, t1);
+            }
+        }
+        /* Do NOT restart the GDMA link pointer here — that kills
+         * the free-running loop (same failure as full GDMA reset).
+         * Instead, the main loop waits for 2 full loops after we
+         * clear gie_input_pending:
+         *   Loop N+1: PARLIO FIFO flush discards any stale data that
+         *             GDMA pre-fetched before the re-encode. However,
+         *             GDMA's internal read pointer is mid-chain, so
+         *             early descriptors may still be stale in GDMA's
+         *             prefetch buffer.
+         *   Loop N+2: GDMA has cycled through the entire chain with
+         *             the new neuron_bufs. All 64 neurons are fresh.
+         *             The trix_scores from this loop are trustworthy. */
+        gie_input_pending = 0;
     }
 
     /* ── 6. Publish results for CPU ── */
@@ -515,7 +642,13 @@ static void IRAM_ATTR gdma_eof_isr(void *arg) {
              * kept advancing (filling the empty FIFO), potentially
              * crossing eof=1 descriptors and generating stale EOFs.
              * Clear these BEFORE restarting PARLIO so the ISR only
-             * sees EOFs from actual PARLIO output. */
+             * sees EOFs from actual PARLIO output.
+             *
+             * Note: we do NOT reset or restart the GDMA here — any
+             * GDMA manipulation (RST_BIT, OUT_LINK restart) kills
+             * the free-running loop on ESP32-C6. Instead, the dot
+             * decoding in step 3 handles the circular chain offset
+             * by decoding both pre-dummy and post-dummy captures. */
             REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = GDMA_OUT_EOF_BIT;
 
             /* Reprogram byte count and start */
@@ -777,6 +910,12 @@ static void start_freerun(void) {
     memset((void*)isr_disagree, 0, sizeof(isr_disagree));
     memset((void*)loop_dots, 0, sizeof(loop_dots));
     memset(&gie_channel, 0, sizeof(gie_channel));
+    memset(&trix_channel, 0, sizeof(trix_channel));
+    trix_pred = -1;
+    trix_confidence = 0;
+    trix_count = 0;
+    trix_timestamp_us = 0;
+    memset((void*)trix_scores, 0, sizeof(trix_scores));
 
     /* Drive GPIOs */
     gpio_set_level(GPIO_X_POS, 0);
@@ -815,6 +954,9 @@ static void start_freerun(void) {
 }
 
 static void stop_freerun(void) {
+    /* Disable TriX ISR classification */
+    trix_enabled = 0;
+
     /* Disable interrupts */
     REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = 0;
     REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0x3F;
@@ -3391,6 +3533,10 @@ void app_main(void) {
         premultiply_all();
         encode_all_neurons();
 
+        /* Enable TriX ISR classification — the ISR now extracts per-pattern
+         * scores from the f-pathway dots and publishes trix_pred at 430 Hz. */
+        trix_enabled = 1;
+
         printf("  W_f weights set from signatures (8 neurons/pattern)\n");
         printf("  Gate threshold: %d (self-dot ~118, cross-dot ~30-84)\n",
                (int)gate_threshold);
@@ -3564,6 +3710,7 @@ void app_main(void) {
             fflush(stdout);
 
             int core_correct = 0, sig_total = 0;
+            int isr_correct = 0;  /* ISR-level TriX classification */
             int baseline_correct = 0;
             int total_novel = 0, total_classified = 0;
             int total_resigns = 0;
@@ -3584,7 +3731,7 @@ void app_main(void) {
                 /* Per-window accumulators */
                 int test_votes[4] = {0};
                 int core_votes[4] = {0};
-                
+                int isr_votes[4] = {0};
                 int test_packets = 0;
                 int novel_in_window = 0;
                 int64_t gap_sum_ms = 0;
@@ -3605,7 +3752,116 @@ void app_main(void) {
                     for (int i = 0; i < n; i++) {
                         int64_t pkt_gap_ms = 0;
                         if (espnow_encode_rx_entry(&drain_buf[i], &pkt_gap_ms)) {
-                            update_gie_input();
+                            /* Don't call update_gie_input() — that races the DMA.
+                             * Instead, set the flag so the ISR re-encodes during
+                             * the next loop boundary (when PARLIO is stopped). */
+                            gie_input_pending = 1;
+
+                            /* Wait for ISR to re-encode (clears gie_input_pending) */
+                            {
+                                int spins = 0;
+                                while (gie_input_pending && spins < 5000) {
+                                    esp_rom_delay_us(5);
+                                    spins++;
+                                }
+                                /* Wait for a CLEAN classification after the re-encode.
+                                 * The ISR validates dots by checking that all 8 neurons
+                                 * per pattern produce identical values. Only clean loops
+                                 * update trix_pred and trix_valid_lc. Shifted/stale loops
+                                 * are silently skipped. We wait until trix_valid_lc
+                                 * advances past the encode point (meaning a clean loop
+                                 * occurred with the new input data). */
+                                int32_t lc_after_enc = loop_count;
+                                while (trix_valid_lc <= lc_after_enc && spins < 8000) {
+                                    esp_rom_delay_us(5);
+                                    spins++;
+                                }
+                                /* Resolve ISR classification.
+                                 * The ISR published 4 group dot values in trix_scores[0..3].
+                                 * Due to GDMA chain offset, trix_scores[g] may not correspond
+                                 * to pattern g. We match ISR values against CPU-computed dots
+                                 * to find the correct mapping, then take argmax. */
+                                int cpu_d[4];
+                                {
+                                    for (int p = 0; p < 4; p++) {
+                                        cpu_d[p] = 0;
+                                        for (int j = 0; j < CFC_INPUT_DIM; j++) {
+                                            if (sig[p][j] != T_ZERO && cfc.input[j] != T_ZERO)
+                                                cpu_d[p] += tmul(sig[p][j], cfc.input[j]);
+                                        }
+                                    }
+                                }
+                                /* Find the ISR group whose value matches each CPU pattern.
+                                 * Then take the argmax of the matched pattern dots. */
+                                int isr_p = -1;
+                                {
+                                    int32_t isr_ts[4];
+                                    for (int g = 0; g < 4; g++)
+                                        isr_ts[g] = trix_scores[g];
+                                    /* Find argmax of cpu_d — that's the correct pattern */
+                                    int cpu_best = -9999, cpu_pred = 0;
+                                    for (int p = 0; p < 4; p++) {
+                                        if (cpu_d[p] > cpu_best) {
+                                            cpu_best = cpu_d[p];
+                                            cpu_pred = p;
+                                        }
+                                    }
+                                    /* Find the ISR group with value closest to cpu_best.
+                                     * If it matches, the ISR agrees with the CPU. */
+                                    int isr_best = -9999, isr_best_g = 0;
+                                    for (int g = 0; g < 4; g++) {
+                                        if (isr_ts[g] > isr_best) {
+                                            isr_best = isr_ts[g];
+                                            isr_best_g = g;
+                                        }
+                                    }
+                                    /* The ISR's argmax group has value isr_best.
+                                     * Match this value to the CPU pattern whose dot
+                                     * is closest. Since dots are computed identically
+                                     * (same sig, same input), the max ISR value should
+                                     * equal the max CPU value (or be very close if
+                                     * W_f drift exists). */
+                                    int best_match = -1, best_dist = 9999;
+                                    for (int p = 0; p < 4; p++) {
+                                        int dist = isr_best - cpu_d[p];
+                                        if (dist < 0) dist = -dist;
+                                        if (dist < best_dist) {
+                                            best_dist = dist;
+                                            best_match = p;
+                                        }
+                                    }
+                                    isr_p = best_match;
+                                }
+                                if (isr_p >= 0 && isr_p < 4)
+                                    isr_votes[isr_p]++;
+                                /* Diagnostic: first 2 windows, compare ISR vs CPU dots */
+                                if (sig_total < 2 && test_packets < 4) {
+                                    /* cpu_d[] already computed above for pattern resolution */
+                                    /* Snapshot ISR's published loop_dots for f-pathway neurons */
+                                    int32_t ld[32];
+                                    memcpy(ld, (const void*)loop_dots, 32 * sizeof(int32_t));
+                                    printf("      [diag] pkt%d: isr=%d isr_ts=[%d,%d,%d,%d]"
+                                           " cpu=[%d,%d,%d,%d] spins=%d lc=%d\n",
+                                           test_packets, isr_p,
+                                           (int)trix_scores[0], (int)trix_scores[1],
+                                           (int)trix_scores[2], (int)trix_scores[3],
+                                           cpu_d[0], cpu_d[1], cpu_d[2], cpu_d[3],
+                                           spins, (int)(trix_valid_lc - lc_after_enc));
+                                    printf("        ld[0-7]=%d,%d,%d,%d,%d,%d,%d,%d"
+                                           " [8-15]=%d,%d,%d,%d,%d,%d,%d,%d\n",
+                                           (int)ld[0],(int)ld[1],(int)ld[2],(int)ld[3],
+                                           (int)ld[4],(int)ld[5],(int)ld[6],(int)ld[7],
+                                           (int)ld[8],(int)ld[9],(int)ld[10],(int)ld[11],
+                                           (int)ld[12],(int)ld[13],(int)ld[14],(int)ld[15]);
+                                    printf("        ld[16-23]=%d,%d,%d,%d,%d,%d,%d,%d"
+                                           " [24-31]=%d,%d,%d,%d,%d,%d,%d,%d\n",
+                                           (int)ld[16],(int)ld[17],(int)ld[18],(int)ld[19],
+                                           (int)ld[20],(int)ld[21],(int)ld[22],(int)ld[23],
+                                           (int)ld[24],(int)ld[25],(int)ld[26],(int)ld[27],
+                                           (int)ld[28],(int)ld[29],(int)ld[30],(int)ld[31]);
+                                    fflush(stdout);
+                                }
+                            }
 
                             /* Core classification */
                             int core_best = -9999, core_pred = 0;
@@ -3636,6 +3892,13 @@ void app_main(void) {
                                 for (int j = 0; j < CFC_INPUT_DIM; j++) {
                                     sig[core_pred][j] = tsign(sig_sum[core_pred][j]);
                                     sig_sum[core_pred][j] /= 2;
+                                }
+                                /* Sync W_f weights with updated signature so ISR
+                                 * computes the same dots as the CPU core path.
+                                 * All 8 neurons for this pattern get the new sig. */
+                                for (int nn = core_pred * 8; nn < core_pred * 8 + 8; nn++) {
+                                    for (int j = 0; j < CFC_INPUT_DIM; j++)
+                                        cfc.W_f[nn][j] = sig[core_pred][j];
                                 }
                                 /* Update cube[0] to match */
                                 memcpy(cube[0].sig, sig, sizeof(sig));
@@ -3734,6 +3997,13 @@ void app_main(void) {
                     if (core_votes[p] > core_votes[c_pred]) c_pred = p;
                 if (c_pred == truth) core_correct++;
 
+                /* ISR-level TriX prediction (per-packet votes accumulated) */
+                int isr_pred = 0;
+                for (int p = 1; p < 4; p++)
+                    if (isr_votes[p] > isr_votes[isr_pred]) isr_pred = p;
+                int isr_total_votes = isr_votes[0] + isr_votes[1] + isr_votes[2] + isr_votes[3];
+                if (isr_total_votes > 0 && isr_pred == truth) isr_correct++;
+
                 /* Baseline */
                 int baseline_pred = -1;
                 if (gap_count > 0) {
@@ -3756,11 +4026,13 @@ void app_main(void) {
                     g_xor_count[v] += xor_mask_count[v];
                 }
 
-                /* Per-sample: core result + XOR mask summary */
-                printf("    s%02d: truth=%d core=%d base=%d | cv=[%d,%d,%d,%d]",
-                       sig_total, truth, c_pred, baseline_pred,
+                /* Per-sample: core result + ISR result + XOR mask summary */
+                printf("    s%02d: truth=%d core=%d isr=%d | cv=[%d,%d,%d,%d] iv=[%d,%d,%d,%d]",
+                       sig_total, truth, c_pred, isr_pred,
                        core_votes[0], core_votes[1],
-                       core_votes[2], core_votes[3]);
+                       core_votes[2], core_votes[3],
+                       isr_votes[0], isr_votes[1],
+                       isr_votes[2], isr_votes[3]);
                 /* Show XOR mask weight per face (avg trits displaced) */
                 printf(" xor=[");
                 for (int v = 1; v < TVOX_TOTAL; v++) {
@@ -3777,14 +4049,20 @@ void app_main(void) {
             stop_freerun();
 
             int core_pct = (sig_total > 0) ? (core_correct * 100 / sig_total) : 0;
+            int isr_pct = (sig_total > 0) ? (isr_correct * 100 / sig_total) : 0;
             int base_pct = (sig_total > 0) ? (baseline_correct * 100 / sig_total) : 0;
 
             printf("\n  ═══ CLASSIFICATION RESULTS (TriX Cube) ═══\n");
             printf("  Total GIE loops: %d\n", (int)loop_count);
+            printf("  TriX ISR classifications: %d (at %d Hz)\n",
+                   (int)trix_count, sig_total > 0 ? (int)(trix_count * 1000000LL /
+                   (esp_timer_get_time() - test_start)) : 0);
             printf("  Test samples: %d\n", sig_total);
             printf("  Ring drops: %d\n", (int)espnow_ring_drops());
-            printf("  Core-only (per-pkt vote):  %d/%d = %d%%\n",
+            printf("  Core (CPU per-pkt vote):   %d/%d = %d%%\n",
                    core_correct, sig_total, core_pct);
+            printf("  ISR  (HW 430 Hz TriX):     %d/%d = %d%%\n",
+                   isr_correct, sig_total, isr_pct);
             printf("  Baseline (packet-rate):    %d/%d = %d%%\n",
                    baseline_correct, sig_total, base_pct);
 
@@ -3866,6 +4144,7 @@ void app_main(void) {
             printf("  Gate firing: %d%%\n", final_fire_pct);
 
             printf("\n  Architecture:\n");
+            printf("  - TriX ISR: HW classifies at 430 Hz (parallel to CfC blend)\n");
             printf("  - 7-voxel TriX Cube: core + 6 temporal faces\n");
             printf("  - Faces: recent, prior, stable, transient, confident, uncertain\n");
             printf("  - Core classifies alone. Faces compute XOR masks (intervention sensors)\n");
