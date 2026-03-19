@@ -8,6 +8,7 @@
 > *   [`READMETOO.md`](READMETOO.md) - Deep Technical Audit & Falsification Report.
 > *   [`WHITEPAPER.md`](WHITEPAPER.md) - The Reflex Manifesto: Substrate-Aware Agency.
 > *   [`PAP_PAPER.md`](PAP_PAPER.md) - Peripheral-As-Processor (PaP) Micro-Architecture Academic Draft.
+> *   [`ROADMAP.md`](ROADMAP.md) - Future Horizons: Strategic Step-Changes.
 >
 > This README is written for GitHub.
 
