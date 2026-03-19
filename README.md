@@ -3,7 +3,13 @@
 **Cache coherency signaling for 10kHz robotics control with 926ns P99 latency.**
 
 > **For a cold, honest assessment of what exists and what doesn't, read [`TECHNICAL_REALITY.md`](TECHNICAL_REALITY.md).**
-> That document is written for skeptics. This README is written for GitHub.
+>
+> **LATEST DOCUMENTATION (March 19, 2026):**
+> *   [`READMETOO.md`](READMETOO.md) - Deep Technical Audit & Falsification Report.
+> *   [`WHITEPAPER.md`](WHITEPAPER.md) - The Reflex Manifesto: Substrate-Aware Agency.
+> *   [`PAP_PAPER.md`](PAP_PAPER.md) - Peripheral-As-Processor (PaP) Micro-Architecture Academic Draft.
+>
+> This README is written for GitHub.
 
 ---
 

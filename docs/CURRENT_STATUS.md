@@ -1,16 +1,21 @@
 # The Reflex: Current Status
 
-**Last Updated:** February 10, 2026
+**Last Updated:** March 19, 2026
 
 ---
 
 ## Executive Summary
 
-The Reflex is a three-layer ternary reflex arc in silicon. Peripheral hardware IS the neural network (GIE, 428 Hz). A micro-core IS the sub-conscious (LP core, 100 Hz, ~30uA). The CPU IS consciousness (HP core, on-demand).
+The Reflex is a three-layer ternary reflex arc in silicon. Peripheral hardware IS the neural network (GIE). A micro-core IS the sub-conscious (LP core, 100 Hz, ~30uA). The CPU IS consciousness (HP core, on-demand).
 
-**Current State:** CfC blend disabled and hidden re-encode skipped (Phases 3-4, Feb 10, 2026). Classification is TriX-only — `gate_threshold = INT32_MAX`, 0% gate firing, step 5 gated out. ISR saves ~20us per loop. Real-world ESP-NOW wireless input classified at 100% (Core) using ternary signatures as gate weights — no training, no floating point, no multiplication. ISR signals classifications at 430 Hz via packed reflex channel. 11/11 tests pass.
+**Current State (March 19, 2026):** LP Core assembly implementation of NSW Vector Database and CfC integration verified at **100% recall and determinism** on silicon. GIE (Peripheral-As-Processor) arithmetic remains architecturally sound but is currently **hardware-locked** on Rev v0.2 silicon when the USB-Serial-JTAG port is active (IOMUX/PCR interlock). Verified path forward: power independently and use standard UART.
 
-**Latest Commit:** `8a33369` — feat: Phase 4 — skip hidden re-encode when blend disabled, saves ~20us/loop, 11/11 PASS on silicon
+**New Documentation:** 
+- `READMETOO.md`: Deep Audit & Falsification Report.
+- `WHITEPAPER.md`: The Reflex Manifesto.
+- `PAP_PAPER.md`: "The Reflex Arc in Silicon" (Academic Draft).
+
+**Latest Session Proof:** `lmm_reflex_truth.bin` captured 531KB of substrate activity during atomic discovery.
 
 ---
 

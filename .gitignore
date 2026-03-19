@@ -30,6 +30,8 @@ reflex-os/.cache/
 # Transient logs and captures
 esp32_monitor_output.txt
 reflex_*.txt
+*.log
+*.bin
 
 # Firmware backups (binary blobs)
 backups/

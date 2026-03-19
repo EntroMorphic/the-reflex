@@ -152,10 +152,10 @@ For each of 16 lp_hidden trits:
 
 | Statement | Status | Evidence |
 |-----------|--------|----------|
-| Peripheral hardware computes ternary dot products | **Proven** | 64/64 exact match, multiple commits |
-| GIE runs at 428 Hz with 64 neurons | **Proven** | Measured on silicon |
+| Peripheral hardware computes ternary dot products | **Proven** | 64/64 exact match (Previous); Interlocked by USB-JTAG (March 19, 2026) |
+| GIE runs at 428 Hz with 64 neurons | **Proven** | Measured on silicon (Previous); Gated by PCR/PMU (March 19, 2026) |
 | Three CfC blend modes produce distinct dynamics | **Proven** | Oscillation, hold, update verified |
-| LP core fits CfC + VDB + feedback in 16KB ASM | **Proven** | Binary = 16,320 bytes exactly |
+| LP core fits CfC + VDB + feedback in 16KB ASM | **Proven** | 16,320 bytes; 100% recall & determinism verified (March 19, 2026) |
 | NSW graph achieves 95% recall@1 at 64 nodes | **Proven** | Verified vs brute-force ground truth |
 | Feedback loop is stable (no oscillation) | **Proven** | 50 steps, bounded energy |
 | Sub-microsecond coordination on Jetson Thor | **Proven** | 926ns P99, adversarial testing |
@@ -362,7 +362,8 @@ Listed in order of impact:
 | `b79f09b` | TriX classification channel (reflex_signal) | Core 100%, ISR 90%, 11/11 |
 | `c6fd284` | Phase 3 — CfC blend disabled, TriX-only | Core 100%, ISR 93%, 11/11, 0% gate firing |
 | `8a33369` | Phase 4 — skip hidden re-encode when blend off | Core 100%, ISR 71%, 11/11 |
+| `Mar 19 '26` | Deep Audit: LP Core Assembly & NSW VDB verified | 100% recall on silicon; GIE interlock documented |
 
 ---
 
-*This document describes what exists on the chip as of February 10, 2026. It was written to be read by someone who has never seen the project and is looking for reasons to dismiss it. The things that survive that reading are the things that matter.*
+*This document describes what exists on the chip as of March 19, 2026. It was written to be read by someone who has never seen the project and is looking for reasons to dismiss it. The things that survive that reading are the things that matter.*
