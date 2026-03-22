@@ -1,6 +1,6 @@
 # The Reflex: Current Status
 
-**Last Updated:** March 22, 2026 (night — 12/12 PASS, memory-modulated attention confirmed)
+**Last Updated:** March 22, 2026 (night — 13/13 PASS, VDB attribution confirmed by CMD 4 ablation)
 
 ---
 
@@ -8,11 +8,11 @@
 
 The Reflex is a three-layer ternary reflex arc in silicon. Peripheral hardware IS the neural network (GIE). A micro-core IS the sub-conscious (LP core, 100 Hz, ~30uA). The CPU IS consciousness (HP core, on-demand).
 
-**Current State (March 22, 2026):** **12/12 PASS — full system verified including memory-modulated adaptive attention.**
-The GIE free-running engine runs at 430.8 Hz CPU-free. Real-world ESP-NOW packets from Board B
+**Current State (March 22, 2026):** **13/13 PASS — full system verified including memory-modulated adaptive attention with CMD 4 ablation control.**
+The GIE free-running engine runs at 430.8 Hz, ISR-driven on HP core with peripheral-autonomous computation between interrupts. Real-world ESP-NOW packets from Board B
 drive the GIE's hidden state. TriX classification achieves 100% accuracy (Core + ISR) vs 84%
-for a rate-only baseline. The LP core now develops pattern-specific internal states from
-classification history via VDB episodic memory retrieval: after 60 seconds of live operation,
+for a rate-only baseline. The LP core develops pattern-specific internal states from
+classification history via VDB episodic memory retrieval: after 90 seconds of live operation,
 P1 and P3 (same 10 Hz rate, different payload) diverge by Hamming 5 in LP hidden space.
 97% of LP feedback steps applied. The sub-conscious layer reflects what the system has been seeing.
 
