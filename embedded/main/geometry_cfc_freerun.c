@@ -84,7 +84,6 @@
 #define GDMA_OUT_INT_ENA_CH(ch)  (GDMA_BASE + 0x38 + (ch) * 0x10)
 #define GDMA_OUT_INT_CLR_CH(ch)  (GDMA_BASE + 0x3C + (ch) * 0x10)
 
-#define GDMA_OUT_DONE_BIT       (1 << 0)
 #define GDMA_OUT_EOF_BIT        (1 << 1)
 #define GDMA_OUT_TOTAL_EOF_BIT  (1 << 3)
 
@@ -143,9 +142,6 @@ static lldesc_t __attribute__((aligned(4))) neuron_descs[TOTAL_DESCS];
 static volatile int32_t isr_agree[ISR_CAPTURES];
 static volatile int32_t isr_disagree[ISR_CAPTURES];
 static volatile int32_t isr_count;
-static volatile int32_t isr_total_fires;   /* diagnostic: total GDMA ISR calls ever */
-static volatile int32_t isr_done_count;    /* diagnostic: out_done (bit 0) events */
-static volatile int32_t isr_eof_count;     /* diagnostic: total out_eof events ever */
 
 /* Free-running state — updated by ISR at loop boundary */
 static volatile int32_t loop_count;         /* total completed loops */
@@ -613,12 +609,10 @@ static void IRAM_ATTR isr_loop_boundary(void) {
  * ══════════════════════════════════════════════════════════════════ */
 
 static void IRAM_ATTR gdma_eof_isr(void *arg) {
-    isr_total_fires++;
     uint32_t status = REG32(GDMA_OUT_INT_ST_CH(bare_ch));
 
     if (status & GDMA_OUT_EOF_BIT) {
         REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = GDMA_OUT_EOF_BIT;
-        isr_eof_count++;
 
         /* Clock domain drain: ~5us for PCNT pipeline to settle.
          * PCNT reads GPIO through the matrix; after PARLIO outputs the
@@ -697,14 +691,8 @@ static void IRAM_ATTR gdma_eof_isr(void *arg) {
         }
     }
 
-    /* out_done (bit 0): descriptor transmitted to peripheral — count for diagnostics */
-    if (status & GDMA_OUT_DONE_BIT) {
-        REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = GDMA_OUT_DONE_BIT;
-        isr_done_count++;
-    }
-
     /* Clear any other pending bits */
-    uint32_t others = status & ~(GDMA_OUT_EOF_BIT | GDMA_OUT_DONE_BIT);
+    uint32_t others = status & ~GDMA_OUT_EOF_BIT;
     if (others) {
         REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = others;
     }
@@ -822,7 +810,7 @@ static void detect_gdma_channel(void) {
 static void init_gdma_isr(void) {
     REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0x3F;
     /* Only enable EOF — no TOTAL_EOF in free-running mode (chain never ends) */
-    REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = GDMA_OUT_EOF_BIT | GDMA_OUT_DONE_BIT;
+    REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = GDMA_OUT_EOF_BIT;
 
     int intr_source = ETS_DMA_OUT_CH0_INTR_SOURCE + bare_ch;
     esp_err_t err = esp_intr_alloc(intr_source,
@@ -948,12 +936,8 @@ static void setup_gdma_freerun(void) {
 }
 
 static void start_freerun(void) {
-    printf("  [SF] step 1: reset state\n"); fflush(stdout);
     /* Reset ISR state */
     isr_count = 0;
-    isr_total_fires = 0;
-    isr_done_count = 0;
-    isr_eof_count = 0;
     loop_count = 0;
     loop_timestamp_us = 0;
     memset((void*)isr_agree, 0, sizeof(isr_agree));
@@ -968,7 +952,6 @@ static void start_freerun(void) {
     memset((void*)trix_scores, 0, sizeof(trix_scores));
 
     /* Drive GPIOs */
-    printf("  [SF] step 2: gpio low\n"); fflush(stdout);
     gpio_set_level(GPIO_X_POS, 0);
     gpio_set_level(GPIO_X_NEG, 0);
     gpio_set_level(GPIO_Y_POS, 0);
@@ -976,7 +959,6 @@ static void start_freerun(void) {
     esp_rom_delay_us(50);
 
     /* Triple-clear PCNT */
-    printf("  [SF] step 3: clear pcnt\n"); fflush(stdout);
     clear_all_pcnt();
     esp_rom_delay_us(10);
     clear_all_pcnt();
@@ -985,7 +967,6 @@ static void start_freerun(void) {
     esp_rom_delay_us(50);
 
     /* Set Y_POS high for PCNT level gating */
-    printf("  [SF] step 4: Y_POS high\n"); fflush(stdout);
     gpio_set_level(GPIO_Y_POS, 1);
     esp_rom_delay_us(50);
 
@@ -994,13 +975,11 @@ static void start_freerun(void) {
      * interrupts before setup_gdma_freerun(), a stale pending bit or a
      * GDMA chain running from a previous loop could fire the ISR while we
      * are mid-reset, causing a deadlock or corrupt state on second call. */
-    printf("  [SF] step 5: setup_gdma_freerun\n"); fflush(stdout);
     setup_gdma_freerun();
-    printf("  [SF] step 6: post-setup\n"); fflush(stdout);
 
     /* Enable interrupts only after GDMA is fully reconfigured and idle */
     REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0x3F;
-    REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = GDMA_OUT_EOF_BIT | GDMA_OUT_DONE_BIT;
+    REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = GDMA_OUT_EOF_BIT;
     esp_rom_delay_us(500);
     clear_all_pcnt();
     esp_rom_delay_us(100);
@@ -1015,7 +994,6 @@ static void start_freerun(void) {
     esp_rom_gpio_connect_out_signal(GPIO_X_POS, 47, false, false);
     esp_rom_gpio_connect_out_signal(GPIO_X_NEG, 48, false, false);
 
-    printf("  [SF] step 7: fire PARLIO + PCR clock\n"); fflush(stdout);
     /* Disable PARLIO driver interrupt so its ISR doesn't disable our clock.
      * The driver's TX-done ISR calls parlio_ll_tx_enable_clock(false) after
      * each transaction, which would kill the free-running clock. */
@@ -1032,7 +1010,6 @@ static void start_freerun(void) {
      * GDMA stalls on descriptor 0, and no EOFs ever fire. */
     REG32(PCR_PARL_CLK_TX_CONF) |= PARLIO_TX_CLK_EN_BIT;
 
-    printf("  [SF] step 8: DIAG delay\n"); fflush(stdout);
     /* ── DIAGNOSTIC: read PCNT 500us after PARLIO fires ── */
     esp_rom_delay_us(500);
     int diag_agree0    = (int)(int16_t)(REG32(PCNT_U0_CNT_REG) & 0xFFFF);
@@ -1075,13 +1052,11 @@ static void start_freerun(void) {
     uint32_t gdma_eof_addr = REG32(gdma_base + GDMA_OUT_EOF_DES_ADDR);
     uint32_t gdma_peri     = REG32(gdma_base + GDMA_OUT_PERI_SEL);
 
-    printf("[DIAG] 500us: agree=%d disagree=%d out_sel4=%lu out_sel5=%lu in101=0x%lx in103=0x%lx gpio_in=0x%lx cpu_agree=%d loop=%d isr_fires=%d isr_done=%d isr_eof=%d isr_cnt=%d\n",
+    printf("[DIAG] 500us: agree=%d disagree=%d out_sel4=%lu out_sel5=%lu in101=0x%lx in103=0x%lx gpio_in=0x%lx cpu_agree=%d loop=%d\n",
            diag_agree0, diag_disagree0,
            (unsigned long)out_sel4, (unsigned long)out_sel5,
            (unsigned long)in_sel101, (unsigned long)in_sel103,
-           (unsigned long)gpio_in, cpu_agree, (int)loop_count,
-           (int)isr_total_fires, (int)isr_done_count,
-           (int)isr_eof_count, (int)isr_count);
+           (unsigned long)gpio_in, cpu_agree, (int)loop_count);
     printf("[DIAG] gdma: raw=0x%lx st=0x%lx ena=0x%lx conf0=0x%lx link=0x%lx(park=%lu) peri=%lu\n",
            (unsigned long)gdma_int_raw, (unsigned long)gdma_int_st,
            (unsigned long)gdma_int_ena,
@@ -1105,11 +1080,6 @@ static void start_freerun(void) {
            (unsigned long)parlio_int_raw,
            (unsigned long)((parlio_int_raw >> 2) & 1),
            (unsigned long)((parlio_int_raw >> 0) & 1));
-    uint32_t pcr_clk = REG32(PCR_PARL_CLK_TX_CONF);
-    printf("[DIAG] pcr: clk_conf=0x%lx(en=%lu rst=%lu)\n",
-           (unsigned long)pcr_clk,
-           (unsigned long)((pcr_clk >> 18) & 1),
-           (unsigned long)((pcr_clk >> 19) & 1));
     (void)gpio_ena;
 }
 
@@ -1854,11 +1824,6 @@ void app_main(void) {
             memcpy(snapshots[i], (void*)cfc.hidden, CFC_HIDDEN_DIM);
             snap_loops[i] = loop_count;
             n_snaps++;
-
-            /* Diagnostic: show ISR EOF activity to detect GDMA stall */
-            printf("  [T2D] i=%d loop=%d eof=%d cnt=%d fires=%d\n",
-                   i, (int)loop_count, (int)isr_eof_count,
-                   (int)isr_count, (int)isr_total_fires);
 
             if (i > 0) {
                 int dist = trit_hamming(snapshots[i], snapshots[i - 1], CFC_HIDDEN_DIM);
