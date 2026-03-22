@@ -1,6 +1,6 @@
 # The Reflex: Current Status
 
-**Last Updated:** March 22, 2026 (evening — 11/11 PASS confirmed)
+**Last Updated:** March 22, 2026 (night — 12/12 PASS, memory-modulated attention confirmed)
 
 ---
 
@@ -8,29 +8,36 @@
 
 The Reflex is a three-layer ternary reflex arc in silicon. Peripheral hardware IS the neural network (GIE). A micro-core IS the sub-conscious (LP core, 100 Hz, ~30uA). The CPU IS consciousness (HP core, on-demand).
 
-**Current State (March 22, 2026):** **11/11 PASS — full system verified with live wireless input.**
+**Current State (March 22, 2026):** **12/12 PASS — full system verified including memory-modulated adaptive attention.**
 The GIE free-running engine runs at 430.8 Hz CPU-free. Real-world ESP-NOW packets from Board B
 drive the GIE's hidden state. TriX classification achieves 100% accuracy (Core + ISR) vs 84%
-for a rate-only baseline — a 16-point advantage from payload encoding that distinguishes patterns
-sharing the same send rate.
+for a rate-only baseline. The LP core now develops pattern-specific internal states from
+classification history via VDB episodic memory retrieval: after 60 seconds of live operation,
+P1 and P3 (same 10 Hz rate, different payload) diverge by Hamming 5 in LP hidden space.
+97% of LP feedback steps applied. The sub-conscious layer reflects what the system has been seeing.
+
+The complete loop is closed: **perceive → classify → remember → retrieve → modulate.**
+All ternary. No floating point. No multiplication. No training.
 
 The long debugging arc is complete: the March 19 Silicon Interlock (USB-JTAG clamping GPIOs
 4-7) forced a switch to 20MHz PARLIO. The March 21 second-call hang was caused by a GDMA reset
 race. The March 22 TEST 2+ zero-loop stall (isr_eof frozen at 37) was caused by PARLIO TX core
 state machine corruption after a mid-transaction stop — fixed by pulsing `parl_tx_rst_en`
 (PCR bit 19) in `stop_freerun()`. A stale Board B PEER_MAC (`c4:d4` → `c8:24`) was the final
-blocker for TEST 9–11.
+blocker for TEST 9–11. TEST 12 answered the remaining open question.
 
 **Key sessions:**
 - March 19: Silicon Interlock identified. LP Core NSW + CfC pipeline verified 100%.
 - March 21: Second-call hang fixed (GDMA reset in stop_freerun, interrupt ordering).
 - March 22 (morning): TEST 2+ zero-loop stall diagnosed and fixed (parl_tx_rst_en).
 - March 22 (evening): Fix verified on hardware, Board B PEER_MAC corrected, **11/11 PASS**.
+- March 22 (night): TEST 12 — memory-modulated attention confirmed, **12/12 PASS**.
   See `docs/SESSION_MAR22_2026.md` for complete analysis and results.
 
 **Key documentation:**
-- `docs/SESSION_MAR22_2026.md`: Full March 22 session log — PARLIO TX debugging, fix, verification,
-  Board B PEER_MAC issue, and complete 11/11 results with classification breakdown.
+- `docs/SESSION_MAR22_2026.md`: Full March 22 session log — sections 1–13, complete 12/12 results.
+- `docs/MEMORY_MODULATED_ATTENTION.md`: Full paper-quality writeup of TEST 12 and the memory-
+  modulated attention finding, including experimental design, silicon results, and analysis.
 - `embedded/docs/HARDWARE_ERRATA.md`: 20+ hardware errata, 6 new entries from Phase 4.
 - `READMETOO.md`: Deep Audit & Falsification Report.
 - `WHITEPAPER.md`: The Reflex Manifesto.
@@ -113,6 +120,7 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 | **CfC Blend Disabled (Phase 3)** | **11/11** | **gate_threshold=INT32_MAX, 0% firing, TriX-only classification** | **`c6fd284`** |
 | **Hidden Re-encode Skipped (Phase 4)** | **11/11** | **Step 5 gated by threshold, saves ~20us/loop when blend off** | **`8a33369`** |
 | **Phase 4 Full Verification** | **11/11** | **PARLIO TX fix + Board B live input, 100% vs 84% baseline** | **`07b5b66`** |
+| **Memory-Modulated Attention** | **12/12** | **TEST 12: LP hidden diverges by pattern from VDB episodes; P1 vs P3 Hamming 5** | **`38a0811`** |
 
 ---
 
@@ -132,9 +140,10 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 | VDB→CfC feedback | Verified | CMD 5, HOLD damping, 50 unique states in 50 steps |
 | ESP-NOW live input | Verified | 4-pattern wireless input drives GIE |
 | **TriX classification** | **Verified** | **32/32 = 100% (Core + ISR), zero-shot from signatures** |
-| **TriX classification channel** | **Verified** | **Packed dots via reflex_signal, 711 Hz ISR classification rate** |
+| **TriX classification channel** | **Verified** | **Packed dots via reflex_signal, 705 Hz ISR classification rate** |
 | Online maintenance | Verified | Signature re-sign every 16 pkts, novelty gate at 60 |
 | 7-voxel TriX Cube | Verified | Core + 6 temporal faces, XOR mask displacement data |
+| **Memory-modulated LP priors** | **Verified** | **12/12 PASS: LP hidden diverges by pattern (P1 vs P3: Hamming 5/16), 97% feedback applied** |
 
 ### The GIE Signal Path (Current Architecture)
 
@@ -326,8 +335,8 @@ the-reflex/
 
 ## What's Next
 
-**11/11 PASS achieved March 22, 2026** (commit `07b5b66`). The CfC→TriX migration is complete
-through Phase 4. The full system is verified end-to-end with live wireless input.
+**12/12 PASS achieved March 22, 2026** (commit `38a0811`). The full system is verified
+end-to-end with live wireless input and memory-modulated adaptive attention.
 
 | Phase | What | Status |
 |-------|------|--------|
@@ -336,15 +345,18 @@ through Phase 4. The full system is verified end-to-end with live wireless input
 | **3** | Disable CfC blend (gate_threshold = INT32_MAX, 0% firing) | **DONE — `c6fd284`** |
 | **4** | Skip hidden re-encode when blend disabled (save ~20us per loop) | **DONE — `8a33369`** |
 | **4 (verified)** | Full 11/11 PASS with Board B, 100% vs 84% baseline | **DONE — `07b5b66`** |
-| **5** | Shrink DMA chain (32 neurons for TriX, not 64) → ~800+ Hz | Pending |
-| **6** | Update tests to reflect TriX-native architecture | Pending |
+| **5 (TEST 12)** | Memory-modulated attention: TriX→VDB→LP feedback loop | **DONE — `38a0811`** |
+| **6** | Shrink DMA chain (32 neurons for TriX, not 64) → ~800+ Hz | Pending |
+| **7** | LP prior → GIE gate bias (kinetic attention modulation) | Pending |
+| **8** | Multi-board distributed episodic memory via ESP-NOW mesh | Pending |
 
 **Open directions:**
-- Phase 5: shrink DMA chain to 32 neurons (TriX only uses first 32), target >800 Hz
-- Harder classification tasks (more patterns, overlapping payload features)
+- **LP prior → kinetic attention**: use LP hidden state to bias gate_threshold per-pattern-group or modulate W_f weights, making the GIE's classification confidence dependent on what the LP has seen recently
+- Phase 6: shrink DMA chain to 32 neurons (TriX only uses first 32), target >800 Hz
+- Harder classification: more patterns (>4), overlapping payload features, adversarial timing
 - Physical sensor integration (IMU, ADC) as GIE input replacing ESP-NOW
-- Document Board A MAC in FLASH_GUIDE to prevent PEER_MAC staleness on board swap
-- Board B MAC discovery at runtime (broadcast probe) as a robustness improvement
+- Board B MAC discovery at runtime (broadcast probe) for multi-board robustness
+- Distributed episodic memory: LP prior from one board seeds VDB of neighbor via ESP-NOW
 
 ---
 
