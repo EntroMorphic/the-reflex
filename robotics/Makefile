@@ -6,6 +6,7 @@ LDFLAGS = -lm -lpthread
 
 SRC_DIR = src
 BUILD_DIR = build
+PRIMITIVE_INCLUDE = ../primitive/include
 
 TARGETS = control_loop latency_benchmark
 
@@ -16,11 +17,11 @@ all: $(BUILD_DIR) $(TARGETS)
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-control_loop: $(SRC_DIR)/control_loop.c $(SRC_DIR)/reflex.h
-	$(CC) $(CFLAGS) -I$(SRC_DIR) $< -o $(BUILD_DIR)/$@ $(LDFLAGS)
+control_loop: $(SRC_DIR)/control_loop.c $(PRIMITIVE_INCLUDE)/reflex.h
+	$(CC) $(CFLAGS) -I$(SRC_DIR) -I$(PRIMITIVE_INCLUDE) $< -o $(BUILD_DIR)/$@ $(LDFLAGS)
 
-latency_benchmark: $(SRC_DIR)/latency_benchmark.c $(SRC_DIR)/reflex.h
-	$(CC) $(CFLAGS) -I$(SRC_DIR) $< -o $(BUILD_DIR)/$@ $(LDFLAGS)
+latency_benchmark: $(SRC_DIR)/latency_benchmark.c $(PRIMITIVE_INCLUDE)/reflex.h
+	$(CC) $(CFLAGS) -I$(SRC_DIR) -I$(PRIMITIVE_INCLUDE) $< -o $(BUILD_DIR)/$@ $(LDFLAGS)
 
 run: control_loop
 	./$(BUILD_DIR)/control_loop

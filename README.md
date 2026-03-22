@@ -5,7 +5,7 @@
 > **For a cold, honest assessment of what exists and what doesn't, read [`TECHNICAL_REALITY.md`](TECHNICAL_REALITY.md).**
 >
 > **LATEST DOCUMENTATION (March 19, 2026):**
-> *   [`READMETOO.md`](READMETOO.md) - Deep Technical Audit & Falsification Report.
+> *   [`docs/READMETOO.md`](docs/READMETOO.md) - Deep Technical Audit & Falsification Report.
 > *   [`WHITEPAPER.md`](WHITEPAPER.md) - The Reflex Manifesto: Substrate-Aware Agency.
 > *   [`PAP_PAPER.md`](PAP_PAPER.md) - Peripheral-As-Processor (PaP) Micro-Architecture Academic Draft.
 > *   [`ROADMAP.md`](ROADMAP.md) - Future Horizons: Strategic Step-Changes.
@@ -57,8 +57,25 @@ Sensor (Core 0) ──→ Controller (Core 1) ──→ Actuator (Core 2)
 the-reflex/
 ├── TECHNICAL_REALITY.md          # Honest technical assessment (START HERE)
 ├── README.md                     # This file (GitHub overview)
+├── WHITEPAPER.md                 # Substrate-Aware Agency manifesto
+├── ROADMAP.md                    # Future work: SAMA, Hebbian GIE, Wireless ETM
+├── AUDIT_THE-REFLEX.md           # External audit: novelty, paper strategy, open questions
 │
-├── reflex-os/                    # ESP32-C6: GIE + LP CORE + VDB (THE ACTUAL SYSTEM)
+├── primitive/                    # The core cache-coherency coordination library
+│   └── include/
+│       └── reflex.h              # Header-only. Drop in anywhere.
+│
+├── experiments/                  # ASPLOS stigmergy paper experiments
+│   ├── src/                      # E1 (causality), E2b (false sharing), E3 (latency)
+│   ├── results/                  # Measured data: Jetson AGX Thor, Raspberry Pi 4
+│   └── notebooks/                # stigmergy_demo.ipynb
+│
+├── robotics/                     # 10kHz control loop demo (Jetson / Linux ARM)
+│   ├── src/                      # control_loop.c, latency_benchmark.c
+│   ├── docs/                     # Phase 1 & 4 results, skeptical analysis
+│   └── scripts/                  # RT setup: SCHED_FIFO, isolcpus
+│
+├── embedded/                     # ESP32-C6: GIE + LP CORE + VDB (THE ACTUAL SYSTEM)
 │   ├── main/
 │   │   ├── ulp/main.S            # LP core: hand-written RISC-V assembly (cmd 1-5)
 │   │   ├── geometry_cfc_freerun.c  # Current entry point: GIE + LP + VDB + tests
@@ -66,11 +83,11 @@ the-reflex/
 │   │   └── [earlier milestones]  # M1-M7 source files (historical, not active)
 │   ├── include/
 │   │   ├── reflex_vdb.h          # VDB API (insert/search/clear/pipeline/feedback)
-│   │   ├── reflex.h              # Core coordination primitive
 │   │   └── ...
-│   └── docs/                     # Technical docs (architecture, errata, registers)
+│   ├── shared/                   # Shared data structures (channels, encodings)
+│   └── tools/                    # Monitor scripts, rerun integration
 │
-├── reflex-robotics/              # Jetson Thor cache coherency work (separate system)
+├── ros2/                         # ROS2 bridge — Reflex shared memory ↔ ROS2 topics
 │
 ├── docs/                         # Current project documentation
 │   ├── CURRENT_STATUS.md         # Up-to-date project status
@@ -81,17 +98,12 @@ the-reflex/
 │       ├── lmm/                  # 40 Lincoln Manifold Method explorations
 │       ├── prds/                 # 20 historical PRDs
 │       ├── sessions/             # Session notes, demo prep, deployment guides
-│       └── concepts/             # Speculative/philosophical docs
+│       ├── concepts/             # Speculative/philosophical docs
+│       └── notes/                # Design notes, evolution, open questions
 │
-├── journal/                      # LMM journal (4 phases, current)
-├── notes/                        # Design notes, LMM method definition
-│   ├── LMM.md                    # The Lincoln Manifold Method (process)
-│   ├── lmm/                      # GIE-specific LMM analysis
-│   └── archive/                  # Business planning, evolution notes
-│
-├── the-reflex-tvdb.md            # VDB PRD (6 milestones, all complete)
-├── delta-observer/               # Neural network observation research
-└── notebooks/                    # Colab demos
+└── journal/                      # Lincoln Manifold working files
+    ├── LMM.md                    # The Lincoln Manifold Method (the process itself)
+    └── the_reflex_*.md           # RAW → NODES → REFLECT → SYNTH for this project
 ```
 
 ---
@@ -102,7 +114,7 @@ the-reflex/
 
 ```bash
 git clone https://github.com/EntroMorphic/the-reflex.git
-cd the-reflex/reflex-robotics
+cd the-reflex/robotics
 
 # Build
 make all
@@ -138,7 +150,7 @@ Coordination Latency (nanoseconds):
 
 ```bash
 git clone https://github.com/EntroMorphic/the-reflex.git
-cd the-reflex/src
+cd the-reflex/experiments/src
 
 # Latency comparison
 gcc -O3 -Wall -pthread e3_latency_comparison.c -o e3_latency -lm
@@ -147,7 +159,7 @@ gcc -O3 -Wall -pthread e3_latency_comparison.c -o e3_latency -lm
 
 ### On Google Colab (One-Click)
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/EntroMorphic/the-reflex/blob/main/notebooks/stigmergy_demo.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/EntroMorphic/the-reflex/blob/main/experiments/notebooks/stigmergy_demo.ipynb)
 
 ---
 
@@ -159,7 +171,7 @@ gcc -O3 -Wall -pthread e3_latency_comparison.c -o e3_latency -lm
 | Phase 1 | +SCHED_FIFO, +mlockall | 2.4 μs | 98x |
 | **Phase 4** | +isolcpus, +rcu_nocbs | **926 ns** | **255x** |
 
-Full documentation in [`reflex-robotics/docs/`](reflex-robotics/docs/).
+Full documentation in [`robotics/docs/`](robotics/docs/).
 
 ---
 
@@ -359,7 +371,7 @@ On the ESP32-C6, The Reflex IS the operating system — from 12ns GPIO to an aut
 - **Feedback (cmd=5):** CfC step → VDB search → blend best match into lp_hidden, one wake cycle
 - **Assembly:** ~7KB of hand-written RISC-V. 256-byte popcount LUT. No compiler.
 
-See [`reflex-os/`](reflex-os/) and [`docs/MILESTONE_PROGRESSION.md`](docs/MILESTONE_PROGRESSION.md).
+See [`embedded/`](embedded/) and [`docs/MILESTONE_PROGRESSION.md`](docs/MILESTONE_PROGRESSION.md).
 
 ---
 
@@ -403,7 +415,7 @@ See:
 
 ## Skeptical Analysis
 
-We challenged every claim. See [`SKEPTICAL_ANALYSIS.md`](reflex-robotics/docs/SKEPTICAL_ANALYSIS.md).
+We challenged every claim. See [`SKEPTICAL_ANALYSIS.md`](robotics/docs/SKEPTICAL_ANALYSIS.md).
 
 **Key findings:**
 - ✅ Median 500-700ns confirmed across 5 runs
@@ -493,7 +505,7 @@ ROS2 Topics (1kHz)          Native Controller (event-driven)
 
 **Honest assessment:** REFLEX catches ~5% more anomalies than well-tuned 1kHz polling. The significant win is over typical 100Hz systems (10x more anomalies caught). The key advantage is **event-driven** vs polling—we never miss a signal.
 
-See [`reflex_ros_bridge/`](reflex_ros_bridge/) for full documentation.
+See [`ros2/`](ros2/) for full documentation.
 
 ---
 

@@ -1,48 +1,142 @@
-# The Reflex: Future Horizons & Strategic Roadmap
+# The Reflex: Strategic Roadmap
 
-This document outlines the next step-changes for **The Reflex**, moving from deterministic execution to adaptive, substrate-native agency.
-
----
-
-## Pillar 1: Dynamic Scaffolding (Intra-Substrate Observer)
-
-**The Challenge:** The ESP32-C6 LP core is limited to 16KB of SRAM. At our current density, this caps the Vector Database (VDB) at ~64-128 nodes. 
-
-**The Step-Change:** Moving the **Delta Observer** theory directly into the LP core assembly.
-*   **Mechanism:** The system monitors the "accessibility" of VDB nodes. When the T-GRU weights (The Muscle) successfully encode a specific state-space trajectory (meaning the gate-firing patterns become consistent for a given input), the "scaffolding" in the VDB is no longer needed.
-*   **Action:** The LP core autonomously prunes the "dissolved" nodes from the NSW graph, freeing up SRAM for new high-novelty experiences.
-*   **Impact:** This transforms the 16KB limit from a hard wall into a sliding window of active learning. The memory becomes effectively infinite, storing only the "frontier" of the robot's experience.
-
-## Pillar 2: SAMA (Substrate-Aware Multi-Agent)
-
-**The Challenge:** Robotics coordination currently relies on local cache coherency (Jetson) or local GPIO (C6). Inter-robot coordination still suffers from the latency of the Wi-Fi/UDP stack.
-
-**The Step-Change:** **Wireless ETM (Event Task Matrix)** via ESP-NOW.
-*   **Mechanism:** Treat the ESP-NOW radio not as a data pipe, but as a remote hardware interrupt. A "Reflex Packet" from Robot A is injected directly into the GIE of Robot B via a hardware-level peripheral trigger.
-*   **Action:** Implement a "Wireless MESI" protocol where a cluster of C6 chips maintains a shared global hidden state. A sensor event on one chip can trigger an actuator response on another in **sub-millisecond** timeframes.
-*   **Impact:** Biological-grade swarm coordination. Robots that "feel" each other's sensors at the speed of radio, bypassing the OS networking stack entirely.
-
-## Pillar 3: Silicon Learning (Hebbian GIE)
-
-**The Challenge:** The system currently relies on "Pre-Multiplied" weights or signatures derived from static observation. It does not yet "learn" from its own errors in real-time.
-
-**The Step-Change:** Moving from fixed-weight inference to **Hebbian-based Online Learning**.
-*   **Mechanism:** Implement a ternary-friendly learning rule (e.g., Hebbian updates or Oja's Rule) directly in the LP core assembly. The "Spinal Cord" (LP Core) generates an error signal based on VDB mismatch and adjusts the GIE weights accordingly.
-*   **Action:** Use the circular DMA chain to not only *read* weights but *update* them in the background. The hardware substrate physically alters its own logic-path as it masters a physical task.
-*   **Impact:** The first $0.50 AI that "learns to walk" without a training loop, a GPU, or a single floating-point number.
-
-## Pillar 4: Physical Decoupling (Immediate Milestone)
-
-**The Challenge:** Our March 19 session identified a "Silicon Interlock" where the USB-Serial-JTAG controller physically gates the PCNT and clamps the GPIO Matrix.
-
-**The Step-Change:** **Milestone 38: The Pure UART Falsification.**
-*   **Mechanism:** Completely decoupling the substrate from the development environment.
-*   **Action:** 
-    1. Re-route the console output to a non-JTAG UART (e.g., GPIO 16/17).
-    2. Power the board via a battery or a "dumb" USB power source.
-    3. Monitor the test suite via a secondary serial-to-USB bridge.
-*   **Impact:** This will physically break the hardware interlock and provide the final "Exact Match" proof for the GIE Muscle, verifying the Peripheral-As-Processor (PaP) architecture in its native, un-debugged environment.
+*Last updated: March 22, 2026 — post TEST 12/13, 13/13 PASS.*
 
 ---
 
-**Philosophy:** *The hardware is the teacher. The signal is the lesson. Abstraction is the enemy.*
+## Current State
+
+As of commit `12aa970`, the Reflex architecture has demonstrated:
+
+- **GIE**: Peripheral-hardware ternary dot products at 430.8 Hz, ISR-driven, 100% classification accuracy on 4 known patterns from live wireless input (ESP-NOW).
+- **VDB**: 64-node NSW graph in LP SRAM, 48-trit vectors, recall@1=95%, 10–15ms round-trip.
+- **LP CfC**: 16-trit hidden state, CMD 5 (CfC + VDB + feedback blend) running at ~100 Hz on the 16 MHz LP core (~30 µA).
+- **Memory-modulated priors**: LP hidden state develops pattern-specific representations after 90s of live operation. All cross-pattern pairs diverge Hamming ≥ 1. VDB feedback is causally necessary — ablation (CMD 4) collapses P1 and P2 to Hamming=0 in 2 of 3 runs.
+- **Claim verified**: The sub-conscious layer reflects classification history. Modulation is **potential** — the LP state contains pattern information, but does not yet shape GIE behavior.
+
+The modulation loop is half-closed. What remains is making it kinetic.
+
+---
+
+## Phase 5: Kinetic Attention (Immediate Priority)
+
+**The claim to be tested:** LP hidden state biases GIE gate thresholds, making peripheral hardware compute differently based on accumulated experience.
+
+**Why this is first:** Every other step-change becomes more interesting and more rigorous once the LP state actively shapes perception. SAMA (Pillar 2) without kinetic attention is a passive relay. Hebbian learning (Pillar 3) without kinetic attention changes weights that may or may not influence behavior — kinetic attention gives you a direct behavioral measure. Dynamic scaffolding (Pillar 1) pruning criteria require knowing which memories the CfC can represent independently — which requires kinetic attention experiments to establish.
+
+**Design:** See `docs/KINETIC_ATTENTION.md` for full specification. Summary:
+
+1. Add `lp_gate_bias[4]` to LP SRAM layout (HP-writable, ISR-readable).
+2. HP core projects lp_hidden onto pre-computed LP-space signatures (from TEST 12 means) to produce per-pattern-group gate bias values.
+3. ISR applies: `effective_threshold = gate_threshold + lp_gate_bias[neuron_group]`, with a hard floor.
+4. TEST 14 (three conditions: scalar bias, per-group bias, bias=0 baseline) measures whether LP prior amplifies LP divergence above TEST 12 baseline and whether the system remains stable through pattern switches.
+
+**Pass criteria for TEST 14:**
+- Classification accuracy remains 100%
+- LP Hamming matrix under per-group bias ≥ TEST 12 on ≥ 4 of 6 pairs
+- System updates LP prior within 15 confirmations of a Board B pattern switch (no lock-in)
+- GIE hidden state does not saturate (energy < 60/64 on average)
+
+**The paper:** "Kinetic Attention in a Ternary Reflex Arc: Sub-conscious Priors Shape Peripheral Computation"
+
+---
+
+## Pillar 1: Dynamic Scaffolding (Memory as Sliding Window)
+
+**The problem:** LP SRAM is 16KB. The VDB is capped at 64 nodes. With 4 patterns and ~8 inserts per pattern per 90s run, the VDB fills in ~3 minutes at the current insert rate. Adding a fifth pattern immediately compresses headroom.
+
+**The step-change:** The LP core monitors VDB node utility and prunes "dissolved" nodes autonomously, freeing space for new high-novelty states.
+
+**Pruning criterion (revised from original roadmap):** The original criterion was "prune when the CfC can represent the state without the memory." With fixed CfC weights, the CfC may permanently be unable to represent certain states — the VDB is not a temporary scaffold but a permanent load-bearing component (see `docs/KINETIC_ATTENTION.md`, Section 6.3). Revised criterion:
+
+- **Prune if redundant**: node's LP-hidden portion is within Hamming 1 of the current LP mean for its pattern. The memory is captured by the accumulator; it adds no information to retrieval.
+- **Retain if distinctive**: node's LP-hidden portion is an outlier (Hamming ≥ 3 from pattern mean). This memory encodes a rare state the accumulator doesn't represent.
+- **Retain if load-bearing**: node is on a short path in the NSW graph (high betweenness). Pruning it would disconnect the graph; routing quality matters more than redundancy.
+
+**Mechanism:** LP core runs a background pass (CMD 6, new command) comparing each node's LP-hidden portion against the current LP mean vector. Nodes below the Hamming threshold are marked for deletion. NSW graph edges are reconnected to maintain M=7 degree before the node is zeroed.
+
+**Impact:** The 64-node limit becomes a sliding window on the "frontier" of experience. Stable, well-represented patterns are compressed; novel states retain their slots. Effective memory capacity scales with experience diversity rather than absolute pattern count.
+
+**Prerequisite:** Phase 5 kinetic attention. The pruning criterion requires knowing which memories are load-bearing — which requires understanding the kinetic effect of VDB content on GIE behavior. Pruning a "redundant" memory that actually provides kinetic attention to a rare sub-pattern would be a regression.
+
+---
+
+## Pillar 2: SAMA — Substrate-Aware Multi-Agent
+
+**The problem:** Robots currently coordinate through the Wi-Fi/UDP stack. Even with ESP-NOW, packets traverse the full LWIP stack on the receiving end before reaching application code.
+
+**The step-change:** Treat incoming ESP-NOW packets as GIE inputs without OS involvement. Robot A's classification event triggers an immediate classification event on Robot B.
+
+**Mechanism:**
+
+1. Board B (the transmitter) sends a structured "Reflex Packet" encoding its current GIE hidden state as the ESP-NOW payload rather than a raw sensor reading.
+2. Board A receives the packet. Instead of routing it through the existing encode path, it decodes the GIE-hidden payload directly into Board A's GIE input vector.
+3. Board A's GIE immediately classifies the incoming state using its own signature weights — not Board B's. The result is: Board A perceives Board B's GIE state through its own representational lens.
+4. The LP core's VDB accumulates snapshots of "when I received state X from my neighbor" — a cross-agent episodic memory.
+
+**Why this requires Phase 5:** A robot whose LP prior doesn't influence its GIE will process all incoming states with the same threshold. A robot with kinetic attention will process states that match its current prior at lower threshold — it notices familiar neighbor states more easily. This is context-sensitive inter-agent attention, not just passive state relay.
+
+**Impact:** A cluster of C6 chips that shares state at the GIE level. One chip's classification event propagates to others at radio speed, bypassing OS networking. The LP state of each chip reflects not just its own experience but the experience of its neighbors.
+
+**Open question:** How do you prevent runaway synchronization? If all robots in a cluster develop the same LP prior (they all see the same signal), they all lower the same gate thresholds, amplifying the same pattern in unison. This is biological entrainment — useful in some contexts (synchronized response), catastrophic in others (all robots locked to P1 while P2 goes unobserved). A diversity mechanism — deliberately staggering VDB insert timing or introducing node-local noise — may be needed.
+
+---
+
+## Pillar 3: Silicon Learning — Hebbian GIE
+
+**The problem:** The GIE weights are fixed at init time (sign of mean over 30s observation). They never update. If the input distribution shifts — new sender, different environment, channel degradation — the signatures become stale and accuracy degrades.
+
+**The step-change:** The LP core generates a weight-update signal based on VDB mismatch and applies it to the GDMA descriptor chain in-situ.
+
+**Mechanism:**
+
+1. After each VDB search (CMD 4/5), the LP core compares the retrieved memory against the current GIE hidden state. The mismatch (Hamming distance × sign of disagreement per trit) is the error signal.
+2. A ternary Hebbian rule: for each GIE neuron i, if the neuron fired (h_new ≠ h_old) and the VDB mismatch indicates the current prediction was wrong, flip the sign of that neuron's weight for the current input trit. ("Neurons that fire together, wire together" — in ternary.)
+3. The LP core re-encodes the affected GDMA descriptor with the updated weight vector. The GDMA circular chain naturally picks up the new descriptor on its next pass.
+
+**Why this is last:** Hebbian weight updates are persistent and non-reversible within a session. A bad update during a noisy period could corrupt a signature and degrade accuracy. All preceding pillars (kinetic attention, dynamic scaffolding) provide the diagnostic infrastructure needed to detect when a weight update is beneficial vs. harmful. Gate bias (Phase 5) should be validated first because it provides a reversible, lower-risk path to experience-dependent behavior change.
+
+**The biological analog:** This is where CLS consolidation would happen. The VDB (hippocampus) trains the GIE weights (neocortex) through repeated retrieval under consistent conditions. Once the weights are trained, the VDB becomes less necessary for P1/P2 discrimination — the CfC projection will no longer collapse them. The VDB then shifts to encoding novel states rather than compensating for known degeneracies.
+
+**Impact:** The system that "learns to walk" without a training loop, a GPU, or a floating-point number. Weights that reflect accumulated live experience rather than a 30-second initialization window.
+
+---
+
+## Physical Prerequisite: UART Falsification
+
+*Originally Milestone 38 (March 19 roadmap). Status: pending.*
+
+The current test setup uses USB-JTAG for console output. The March 19 session identified a potential "Silicon Interlock" where the USB-JTAG controller gates PCNT behavior — though the March 22 session ran 13/13 PASS with USB-JTAG in use, so the interlock either does not affect the current test suite or was resolved implicitly by the peripheral reset sequence.
+
+**Action:** Re-route console to GPIO 16/17 UART. Power via battery or dumb USB. Monitor via secondary serial bridge. Run full 13-test suite and confirm all PASS.
+
+**Why this matters:** Any paper claim that the GIE is "peripheral-autonomous" needs to be verifiable without a development tool physically attached. The current "ISR-driven, peripheral-autonomous between interrupts" language is precise — but reviewers will ask whether results replicate without JTAG. The answer should be yes, and the data should exist.
+
+**Priority:** Low-risk to attempt at any point. Does not block Phase 5 implementation. Should be completed before paper submission.
+
+---
+
+## Dependency Graph
+
+```
+Phase 5: Kinetic Attention (TEST 14)
+    │
+    ├── Pillar 1: Dynamic Scaffolding
+    │       (needs kinetic attention to know what's load-bearing)
+    │
+    ├── Pillar 2: SAMA
+    │       (needs kinetic attention for context-sensitive inter-agent response)
+    │
+    └── Pillar 3: Hebbian GIE
+            (needs kinetic attention as the behavioral signal for weight updates)
+
+UART Falsification (independent, can run at any time)
+```
+
+---
+
+## Philosophy
+
+*The hardware is the teacher. The signal is the lesson. Abstraction is the enemy.*
+
+The path forward is not adding more software. It is finding more computation already in the silicon — more peripheral behavior that can be wired into the loop without CPU instruction cycles. The gate bias (Phase 5) uses the ISR that already exists. The VDB pruning (Pillar 1) uses LP core wake cycles that already exist. The Hebbian update (Pillar 3) uses the GDMA chain that already exists. Each step-change is not a new system; it is new use of the same substrate.

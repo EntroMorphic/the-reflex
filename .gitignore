@@ -23,8 +23,8 @@ __pycache__/
 *.egg-info/
 
 # ESP-IDF build artifacts
-reflex-os/build/
-reflex-os/.cache/
+embedded/build/
+embedded/.cache/
 .coverage
 
 # Transient logs and captures
@@ -39,5 +39,6 @@ backups/
 # Deploy scripts (local-only)
 silicon_grail_deploy.sh
 
-# Separate git repo (local-only)
+# Separate git repos (local-only)
 pulse-arithmetic-lab/
+delta-observer/
