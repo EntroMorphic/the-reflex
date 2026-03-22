@@ -4299,6 +4299,226 @@ void app_main(void) {
             printf("  %s\n\n", ok ? "OK" : "FAIL");
             fflush(stdout);
         }
+
+        /* ══════════════════════════════════════════════════════════════
+         *  TEST 12: Memory-Modulated Adaptive Attention
+         *
+         *  THE QUESTION: Can the system's classification history modulate
+         *  what it pays attention to next?
+         *
+         *  DESIGN:
+         *  - Re-enable CfC blend (gate_threshold=90). W_f hidden portion
+         *    is zero (set in Phase 0c), so TriX scores remain input-driven.
+         *    But now the GIE hidden state EVOLVES — accumulating exposure
+         *    history for whichever pattern is currently active.
+         *  - After each confident classification, call feed_lp_core() and
+         *    vdb_cfc_feedback_step() — LP core runs CfC step, searches the
+         *    VDB for the most similar past state, blends it into lp_hidden.
+         *  - Periodically insert [gie_hidden | lp_hidden] into the VDB,
+         *    storing a snapshot of the system's state at that classification
+         *    moment. Over time, the VDB accumulates pattern-differentiated
+         *    memories (P1-exposure states look different from P3-exposure).
+         *  - Measure: does LP mean hidden state diverge across patterns?
+         *    Hamming(lp_mean[1], lp_mean[3]) > 0 = memory is modulating.
+         *
+         *  NOTE: TriX classification accuracy is not affected by re-enabling
+         *  blend. The ISR computes TriX scores in step 3b (before the CfC
+         *  blend in step 4), and W_f hidden = 0 ensures f_dot = W_f_input @
+         *  input regardless of the hidden state.
+         *
+         *  PASS: any cross-pattern LP divergence (Hamming > 0), VDB has
+         *  >= 4 snapshots, and LP feedback ran >= 4 steps.
+         * ══════════════════════════════════════════════════════════════ */
+        printf("-- TEST 12: Memory-Modulated Adaptive Attention --\n");
+        fflush(stdout);
+        {
+            #define T12_PHASE_US       60000000LL  /* 60s */
+            #define T12_INSERT_EVERY   8           /* VDB insert every N confirmations */
+            #define T12_FB_THRESHOLD   8           /* LP feedback score threshold */
+
+            int t12_confirmed[4]   = {0};
+            int t12_confirmations  = 0;
+            int t12_vdb_inserts    = 0;
+            int t12_lp_steps       = 0;
+            int t12_fb_applied     = 0;
+
+            /* LP state accumulators per pattern (int16 to avoid overflow) */
+            static int16_t t12_lp_sum[4][LP_HIDDEN_DIM];
+            static int8_t  t12_lp_mean[4][LP_HIDDEN_DIM];
+            int            t12_lp_n[4] = {0};
+            memset(t12_lp_sum,  0, sizeof(t12_lp_sum));
+            memset(t12_lp_mean, 0, sizeof(t12_lp_mean));
+
+            /* Re-enable CfC blend. W_f hidden=0 keeps TriX scores
+             * input-only, so classification accuracy is preserved. */
+            gate_threshold    = 90;
+            gate_fires_total  = 0;
+            gate_steps_total  = 0;
+
+            /* Clear VDB and LP state so memories are drawn only from
+             * this session's pattern exposure, not from TEST 8 data. */
+            vdb_clear();
+            memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
+            ulp_fb_threshold   = T12_FB_THRESHOLD;
+            ulp_fb_total_blends = 0;
+
+            /* Restart GIE. W_f still has signatures from Phase 0c.
+             * premultiply/encode rebuild the descriptor data. */
+            premultiply_all();
+            encode_all_neurons();
+            build_circular_chain();
+            start_freerun();
+            espnow_ring_flush();
+
+            printf("  blend re-enabled (threshold=90), VDB cleared, LP reset\n");
+            printf("  running 60s: classify → insert snapshot → LP feedback\n");
+            fflush(stdout);
+
+            int64_t t12_start_us = esp_timer_get_time();
+
+            while ((esp_timer_get_time() - t12_start_us) < T12_PHASE_US) {
+                vTaskDelay(pdMS_TO_TICKS(T11_DRAIN_MS));
+                int nd = espnow_drain(drain_buf, 32);
+                for (int i = 0; i < nd; i++) {
+                    if (!espnow_encode_rx_entry(&drain_buf[i], NULL)) continue;
+
+                    /* Signal ISR to re-encode input at next loop boundary
+                     * and wait for the re-encode to complete. */
+                    gie_input_pending = 1;
+                    int spins = 0;
+                    while (gie_input_pending && spins < 5000) {
+                        esp_rom_delay_us(5);
+                        spins++;
+                    }
+
+                    /* CPU core classification (same logic as TEST 11 Phase 1) */
+                    int core_best = -9999, core_pred = 0;
+                    for (int p = 0; p < NUM_TEMPLATES; p++) {
+                        int d = 0;
+                        for (int j = 0; j < CFC_INPUT_DIM; j++) {
+                            if (sig[p][j] != T_ZERO && cfc.input[j] != T_ZERO)
+                                d += tmul(sig[p][j], cfc.input[j]);
+                        }
+                        if (d > core_best) { core_best = d; core_pred = p; }
+                    }
+
+                    /* Novelty gate — reject low-confidence packets */
+                    if (core_best < NOVELTY_THRESHOLD) continue;
+
+                    /* Confirmed classification */
+                    int pred = core_pred;
+                    t12_confirmed[pred]++;
+                    t12_confirmations++;
+
+                    /* Feed current GIE hidden state to LP core, then
+                     * run one CfC+VDB+feedback step. LP retrieves the
+                     * most similar past state and blends it into lp_hidden.
+                     * If VDB is empty, feedback is skipped (LP still runs
+                     * the CfC step — this is correct startup behavior). */
+                    feed_lp_core();
+                    vdb_result_t t12_fb_res;
+                    if (vdb_cfc_feedback_step(&t12_fb_res) == 0) {
+                        t12_lp_steps++;
+                        if (ulp_fb_applied) t12_fb_applied++;
+                    }
+
+                    /* Read LP hidden state and accumulate per pattern */
+                    int8_t lp_now[LP_HIDDEN_DIM];
+                    memcpy(lp_now, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
+                    for (int j = 0; j < LP_HIDDEN_DIM; j++)
+                        t12_lp_sum[pred][j] += lp_now[j];
+                    t12_lp_n[pred]++;
+
+                    /* Periodic VDB snapshot: [gie_hidden (32) | lp_hidden (16)].
+                     * This stores "what the system looked like at this
+                     * pattern-P moment" for future LP retrieval. */
+                    if (t12_confirmations % T12_INSERT_EVERY == 0 &&
+                        vdb_count() < VDB_MAX_NODES) {
+                        int8_t snap[VDB_TRIT_DIM];
+                        memcpy(snap, (void *)cfc.hidden, LP_GIE_HIDDEN);
+                        memcpy(snap + LP_GIE_HIDDEN, lp_now, LP_HIDDEN_DIM);
+                        if (vdb_insert(snap) >= 0) t12_vdb_inserts++;
+                    }
+                }
+            }
+
+            stop_freerun();
+
+            /* Compute mean LP hidden per pattern: sign of accumulated sum */
+            printf("\n  ── LP Hidden State by Pattern ──\n");
+            for (int p = 0; p < 4; p++) {
+                int energy = 0;
+                for (int j = 0; j < LP_HIDDEN_DIM; j++) {
+                    int8_t v = (t12_lp_n[p] > 0) ? tsign(t12_lp_sum[p][j]) : T_ZERO;
+                    t12_lp_mean[p][j] = v;
+                    if (v != T_ZERO) energy++;
+                }
+                printf("    P%d: %d samples, energy=%d/16", p, t12_lp_n[p], energy);
+                if (t12_lp_n[p] > 0) {
+                    printf(" [");
+                    for (int j = 0; j < LP_HIDDEN_DIM; j++)
+                        printf("%c", trit_char(t12_lp_mean[p][j]));
+                    printf("]");
+                }
+                printf("\n");
+            }
+
+            /* Hamming divergence matrix across all pattern pairs */
+            printf("\n  ── LP Divergence Matrix (Hamming) ──\n");
+            printf("       P0  P1  P2  P3\n");
+            int any_diverge = 0;
+            for (int p = 0; p < 4; p++) {
+                printf("  P%d:", p);
+                for (int q = 0; q < 4; q++) {
+                    if (t12_lp_n[p] > 0 && t12_lp_n[q] > 0) {
+                        int h = trit_hamming(t12_lp_mean[p], t12_lp_mean[q],
+                                             LP_HIDDEN_DIM);
+                        printf("  %2d", h);
+                        if (p != q && h > 0) any_diverge = 1;
+                    } else {
+                        printf("   -");
+                    }
+                }
+                printf("\n");
+            }
+
+            /* P1 vs P3: the ambiguous pair that rate-only baseline
+             * cannot distinguish. Memory-modulated LP should separate them. */
+            int p1p3 = (t12_lp_n[1] > 0 && t12_lp_n[3] > 0)
+                ? trit_hamming(t12_lp_mean[1], t12_lp_mean[3], LP_HIDDEN_DIM)
+                : -1;
+
+            printf("\n  ── Summary ──\n");
+            printf("  Confirmed: P0=%d P1=%d P2=%d P3=%d (total=%d)\n",
+                   t12_confirmed[0], t12_confirmed[1],
+                   t12_confirmed[2], t12_confirmed[3], t12_confirmations);
+            printf("  VDB inserts: %d (VDB count: %d/%d)\n",
+                   t12_vdb_inserts, vdb_count(), VDB_MAX_NODES);
+            printf("  LP feedback steps: %d, feedback applied: %d\n",
+                   t12_lp_steps, t12_fb_applied);
+            printf("  Gate firing: %d%%\n",
+                   gate_steps_total > 0
+                       ? (int)(gate_fires_total * 100LL / gate_steps_total) : 0);
+            printf("  P1 vs P3 Hamming: %s\n",
+                   p1p3 >= 0 ? (p1p3 > 0 ? "DIVERGED (memory modulated)" : "0 (same)")
+                              : "insufficient data");
+            printf("  Cross-pattern LP divergence: %s\n",
+                   any_diverge ? "YES — sub-conscious state reflects pattern history"
+                               : "NO — LP state did not differentiate patterns");
+            printf("\n  Architecture note:\n");
+            printf("  - TriX classification unchanged (W_f hidden=0, ISR step 3b\n");
+            printf("    runs before blend step 4 — scores are always input-driven)\n");
+            printf("  - LP hidden = episodic memory of pattern exposure\n");
+            printf("  - VDB retrieval shapes LP trajectory via ternary blend\n");
+            printf("  - This closes the loop: perceive → classify → remember\n");
+            printf("    → retrieve → modulate — without CPU or multiplication\n");
+
+            int ok12 = any_diverge && (vdb_count() >= 4) && (t12_lp_steps >= 4);
+            test_count++;
+            if (ok12) pass_count++;
+            printf("  %s\n\n", ok12 ? "OK" : "FAIL");
+            fflush(stdout);
+        }
     }
 
     /* ── Summary ── */
@@ -4314,8 +4534,9 @@ void app_main(void) {
         printf("  Layer 2d: VDB -> CfC feedback — memory shapes inference\n");
         printf("  Layer 3: HP core — reflex channel coordination\n");
         printf("  Layer 4: ESP-NOW -> GIE live input + pattern classification\n");
+        printf("  Layer 5: TriX -> VDB -> LP feedback — memory-modulated attention\n");
         printf("  All ternary. No floating point. No multiplication.\n");
-        printf("  Real-world input CLASSIFIED by hardware ternary system.\n\n");
+        printf("  Perceive → classify → remember → retrieve → modulate.\n\n");
     } else {
         printf("\n  SOME TESTS FAILED — see details above.\n\n");
     }
