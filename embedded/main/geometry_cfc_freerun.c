@@ -47,6 +47,7 @@
 #include "driver/parlio_tx.h"
 #include "esp_timer.h"
 #include "esp_rom_sys.h"
+#include "esp_rom_gpio.h"
 #include "esp_intr_alloc.h"
 #include "soc/gdma_reg.h"
 #include "soc/gdma_struct.h"
@@ -66,9 +67,12 @@
 
 #define GDMA_BASE            0x60080000
 #define GDMA_OUT_BASE(ch)    (GDMA_BASE + 0xD0 + (ch)*0xC0)
-#define GDMA_OUT_CONF0       0x00
-#define GDMA_OUT_LINK        0x10
-#define GDMA_OUT_PERI_SEL    0x30
+#define GDMA_OUT_CONF0           0x00
+#define GDMA_OUT_OUTFIFO_STATUS  0x08
+#define GDMA_OUT_LINK            0x10
+#define GDMA_OUT_STATE           0x14
+#define GDMA_OUT_EOF_DES_ADDR    0x18
+#define GDMA_OUT_PERI_SEL        0x30
 #define GDMA_RST_BIT         (1 << 0)
 #define GDMA_EOF_MODE_BIT    (1 << 3)
 #define GDMA_LINK_START_BIT  (1 << 21)
@@ -85,6 +89,14 @@
 #define GDMA_OUT_TOTAL_EOF_BIT  (1 << 3)
 
 #define PARLIO_TX_CFG0       0x60015008
+#define PARLIO_INT_ENA       0x60015014   /* bit 0=tx_fifo_rempty_ena, bit 2=tx_eof_ena */
+#define PARLIO_TX_ST         0x60015010   /* bit 31 = tx_ready (1=idle) */
+#define PARLIO_INT_RAW       0x60015018   /* bit 0=tx_fifo_rempty, bit 2=tx_eof */
+/* PCR register: PARLIO TX clock enable (bit 18 = parl_clk_tx_en).
+ * The PARLIO driver disables this clock after each transaction completes.
+ * Bare-metal free-run mode must explicitly enable it and keep it enabled. */
+#define PCR_PARL_CLK_TX_CONF 0x600960ac
+#define PARLIO_TX_CLK_EN_BIT (1 << 18)
 #define REG32(addr)  (*(volatile uint32_t*)(addr))
 
 #define PCNT_BASE            0x60012000
@@ -131,6 +143,9 @@ static lldesc_t __attribute__((aligned(4))) neuron_descs[TOTAL_DESCS];
 static volatile int32_t isr_agree[ISR_CAPTURES];
 static volatile int32_t isr_disagree[ISR_CAPTURES];
 static volatile int32_t isr_count;
+static volatile int32_t isr_total_fires;   /* diagnostic: total GDMA ISR calls ever */
+static volatile int32_t isr_done_count;    /* diagnostic: out_done (bit 0) events */
+static volatile int32_t isr_eof_count;     /* diagnostic: total out_eof events ever */
 
 /* Free-running state — updated by ISR at loop boundary */
 static volatile int32_t loop_count;         /* total completed loops */
@@ -598,10 +613,12 @@ static void IRAM_ATTR isr_loop_boundary(void) {
  * ══════════════════════════════════════════════════════════════════ */
 
 static void IRAM_ATTR gdma_eof_isr(void *arg) {
+    isr_total_fires++;
     uint32_t status = REG32(GDMA_OUT_INT_ST_CH(bare_ch));
 
     if (status & GDMA_OUT_EOF_BIT) {
         REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = GDMA_OUT_EOF_BIT;
+        isr_eof_count++;
 
         /* Clock domain drain: ~5us for PCNT pipeline to settle.
          * PCNT reads GPIO through the matrix; after PARLIO outputs the
@@ -631,20 +648,23 @@ static void IRAM_ATTR gdma_eof_isr(void *arg) {
 
             /* Re-arm PARLIO byte counter for next loop.
              * PARLIO has stopped because tx_bytelen ran out.
-             * Reset FIFO FIRST to flush any GDMA pre-fetched data,
-             * THEN clear PCNT, THEN start PARLIO. This ensures PCNT
-             * is zeroed with no stale data in the output pipeline. */
+             * Do NOT reset PARLIO FIFO here — doing so while GDMA still
+             * has an active AHB transaction to PARLIO's FIFO confuses
+             * GDMA's state machine and prevents it from generating further
+             * EOFs, which kills the free-running loop.
+             * The NUM_DUMMIES separator window at the start of each loop
+             * absorbs any FIFO residue without requiring an explicit flush. */
+            /* Stop PARLIO and reprogram byte count.
+             * tx_start must transition 0→1 to re-arm the byte counter;
+             * simply writing a new tx_bytelen with tx_start still high
+             * does not restart it. Do NOT reset FIFO here — that confuses
+             * GDMA's AHB state machine and stops EOF generation. */
             uint32_t tx_cfg0 = REG32(PARLIO_TX_CFG0);
-            /* Stop and reset FIFO */
-            tx_cfg0 &= ~(1 << 19);  /* clear tx_start */
-            REG32(PARLIO_TX_CFG0) = tx_cfg0;
-            tx_cfg0 |= (1 << 30);   /* FIFO reset */
-            REG32(PARLIO_TX_CFG0) = tx_cfg0;
-            tx_cfg0 &= ~(1 << 30);  /* release FIFO reset */
+            tx_cfg0 &= ~(1 << 19);   /* clear tx_start */
             REG32(PARLIO_TX_CFG0) = tx_cfg0;
 
-            /* Clear PCNT — no edges should be in flight since PARLIO
-             * has stopped (tx_bytelen exhausted). */
+            /* Clear PCNT — PARLIO has stopped (tx_bytelen exhausted), so
+             * no edges are in flight and the clear is race-free. */
             pcnt_unit_clear_count(pcnt_agree);
             pcnt_unit_clear_count(pcnt_disagree);
             pcnt_unit_clear_count(pcnt_agree);
@@ -668,15 +688,23 @@ static void IRAM_ATTR gdma_eof_isr(void *arg) {
 
             /* Reprogram byte count and start */
             tx_cfg0 &= ~(0xFFFF << 2);
+            tx_cfg0 &= ~(1 << 18);   /* tx_gating_en off — TXD[7] gates clock, always 0 */
             tx_cfg0 |= (CHAIN_BYTES << 2);
-            tx_cfg0 |= (1 << 18);   /* tx_gating_en */
             tx_cfg0 |= (1 << 19);   /* tx_start */
             REG32(PARLIO_TX_CFG0) = tx_cfg0;
+            /* Keep PCR clock enabled — in case PARLIO driver ISR ran and cleared it */
+            REG32(PCR_PARL_CLK_TX_CONF) |= PARLIO_TX_CLK_EN_BIT;
         }
     }
 
+    /* out_done (bit 0): descriptor transmitted to peripheral — count for diagnostics */
+    if (status & GDMA_OUT_DONE_BIT) {
+        REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = GDMA_OUT_DONE_BIT;
+        isr_done_count++;
+    }
+
     /* Clear any other pending bits */
-    uint32_t others = status & ~GDMA_OUT_EOF_BIT;
+    uint32_t others = status & ~(GDMA_OUT_EOF_BIT | GDMA_OUT_DONE_BIT);
     if (others) {
         REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = others;
     }
@@ -794,7 +822,7 @@ static void detect_gdma_channel(void) {
 static void init_gdma_isr(void) {
     REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0x3F;
     /* Only enable EOF — no TOTAL_EOF in free-running mode (chain never ends) */
-    REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = GDMA_OUT_EOF_BIT;
+    REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = GDMA_OUT_EOF_BIT | GDMA_OUT_DONE_BIT;
 
     int intr_source = ETS_DMA_OUT_CH0_INTR_SOURCE + bare_ch;
     esp_err_t err = esp_intr_alloc(intr_source,
@@ -899,8 +927,10 @@ static void setup_gdma_freerun(void) {
     /* Clear interrupts */
     REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0x3F;
 
-    /* EOF mode = read-from-memory, NO auto_wrback (critical for circular) */
-    REG32(base + GDMA_OUT_CONF0) = GDMA_EOF_MODE_BIT;
+    /* out_eof_mode=0: EOF fires when data is read from SRAM (no PARLIO handshake).
+     * out_eof_mode=1 (bit 3) requires PARLIO to pop from its DMA FIFO before firing,
+     * but that handshake is not asserted in bare-metal mode → ISR never fires. */
+    REG32(base + GDMA_OUT_CONF0) = 0;
     REG32(base + GDMA_OUT_PERI_SEL) = GDMA_PERI_PARLIO;
 
     /* Start GDMA outlink — points to first descriptor of circular chain */
@@ -910,15 +940,20 @@ static void setup_gdma_freerun(void) {
     /* Configure PARLIO byte count for one loop */
     tx_cfg0 = REG32(PARLIO_TX_CFG0);
     tx_cfg0 &= ~(0xFFFF << 2);
-    tx_cfg0 &= ~(1 << 19);
+    tx_cfg0 &= ~(1 << 19);   /* clear tx_start */
+    tx_cfg0 &= ~(1 << 18);   /* clear tx_gating_en — TXD[7] is always 0 in our encoding,
+                                * which would permanently gate the clock off */
     tx_cfg0 |= (CHAIN_BYTES << 2);
-    tx_cfg0 |= (1 << 18);  /* tx_gating_en */
     REG32(PARLIO_TX_CFG0) = tx_cfg0;
 }
 
 static void start_freerun(void) {
+    printf("  [SF] step 1: reset state\n"); fflush(stdout);
     /* Reset ISR state */
     isr_count = 0;
+    isr_total_fires = 0;
+    isr_done_count = 0;
+    isr_eof_count = 0;
     loop_count = 0;
     loop_timestamp_us = 0;
     memset((void*)isr_agree, 0, sizeof(isr_agree));
@@ -933,6 +968,7 @@ static void start_freerun(void) {
     memset((void*)trix_scores, 0, sizeof(trix_scores));
 
     /* Drive GPIOs */
+    printf("  [SF] step 2: gpio low\n"); fflush(stdout);
     gpio_set_level(GPIO_X_POS, 0);
     gpio_set_level(GPIO_X_NEG, 0);
     gpio_set_level(GPIO_Y_POS, 0);
@@ -940,6 +976,7 @@ static void start_freerun(void) {
     esp_rom_delay_us(50);
 
     /* Triple-clear PCNT */
+    printf("  [SF] step 3: clear pcnt\n"); fflush(stdout);
     clear_all_pcnt();
     esp_rom_delay_us(10);
     clear_all_pcnt();
@@ -947,44 +984,184 @@ static void start_freerun(void) {
     clear_all_pcnt();
     esp_rom_delay_us(50);
 
-    /* Enable interrupts */
-    REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0x3F;
-    REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = GDMA_OUT_EOF_BIT;
-
     /* Set Y_POS high for PCNT level gating */
+    printf("  [SF] step 4: Y_POS high\n"); fflush(stdout);
     gpio_set_level(GPIO_Y_POS, 1);
     esp_rom_delay_us(50);
 
-    /* Setup GDMA + PARLIO */
+    /* Setup GDMA + PARLIO — must happen before enabling GDMA interrupts.
+     * After stop_freerun() the GDMA chain is reset (idle). If we enabled
+     * interrupts before setup_gdma_freerun(), a stale pending bit or a
+     * GDMA chain running from a previous loop could fire the ISR while we
+     * are mid-reset, causing a deadlock or corrupt state on second call. */
+    printf("  [SF] step 5: setup_gdma_freerun\n"); fflush(stdout);
     setup_gdma_freerun();
+    printf("  [SF] step 6: post-setup\n"); fflush(stdout);
+
+    /* Enable interrupts only after GDMA is fully reconfigured and idle */
+    REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0x3F;
+    REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = GDMA_OUT_EOF_BIT | GDMA_OUT_DONE_BIT;
     esp_rom_delay_us(500);
     clear_all_pcnt();
     esp_rom_delay_us(100);
     clear_all_pcnt();
 
+    /* Re-connect PARLIO TX to GPIO 4/5 in the GPIO matrix.
+     * Some init path (ESP-NOW, WiFi, or repeated gpio_config calls) resets
+     * GPIO_FUNC4/5_OUT_SEL_CFG to SIG_GPIO_OUT_IDX (128), disconnecting
+     * PARLIO from the physical pins. Do this unconditionally here so the
+     * engine always starts with PARLIO wired to the GPIO matrix.
+     * PARL_TX_DATA0_IDX=47, PARL_TX_DATA1_IDX=48 (from gpio_sig_map.h). */
+    esp_rom_gpio_connect_out_signal(GPIO_X_POS, 47, false, false);
+    esp_rom_gpio_connect_out_signal(GPIO_X_NEG, 48, false, false);
+
+    printf("  [SF] step 7: fire PARLIO + PCR clock\n"); fflush(stdout);
+    /* Disable PARLIO driver interrupt so its ISR doesn't disable our clock.
+     * The driver's TX-done ISR calls parlio_ll_tx_enable_clock(false) after
+     * each transaction, which would kill the free-running clock. */
+    REG32(PARLIO_INT_ENA) = 0;
+
     /* Fire PARLIO — the engine is now free-running */
     uint32_t tx_cfg0 = REG32(PARLIO_TX_CFG0);
     tx_cfg0 |= (1 << 19);  /* tx_start */
     REG32(PARLIO_TX_CFG0) = tx_cfg0;
+
+    /* Enable PARLIO TX output clock via PCR register.
+     * The PARLIO driver (parlio_ll_tx_enable_clock) disables this after
+     * prime_pipeline() completes. Without it, PARLIO FIFO never drains,
+     * GDMA stalls on descriptor 0, and no EOFs ever fire. */
+    REG32(PCR_PARL_CLK_TX_CONF) |= PARLIO_TX_CLK_EN_BIT;
+
+    printf("  [SF] step 8: DIAG delay\n"); fflush(stdout);
+    /* ── DIAGNOSTIC: read PCNT 500us after PARLIO fires ── */
+    esp_rom_delay_us(500);
+    int diag_agree0    = (int)(int16_t)(REG32(PCNT_U0_CNT_REG) & 0xFFFF);
+    int diag_disagree0 = (int)(int16_t)(REG32(PCNT_U1_CNT_REG) & 0xFFFF);
+    uint32_t gpio_ena  = REG32(0x60091020);  /* GPIO_ENABLE_REG */
+    uint32_t parlio_cfg = REG32(PARLIO_TX_CFG0);
+    /* GPIO_FUNC4/5_OUT_SEL_CFG: 47=PARL_TX_DATA0, 48=PARL_TX_DATA1, 128=SIG_GPIO_OUT */
+    uint32_t out_sel4  = REG32(0x60091564) & 0xFF;
+    uint32_t out_sel5  = REG32(0x60091568) & 0xFF;
+    /* GPIO_FUNCn_IN_SEL_CFG: signal 101=PCNT_SIG_CH0_IN0, 103=PCNT_CTRL_CH0_IN0
+     * DR_REG_GPIO_BASE + 0x154 + 4*signal_idx
+     * bits[5:0]=func_sel(GPIO#), bit[7]=sig_in_sel(1=matrix,0=iomux) */
+    uint32_t in_sel101 = REG32(0x60091154 + 4*101);  /* agree ch0 edge: GPIO4 */
+    uint32_t in_sel103 = REG32(0x60091154 + 4*103);  /* agree ch0 level: GPIO6 */
+    /* GPIO_IN_REG: raw input state of all GPIOs (bit N = GPIO N level) */
+    uint32_t gpio_in   = REG32(0x6009103C);
+
+    /* CPU-pulse test: temporarily drive GPIO4 manually to verify PCNT routing */
+    pcnt_unit_clear_count(pcnt_agree);
+    pcnt_unit_clear_count(pcnt_disagree);
+    esp_rom_gpio_connect_out_signal(GPIO_X_POS, 128, false, false); /* simple GPIO latch */
+    gpio_set_level(GPIO_X_POS, 0);
+    for (int _p = 0; _p < 20; _p++) {
+        gpio_set_level(GPIO_X_POS, 1);
+        gpio_set_level(GPIO_X_POS, 0);
+    }
+    int cpu_agree = (int)(int16_t)(REG32(PCNT_U0_CNT_REG) & 0xFFFF);
+    /* Reconnect PARLIO */
+    esp_rom_gpio_connect_out_signal(GPIO_X_POS, 47, false, false);
+
+    /* GDMA channel 0 state registers for deep diagnostics */
+    uint32_t gdma_base = GDMA_OUT_BASE(bare_ch);
+    uint32_t gdma_int_raw  = REG32(GDMA_OUT_INT_RAW_CH(bare_ch));
+    uint32_t gdma_int_st   = REG32(GDMA_OUT_INT_ST_CH(bare_ch));
+    uint32_t gdma_int_ena  = REG32(GDMA_OUT_INT_ENA_CH(bare_ch));
+    uint32_t gdma_conf0    = REG32(gdma_base + GDMA_OUT_CONF0);
+    uint32_t gdma_link     = REG32(gdma_base + GDMA_OUT_LINK);
+    uint32_t gdma_fifo     = REG32(gdma_base + GDMA_OUT_OUTFIFO_STATUS);
+    uint32_t gdma_state    = REG32(gdma_base + GDMA_OUT_STATE);
+    uint32_t gdma_eof_addr = REG32(gdma_base + GDMA_OUT_EOF_DES_ADDR);
+    uint32_t gdma_peri     = REG32(gdma_base + GDMA_OUT_PERI_SEL);
+
+    printf("[DIAG] 500us: agree=%d disagree=%d out_sel4=%lu out_sel5=%lu in101=0x%lx in103=0x%lx gpio_in=0x%lx cpu_agree=%d loop=%d isr_fires=%d isr_done=%d isr_eof=%d isr_cnt=%d\n",
+           diag_agree0, diag_disagree0,
+           (unsigned long)out_sel4, (unsigned long)out_sel5,
+           (unsigned long)in_sel101, (unsigned long)in_sel103,
+           (unsigned long)gpio_in, cpu_agree, (int)loop_count,
+           (int)isr_total_fires, (int)isr_done_count,
+           (int)isr_eof_count, (int)isr_count);
+    printf("[DIAG] gdma: raw=0x%lx st=0x%lx ena=0x%lx conf0=0x%lx link=0x%lx(park=%lu) peri=%lu\n",
+           (unsigned long)gdma_int_raw, (unsigned long)gdma_int_st,
+           (unsigned long)gdma_int_ena,
+           (unsigned long)gdma_conf0, (unsigned long)gdma_link,
+           (unsigned long)((gdma_link >> 23) & 1),
+           (unsigned long)(gdma_peri & 0x3F));
+    uint32_t parlio_st      = REG32(PARLIO_TX_ST);
+    uint32_t parlio_int_raw = REG32(PARLIO_INT_RAW);
+    printf("[DIAG] gdma2: fifo=0x%lx state=0x%lx(dscr_st=%lu out_st=%lu) eof_addr=0x%lx\n",
+           (unsigned long)gdma_fifo,
+           (unsigned long)gdma_state,
+           (unsigned long)((gdma_state >> 18) & 0x3),   /* out_dscr_state [19:18] */
+           (unsigned long)((gdma_state >> 20) & 0x7),   /* out_state [22:20] */
+           (unsigned long)gdma_eof_addr);
+    printf("[DIAG] parlio: cfg=0x%lx(tx_start=%lu bytelen=%lu) st=0x%lx(tx_ready=%lu) int_raw=0x%lx(eof=%lu rempty=%lu)\n",
+           (unsigned long)parlio_cfg,
+           (unsigned long)((parlio_cfg >> 19) & 1),
+           (unsigned long)((parlio_cfg >> 2) & 0xFFFF),
+           (unsigned long)parlio_st,
+           (unsigned long)((parlio_st >> 31) & 1),
+           (unsigned long)parlio_int_raw,
+           (unsigned long)((parlio_int_raw >> 2) & 1),
+           (unsigned long)((parlio_int_raw >> 0) & 1));
+    uint32_t pcr_clk = REG32(PCR_PARL_CLK_TX_CONF);
+    printf("[DIAG] pcr: clk_conf=0x%lx(en=%lu rst=%lu)\n",
+           (unsigned long)pcr_clk,
+           (unsigned long)((pcr_clk >> 18) & 1),
+           (unsigned long)((pcr_clk >> 19) & 1));
+    (void)gpio_ena;
 }
 
 static void stop_freerun(void) {
     /* Disable TriX ISR classification */
     trix_enabled = 0;
 
-    /* Disable interrupts */
+    /* Disable interrupts first to prevent ISR from firing during teardown */
     REG32(GDMA_OUT_INT_ENA_CH(bare_ch)) = 0;
     REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = 0x3F;
 
-    /* Stop PARLIO */
+    /* Stop PARLIO TX */
     uint32_t tx_cfg0 = REG32(PARLIO_TX_CFG0);
-    tx_cfg0 &= ~(1 << 19);
-    REG32(PARLIO_TX_CFG0) = tx_cfg0;
-    tx_cfg0 |= (1 << 30);
+    tx_cfg0 &= ~(1 << 19);   /* clear tx_start */
     REG32(PARLIO_TX_CFG0) = tx_cfg0;
     esp_rom_delay_us(5);
+    /* Reset PARLIO FIFO — empties it, unblocking any GDMA AHB stall */
+    tx_cfg0 |= (1 << 30);
+    REG32(PARLIO_TX_CFG0) = tx_cfg0;
+    esp_rom_delay_us(10);
     tx_cfg0 &= ~(1 << 30);
     REG32(PARLIO_TX_CFG0) = tx_cfg0;
+    esp_rom_delay_us(10);
+
+    /* Reset PARLIO TX core state machine via PCR (parl_tx_rst_en = bit 19).
+     * stop_freerun() clears tx_start mid-transaction, leaving the PARLIO TX
+     * state machine in a partial state. The FIFO reset above clears the data
+     * path but not the control state machine. Without this core reset, the
+     * next start_freerun() inherits corrupted TX state: PARLIO stops accepting
+     * data from the AHB FIFO after the GDMA pre-fill, causing a permanent stall.
+     * prime_pipeline() avoids this by running a complete TX (byte count exhausted
+     * → clean idle), so TEST 1 works without this reset. All subsequent tests need it. */
+    REG32(PCR_PARL_CLK_TX_CONF) |= (1 << 19);   /* assert parl_tx_rst_en */
+    esp_rom_delay_us(5);
+    REG32(PCR_PARL_CLK_TX_CONF) &= ~(1 << 19);  /* release reset */
+    esp_rom_delay_us(5);
+
+    /* Stop GDMA outlink — prevents the circular chain from running after stop.
+     * If we skip this, the PARLIO FIFO reset above unblocks a stalled GDMA and
+     * the chain resumes. On the next start_freerun(), enabling GDMA interrupts
+     * would immediately fire the ISR while GDMA is mid-chain, racing with the
+     * GDMA reset in setup_gdma_freerun() and causing a hang.
+     * Delay 20us before reset to let any in-flight AHB transaction complete
+     * (GDMA was just unblocked by the FIFO reset above). */
+    esp_rom_delay_us(20);
+    uint32_t base = GDMA_OUT_BASE(bare_ch);
+    REG32(base + GDMA_OUT_CONF0) = GDMA_RST_BIT;
+    esp_rom_delay_us(10);
+    REG32(base + GDMA_OUT_CONF0) = 0;
+
+    /* Disable PCR PARLIO TX clock */
+    REG32(PCR_PARL_CLK_TX_CONF) &= ~PARLIO_TX_CLK_EN_BIT;
 
     /* Drive GPIOs low */
     for (int i = 4; i <= 7; i++) gpio_set_level(i, 0);
@@ -1392,10 +1569,10 @@ static void prime_pipeline(void) {
     REG32(PARLIO_TX_CFG0) = tx_cfg0;
     esp_rom_delay_us(10);
 
-    /* Reset + start GDMA */
+    /* Reset + start GDMA — out_eof_mode=0 (no PARLIO handshake required) */
     REG32(base_reg + GDMA_OUT_CONF0) = GDMA_RST_BIT;
     esp_rom_delay_us(10);
-    REG32(base_reg + GDMA_OUT_CONF0) = GDMA_EOF_MODE_BIT;
+    REG32(base_reg + GDMA_OUT_CONF0) = 0;
     REG32(base_reg + GDMA_OUT_PERI_SEL) = GDMA_PERI_PARLIO;
     uint32_t addr = ((uint32_t)&neuron_descs[0]) & GDMA_LINK_ADDR_MASK;
     REG32(base_reg + GDMA_OUT_LINK) = addr | GDMA_LINK_START_BIT;
@@ -1558,11 +1735,14 @@ void app_main(void) {
     init_parlio();
     printf("[INIT] PCNT (2 units)...\n");
     init_pcnt();
-    /* PCNT driver disables GPIO output on level pins (gpio_func_sel resets
-     * output enable). Re-enable output on Y_POS and Y_NEG so we can drive
-     * them as level gates. */
-    gpio_set_direction(GPIO_Y_POS, GPIO_MODE_INPUT_OUTPUT);
-    gpio_set_direction(GPIO_Y_NEG, GPIO_MODE_INPUT_OUTPUT);
+    /* PCNT driver calls gpio_config(GPIO_MODE_INPUT) on all four GPIO pins,
+     * clearing the output-enable bit in GPIO_ENABLE_REG. Re-enable outputs
+     * directly via register write — do NOT use gpio_set_direction or
+     * gpio_output_enable, which call esp_rom_gpio_connect_out_signal with
+     * SIG_GPIO_OUT_IDX (128) and would disconnect PARLIO from GPIO 4/5
+     * (GPIO_FUNC4/5_OUT_SEL_CFG would be overwritten from 47/48 to 128). */
+    REG32(0x60091020) |= (1UL << GPIO_X_POS) | (1UL << GPIO_X_NEG)
+                       | (1UL << GPIO_Y_POS)  | (1UL << GPIO_Y_NEG);
     printf("[INIT] Timer...\n");
     init_timer();
     printf("[INIT] GDMA channel detection...\n");
@@ -1674,6 +1854,11 @@ void app_main(void) {
             memcpy(snapshots[i], (void*)cfc.hidden, CFC_HIDDEN_DIM);
             snap_loops[i] = loop_count;
             n_snaps++;
+
+            /* Diagnostic: show ISR EOF activity to detect GDMA stall */
+            printf("  [T2D] i=%d loop=%d eof=%d cnt=%d fires=%d\n",
+                   i, (int)loop_count, (int)isr_eof_count,
+                   (int)isr_count, (int)isr_total_fires);
 
             if (i > 0) {
                 int dist = trit_hamming(snapshots[i], snapshots[i - 1], CFC_HIDDEN_DIM);

@@ -1,6 +1,6 @@
 # The Reflex: Current Status
 
-**Last Updated:** March 19, 2026
+**Last Updated:** March 22, 2026
 
 ---
 
@@ -8,14 +8,26 @@
 
 The Reflex is a three-layer ternary reflex arc in silicon. Peripheral hardware IS the neural network (GIE). A micro-core IS the sub-conscious (LP core, 100 Hz, ~30uA). The CPU IS consciousness (HP core, on-demand).
 
-**Current State (March 19, 2026):** LP Core assembly implementation of NSW Vector Database and CfC integration verified at **100% recall and determinism** on silicon. GIE (Peripheral-As-Processor) arithmetic remains architecturally sound but is currently **hardware-locked** on Rev v0.2 silicon when the USB-Serial-JTAG port is active (IOMUX/PCR interlock). Verified path forward: power independently and use standard UART.
+**Current State (March 22, 2026):** GIE free-running engine fully operational. The March 19
+"Silicon Interlock" (USB-JTAG clamping GPIOs 4-7) was resolved by switching to 20MHz PARLIO
+with the USB-JTAG block de-routed. TEST 1 (432 Hz baseline) confirmed passing. A subsequent
+multi-session debugging effort resolved the multi-call restart problem (PARLIO TX core state
+machine corruption after mid-transaction stop) and the GDMA restart race (interrupt enable
+ordering). Fix applied and built clean; TEST 2–11 pending final flash verification.
 
-**New Documentation:** 
+**Key sessions:**
+- March 19: Silicon Interlock identified. LP Core NSW + CfC pipeline verified 100%.
+- March 21: Second-call hang fixed (GDMA reset in stop_freerun, interrupt ordering).
+- March 22: TEST 2+ zero-loop stall diagnosed. Root cause: PARLIO TX core not reset
+  after mid-tx stop. Fix: pulse `parl_tx_rst_en` (PCR bit 19) in stop_freerun().
+  See `docs/SESSION_MAR22_2026.md` for full analysis.
+
+**Key documentation:**
+- `docs/SESSION_MAR22_2026.md`: March 22 PARLIO TX state machine debugging.
+- `embedded/docs/HARDWARE_ERRATA.md`: 20+ hardware errata, 3 new entries from March 22.
 - `READMETOO.md`: Deep Audit & Falsification Report.
 - `WHITEPAPER.md`: The Reflex Manifesto.
 - `PAP_PAPER.md`: "The Reflex Arc in Silicon" (Academic Draft).
-
-**Latest Session Proof:** `lmm_reflex_truth.bin` captured 531KB of substrate activity during atomic discovery.
 
 ---
 
@@ -252,6 +264,9 @@ CfC (96B frame) → bridge copies 6 words to VDB query BSS → deallocate → VD
 | Free-run | PCNT clock domain drain | 200 volatile loops (~5us) in ISR before read |
 | Free-run | LP SRAM bus contention | Never write LP SRAM from ISR; main loop only |
 | Free-run | GPIO output disable after PCNT init | Re-enable with gpio_set_direction() |
+| Phase 4 | PARLIO TX state machine corrupts on mid-tx stop | Pulse parl_tx_rst_en (PCR bit 19) in stop_freerun() |
+| Phase 4 | GDMA ISR race on second start_freerun() | GDMA reset in stop_freerun() + enable interrupts after setup |
+| Phase 4 | out_eof_mode=1 unusable (no PARLIO handshake) | Use mode=0; account for ~23 pre-fill phantom EOFs |
 
 ---
 
