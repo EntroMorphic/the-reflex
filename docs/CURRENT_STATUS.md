@@ -1,6 +1,6 @@
 # The Reflex: Current Status
 
-**Last Updated:** March 22, 2026
+**Last Updated:** March 22, 2026 (evening — 11/11 PASS confirmed)
 
 ---
 
@@ -8,23 +8,30 @@
 
 The Reflex is a three-layer ternary reflex arc in silicon. Peripheral hardware IS the neural network (GIE). A micro-core IS the sub-conscious (LP core, 100 Hz, ~30uA). The CPU IS consciousness (HP core, on-demand).
 
-**Current State (March 22, 2026):** GIE free-running engine fully operational. The March 19
-"Silicon Interlock" (USB-JTAG clamping GPIOs 4-7) was resolved by switching to 20MHz PARLIO
-with the USB-JTAG block de-routed. TEST 1 (432 Hz baseline) confirmed passing. A subsequent
-multi-session debugging effort resolved the multi-call restart problem (PARLIO TX core state
-machine corruption after mid-transaction stop) and the GDMA restart race (interrupt enable
-ordering). Fix applied and built clean; TEST 2–11 pending final flash verification.
+**Current State (March 22, 2026):** **11/11 PASS — full system verified with live wireless input.**
+The GIE free-running engine runs at 430.8 Hz CPU-free. Real-world ESP-NOW packets from Board B
+drive the GIE's hidden state. TriX classification achieves 100% accuracy (Core + ISR) vs 84%
+for a rate-only baseline — a 16-point advantage from payload encoding that distinguishes patterns
+sharing the same send rate.
+
+The long debugging arc is complete: the March 19 Silicon Interlock (USB-JTAG clamping GPIOs
+4-7) forced a switch to 20MHz PARLIO. The March 21 second-call hang was caused by a GDMA reset
+race. The March 22 TEST 2+ zero-loop stall (isr_eof frozen at 37) was caused by PARLIO TX core
+state machine corruption after a mid-transaction stop — fixed by pulsing `parl_tx_rst_en`
+(PCR bit 19) in `stop_freerun()`. A stale Board B PEER_MAC (`c4:d4` → `c8:24`) was the final
+blocker for TEST 9–11.
 
 **Key sessions:**
 - March 19: Silicon Interlock identified. LP Core NSW + CfC pipeline verified 100%.
 - March 21: Second-call hang fixed (GDMA reset in stop_freerun, interrupt ordering).
-- March 22: TEST 2+ zero-loop stall diagnosed. Root cause: PARLIO TX core not reset
-  after mid-tx stop. Fix: pulse `parl_tx_rst_en` (PCR bit 19) in stop_freerun().
-  See `docs/SESSION_MAR22_2026.md` for full analysis.
+- March 22 (morning): TEST 2+ zero-loop stall diagnosed and fixed (parl_tx_rst_en).
+- March 22 (evening): Fix verified on hardware, Board B PEER_MAC corrected, **11/11 PASS**.
+  See `docs/SESSION_MAR22_2026.md` for complete analysis and results.
 
 **Key documentation:**
-- `docs/SESSION_MAR22_2026.md`: March 22 PARLIO TX state machine debugging.
-- `embedded/docs/HARDWARE_ERRATA.md`: 20+ hardware errata, 3 new entries from March 22.
+- `docs/SESSION_MAR22_2026.md`: Full March 22 session log — PARLIO TX debugging, fix, verification,
+  Board B PEER_MAC issue, and complete 11/11 results with classification breakdown.
+- `embedded/docs/HARDWARE_ERRATA.md`: 20+ hardware errata, 6 new entries from Phase 4.
 - `READMETOO.md`: Deep Audit & Falsification Report.
 - `WHITEPAPER.md`: The Reflex Manifesto.
 - `PAP_PAPER.md`: "The Reflex Arc in Silicon" (Academic Draft).
@@ -35,7 +42,7 @@ ordering). Fix applied and built clean; TEST 2–11 pending final flash verifica
 
 | Layer | Hardware | Rate | Power | What It Does |
 |-------|----------|------|-------|-------------|
-| GIE | GDMA+PARLIO+PCNT peripherals | 428 Hz | ~0 CPU | 64-neuron CfC inference via peripheral routing |
+| GIE | GDMA+PARLIO+PCNT peripherals | 430.8 Hz | ~0 CPU | 64-neuron CfC inference via peripheral routing |
 | LP core | 16MHz RISC-V (hand-written ASM) | 100 Hz | ~30uA | Geometric CfC + NSW vector database + pipeline |
 | HP core | Full 160MHz CPU | On demand | ~15mA | Init + monitoring only |
 
@@ -105,6 +112,7 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 | **TriX Classification Channel** | **11/11** | **Packed dots via reflex_signal, channel-based consumer** | **`b79f09b`** |
 | **CfC Blend Disabled (Phase 3)** | **11/11** | **gate_threshold=INT32_MAX, 0% firing, TriX-only classification** | **`c6fd284`** |
 | **Hidden Re-encode Skipped (Phase 4)** | **11/11** | **Step 5 gated by threshold, saves ~20us/loop when blend off** | **`8a33369`** |
+| **Phase 4 Full Verification** | **11/11** | **PARLIO TX fix + Board B live input, 100% vs 84% baseline** | **`07b5b66`** |
 
 ---
 
@@ -116,7 +124,7 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 |-----------|--------|-------------|
 | reflex.h primitive | Production | 12ns pure (C6), 309ns (Thor) |
 | 10kHz control loop | Verified | 926ns P99 (Thor) |
-| GIE free-running | Verified | 428 Hz, 64 neurons, ~0 CPU |
+| GIE free-running | Verified | 430.8 Hz, 64 neurons, ~0 CPU |
 | LP core CfC | Verified | 100 Hz, 16 neurons, ~30uA |
 | LP core VDB | Verified | 64 nodes, NSW graph, recall@1=95% |
 | CfC→VDB pipeline | Verified | Perceive+think+remember in one 10ms wake |
@@ -124,7 +132,7 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 | VDB→CfC feedback | Verified | CMD 5, HOLD damping, 50 unique states in 50 steps |
 | ESP-NOW live input | Verified | 4-pattern wireless input drives GIE |
 | **TriX classification** | **Verified** | **32/32 = 100% (Core + ISR), zero-shot from signatures** |
-| **TriX classification channel** | **Verified** | **Packed dots via reflex_signal, 430 Hz ISR rate** |
+| **TriX classification channel** | **Verified** | **Packed dots via reflex_signal, 711 Hz ISR classification rate** |
 | Online maintenance | Verified | Signature re-sign every 16 pkts, novelty gate at 60 |
 | 7-voxel TriX Cube | Verified | Core + 6 temporal faces, XOR mask displacement data |
 
@@ -148,7 +156,7 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 │     Re-encode next neuron's W×X products                         │
 │     CfC blend: DISABLED (Phase 3, all neurons HOLD)              │
 │                              │                                   │
-│   428 Hz continuous, CPU-free after init                         │
+│   430.8 Hz continuous, CPU-free after init                       │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
         │ cfc.hidden[32] via reflex_channel_t (18us, fence-ordered)
@@ -267,6 +275,9 @@ CfC (96B frame) → bridge copies 6 words to VDB query BSS → deallocate → VD
 | Phase 4 | PARLIO TX state machine corrupts on mid-tx stop | Pulse parl_tx_rst_en (PCR bit 19) in stop_freerun() |
 | Phase 4 | GDMA ISR race on second start_freerun() | GDMA reset in stop_freerun() + enable interrupts after setup |
 | Phase 4 | out_eof_mode=1 unusable (no PARLIO handshake) | Use mode=0; account for ~23 pre-fill phantom EOFs |
+| Phase 4 | PARLIO INT_RAW sticky across tx_start cycles | Behavioral no-op (INT_ENA=0), but misleads diagnostics |
+| Phase 4 | GDMA owner bits not cleared on ESP32-C6 | No maintenance needed; confirmed by 432 Hz continuous |
+| Multi-board | espnow_sender PEER_MAC is a point-in-time constant | Record Board A MAC in FLASH_GUIDE; verify after each board swap |
 
 ---
 
@@ -315,7 +326,8 @@ the-reflex/
 
 ## What's Next
 
-TriX classification is **verified** at 100% (commit `fd338f5`). CfC blend is **disabled** (Phase 3, commit `c6fd284`). The CfC→TriX migration continues:
+**11/11 PASS achieved March 22, 2026** (commit `07b5b66`). The CfC→TriX migration is complete
+through Phase 4. The full system is verified end-to-end with live wireless input.
 
 | Phase | What | Status |
 |-------|------|--------|
@@ -323,14 +335,16 @@ TriX classification is **verified** at 100% (commit `fd338f5`). CfC blend is **d
 | **2** | Add TriX classification channel (reflex_signal at 430 Hz) | **DONE — `b79f09b`** |
 | **3** | Disable CfC blend (gate_threshold = INT32_MAX, 0% firing) | **DONE — `c6fd284`** |
 | **4** | Skip hidden re-encode when blend disabled (save ~20us per loop) | **DONE — `8a33369`** |
+| **4 (verified)** | Full 11/11 PASS with Board B, 100% vs 84% baseline | **DONE — `07b5b66`** |
 | **5** | Shrink DMA chain (32 neurons for TriX, not 64) → ~800+ Hz | Pending |
 | **6** | Update tests to reflect TriX-native architecture | Pending |
 
 **Open directions:**
-- Complete CfC→TriX migration (Phases 5-6)
-- Harder classification tasks (more patterns, overlapping features)
-- Comparison against baseline classifiers (threshold, TFLite Micro)
-- Physical sensor integration (IMU, ADC) as GIE input
+- Phase 5: shrink DMA chain to 32 neurons (TriX only uses first 32), target >800 Hz
+- Harder classification tasks (more patterns, overlapping payload features)
+- Physical sensor integration (IMU, ADC) as GIE input replacing ESP-NOW
+- Document Board A MAC in FLASH_GUIDE to prevent PEER_MAC staleness on board swap
+- Board B MAC discovery at runtime (broadcast probe) as a robustness improvement
 
 ---
 

@@ -92,6 +92,49 @@ print(output.decode('utf-8', errors='replace'))
 
 The key insight: the USB Serial/JTAG disconnects on reset. Detect the disconnect via the `SerialException`, then poll for reconnection.
 
+## Multi-Board Setup (Board A + Board B)
+
+The `espnow_sender.c` firmware contains a hardcoded `PEER_MAC` pointing to Board A's Wi-Fi
+STA MAC. This MAC is a point-in-time constant — it must match the actual Board A in use.
+
+**Step 1: Read Board A's MAC.** Boot Board A and read the boot log:
+```
+BASE MAC: b4:3a:45:8a:c8:24
+```
+
+**Step 2: Update PEER_MAC in espnow_sender.c** if it does not match:
+```c
+static const uint8_t PEER_MAC[ESP_NOW_ETH_ALEN] = {
+    0xB4, 0x3A, 0x45, 0x8A, 0xC8, 0x24   /* Board A Wi-Fi STA MAC */
+};
+```
+
+**Current Board A MAC:** `b4:3a:45:8a:c8:24` (verified March 22, 2026)
+
+**Step 3: Build and flash Board B** (swap CMakeLists, comment out ULP block):
+```cmake
+set(app_sources "espnow_sender.c")
+# set(app_sources "geometry_cfc_freerun.c" "reflex_vdb.c")
+# (comment out ulp_embed_binary block too)
+```
+```bash
+idf.py build && idf.py -p /dev/ttyACM1 flash
+```
+
+**Step 4: Verify Board B is sending successfully.** Board B prints per-pattern send stats.
+`ok=N fail=0` means packets are ACKed. `ok=0 fail=N` means the PEER_MAC is wrong or
+Board A is not listening on channel 1 (check `[ESPNOW] Listening on channel 1` in Board A log).
+
+**Step 5: Restore CMakeLists** for Board A firmware:
+```cmake
+# set(app_sources "espnow_sender.c")
+set(app_sources "geometry_cfc_freerun.c" "reflex_vdb.c")
+# (uncomment ulp_embed_binary block)
+```
+```bash
+idf.py build && idf.py -p /dev/ttyACM0 flash
+```
+
 ## Troubleshooting
 
 **"No port found after reconnect"** — USB re-enumeration can take up to 2 seconds. Increase the poll count.

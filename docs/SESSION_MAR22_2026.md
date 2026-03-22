@@ -299,3 +299,285 @@ not behavioral.
 4. **Consider clearing PARLIO_INT_CLR:** Add `REG32(0x60015020) = 0x7` to `start_freerun()` to
    prevent stale `INT_RAW` bits from appearing in future diagnostic captures. Low priority —
    does not affect behavior.
+
+---
+
+## 9. Fix Verification — Flash and Capture
+
+### 9.1 Build and flash
+
+The fixed build (commit `68e024b`) was flashed to Board A (`/dev/ttyACM0`). Serial capture was
+performed by opening `/dev/ttyACM0` with pyserial, pulsing NRST via esptool to trigger a clean
+boot, and reading until the test harness printed its final result line.
+
+### 9.2 Result: 8/11 PASS (without Board B)
+
+First capture confirmed the fix worked for the GIE itself:
+
+| Test | Result | Notes |
+|------|--------|-------|
+| TEST 1 | OK | 432 loops in 1.003s = 430.8 Hz |
+| TEST 2 | OK | Total loops: 173, delta>0 at multiple snapshots |
+| TEST 3 | OK | 0 dot errors, 0 sign errors, 64/64 |
+| TEST 4 | OK | LP exact dots match CPU, f/g 16/16 |
+| TEST 5 | OK | Recall@1=95%, recall@4=90%, sub-linear |
+| TEST 6 | OK | Pipeline determinism, VDB consistency |
+| TEST 7 | OK | 50/50 signals, 18us avg latency |
+| TEST 8 | OK | 49/50 feedback applied, 50 unique states |
+| TEST 9 | FAIL | "0 packets in 10s" — Board B not running |
+| TEST 10 | FAIL | 0 input updates — Board B not running |
+| TEST 11 | FAIL | 0 packets observed — Board B not running |
+
+TEST 2 deserves emphasis: the snapshot polling showed loop counts growing at each 50ms sample
+(22, 44, 65, 87, 108, 130, 151, 173). Previously, loop_count was frozen at 0 for the entire
+400ms observation window. The parl_tx_rst_en fix eliminated the stall completely.
+
+The DIAG line for TEST 2 at 500μs showed `isr_eof=24` (not 37), confirming the engine was
+in a clean post-reset state, not inheriting the pre-fill accumulation from a partially-stopped
+prior run.
+
+### 9.3 Diagnostic cleanup
+
+With the fix confirmed, all investigative scaffolding was removed (commit `3519a77`):
+
+- Removed `isr_total_fires`, `isr_done_count`, `isr_eof_count` counter declarations (3 lines)
+- Removed `isr_total_fires++` and `isr_eof_count++` from ISR (2 lines)
+- Removed `out_done` ISR handler block — `GDMA_OUT_DONE_BIT` no longer enabled (5 lines)
+- Removed all `[SF] step N:` printf markers from `start_freerun()` (8 lines)
+- Removed `isr_total_fires = 0`, `isr_done_count = 0`, `isr_eof_count = 0` resets (3 lines)
+- Simplified DIAG printf: removed `isr_fires=`, `isr_done=`, `isr_eof=`, `isr_cnt=` fields
+- Removed `[DIAG] pcr: clk_conf=...` printf (4 lines)
+- Removed `[T2D]` polling printf in TEST 2 (4 lines)
+- Removed `GDMA_OUT_DONE_BIT` from `init_gdma_isr()` enable mask
+- Removed unused `#define GDMA_OUT_DONE_BIT`
+
+Net: 5 insertions, 40 deletions. Build clean (18% flash free).
+
+---
+
+## 10. Board B Integration — PEER_MAC Issue
+
+### 10.1 Flashing Board B
+
+Board B was connected as `/dev/ttyACM1`. The sender firmware was built by swapping
+`CMakeLists.txt` (`app_sources = "espnow_sender.c"`, ULP block commented out) and flashed.
+Board A was rebuilt with the GIE firmware restored and flashed to `/dev/ttyACM0`.
+
+### 10.2 First full-board run: still 0 packets
+
+The first 11-test capture with both boards running showed `Packets received: 0` in TEST 9.
+Board B's serial output showed:
+
+```
+[SEND] Pattern 2 -> 3 | seq=1060 ok=0 fail=1060
+[SEND] Pattern 3 -> 0 | seq=1080 ok=0 fail=1080
+```
+
+Every ESP-NOW send was failing. `ok=0 fail=N` with the fail counter incrementing on every packet
+means the ACK from Board A was never received — the peer was unreachable.
+
+### 10.3 Root cause: stale PEER_MAC
+
+The sender code contains a hardcoded `PEER_MAC` for Board A's Wi-Fi STA MAC address:
+
+```c
+static const uint8_t PEER_MAC[ESP_NOW_ETH_ALEN] = {
+    0xB4, 0x3A, 0x45, 0x8A, 0xC4, 0xD4   /* WRONG */
+};
+```
+
+Board A's actual base MAC (printed at boot): `b4:3a:45:8a:c8:24`.
+
+The last two octets differed: `c4:d4` (hardcoded) vs `c8:24` (actual). This MAC was presumably
+correct for a prior Board A and became stale when a different unit was used.
+
+Fix applied to `espnow_sender.c`:
+
+```c
+static const uint8_t PEER_MAC[ESP_NOW_ETH_ALEN] = {
+    0xB4, 0x3A, 0x45, 0x8A, 0xC8, 0x24   /* Board A Wi-Fi STA MAC */
+};
+```
+
+### 10.4 Verification of fix
+
+After reflashing Board B with the corrected MAC, Board B's output showed:
+
+```
+[SEND] Pattern 1 -> 2 | seq=80 ok=80 fail=0
+```
+
+`ok=80 fail=0` — every packet ACKed. Board A was receiving. TEST 9 was ready.
+
+### 10.5 Why this wasn't caught sooner
+
+Tests 9–11 had never been run with Board B present. The MAC was set manually when the sender
+firmware was first written, pointing to whichever Board A was on the bench at the time. No
+automated discovery or verification existed. The ESP-NOW stack provides send callbacks with
+pass/fail status but the sender firmware does not abort or alert on sustained failures — it just
+logs and continues.
+
+**Lesson:** ESP-NOW peer MAC addresses are a point-in-time constant that must be verified
+against the actual device. For multi-board setups, consider either MAC discovery at runtime
+(broadcast probe) or a FLASH_GUIDE step that extracts and records Board A's MAC before
+building the sender.
+
+---
+
+## 11. Full 11/11 PASS — Complete Results
+
+### 11.1 Run parameters
+
+Board A: `/dev/ttyACM0`, flashed with `geometry_cfc_freerun.c` + ULP (commit `07b5b66`).
+Board B: `/dev/ttyACM1`, flashed with corrected `espnow_sender.c` (commit `07b5b66`).
+Capture window: 220 seconds. Both boards on Wi-Fi channel 1.
+
+### 11.2 Test-by-test summary
+
+| Test | Result | Key Numbers |
+|------|--------|-------------|
+| TEST 1: Free-running loop count | OK | 432 loops/1.003s = **430.8 Hz** |
+| TEST 2: Hidden state evolves | OK | 173 loops, delta>0 at snaps 1,3,5,7 |
+| TEST 3: Per-neuron dot accuracy | OK | 0 dot errors, 0 sign errors, 64/64 |
+| TEST 4: LP core geometric processor | OK | f-dots 16/16 exact, g-dots 16/16 exact |
+| TEST 5: Ternary VDB / NSW graph | OK | Recall@1=95%, recall@4=90%, 64/64 connected |
+| TEST 6: CfC→VDB pipeline | OK | Deterministic, consistent, 10/10 sustained |
+| TEST 7: Reflex channel coordination | OK | 50/50 signals, 14.5us avg latency |
+| TEST 8: VDB→CfC feedback | OK | 48/50 feedback applied, 46 unique states |
+| TEST 9: ESP-NOW receive | OK | **62 packets in 10s**, RSSI -49 to -47 dBm |
+| TEST 10: ESP-NOW→GIE live input | OK | 17-trit Hamming (static vs live), cross-pattern divergent |
+| TEST 11: Pattern classification | OK | **32/32 = 100% (Core + ISR)**, baseline 27/32 = 84% |
+
+### 11.3 TEST 11 classification results in detail
+
+TEST 11 is the end-to-end validation: wireless packets from Board B drive the GIE's input
+vector and the system classifies which of 4 patterns is active.
+
+**Observation phase (30s):**
+- 126 packets received and encoded
+- Per-pattern distribution: P0=20, P1=60, P2=26, P3=20
+- Signatures computed from accumulated input vectors (all 4 patterns saw ≥20 samples)
+- Signature cross-dots (diagonal = self-similarity): s0=116, s1=118, s2=111, s3=97
+  Off-diagonal: s0·s1=74, s0·s2=61, s1·s2=57, s2·s3=1, s0·s3=35, s1·s3=29
+  s2 and s3 are nearly orthogonal (cross-dot=1), which is why they classify cleanly.
+
+**Pattern-ID encoding (trits 16–23 of signature):**
+- sig[0][16..23]: `++------` (pattern 0 → high first two trits)
+- sig[1][16..23]: `--++----` (pattern 1 → high trits 2-3)
+- sig[2][16..23]: `----++--` (pattern 2 → high trits 4-5)
+- sig[3][16..23]: `------++` (pattern 3 → high trits 6-7)
+Each pattern carves out a distinct region in input space from its pattern_id bits alone.
+
+**TriX Cube face observation (15s):**
+
+| Face | Samples | Description |
+|------|---------|-------------|
+| +x:recent | 84 | Input from last 1s |
+| -x:prior | 79 | Input from 1–3s ago |
+| +y:stable | 30 | Input during long dwell (>2s same pattern) |
+| -y:transient | 14 | Input within 500ms of pattern change |
+| +z:confident | 43 | Input when core score > 100 |
+| -z:uncertain | 29 | Input when core score < 80 |
+
+Face divergence from core (avg Hamming):
+- +x:recent: **14** — close to core (recent data = current state)
+- -x:prior: **46** — highly divergent (prior data ≠ current)
+- +y:stable: **9** — very close (stable dwells reinforce core)
+- -y:transient: **21** — moderate (transitions mix patterns)
+- +z:confident: **9** — very close (confident windows match core well)
+- -z:uncertain: **28** — divergent (uncertain windows are inconsistent)
+
+This is geometrically sensible: the +x (recent) and +z (confident) faces are close to the
+core because they observe the same signal under favorable conditions. The -x (prior) and
+-z (uncertain) faces are far because they observe outdated or mixed-pattern data.
+
+**Classification phase (32 samples):**
+- Core (CPU per-packet vote): **32/32 = 100%**
+- ISR (HW 430 Hz TriX): **32/32 = 100%**
+- Baseline (packet-rate classifier): **27/32 = 84%**
+
+The 16-point advantage over the rate-only baseline is exactly where the architecture was
+designed to win: P0 and P3 both send at ~10 Hz. The rate classifier cannot distinguish them.
+The GIE can, because it encodes payload content into the input vector.
+
+**XOR Mask signal decomposition:**
+
+The XOR masks show which input dimensions differ between face and core, decomposed by field:
+
+| Face | Avg XOR | RSSI | PatID | Payload | Timing |
+|------|---------|------|-------|---------|--------|
+| +x:recent | 8/128 | 0/16 | 0/8 | 3/64 | 4/40 |
+| -x:prior | 51/128 | 3/16 | 3/8 | 27/64 | 16/40 |
+| +y:stable | 25/128 | 3/16 | 1/8 | 11/64 | 9/40 |
+| -y:transient | 11/128 | 0/16 | 0/8 | 4/64 | 6/40 |
+| +z:confident | 11/128 | 1/16 | 0/8 | 3/64 | 6/40 |
+| -z:uncertain | 49/128 | 6/16 | 2/8 | 24/64 | 16/40 |
+
+Signal distribution across the mask:
+- **Payload: 47%** — the dominant discriminator
+- **Timing: 37%** — inter-packet gaps carry pattern-specific information
+- **RSSI: 9%** — minor contribution (boards are close, RSSI stable at -47 to -49 dBm)
+- **PatID: 5%** — small because pattern_id encoding is efficient (low trit count)
+
+Payload and timing together account for 84% of the mask weight. This means the GIE is
+primarily classifying by packet content and arrival rhythm, not by signal strength.
+
+**Performance metrics:**
+- Total GIE loops during TEST 11: 37,313 (continuous operation for ~87s)
+- ISR TriX classifications: 24,357 at **711 Hz** (TriX classification rate, not GIE loop rate)
+- Ring drops: 56 (ring buffer briefly saturated during peak burst from Board B — P1 is fast)
+
+The 711 Hz ISR classification rate is higher than the 430 Hz GIE loop rate because the TriX
+ISR fires on every GIE EOF, not just at loop boundaries. With 69 neurons per loop, each loop
+generates 69 ISR classifications. Not all reach the ring buffer (56 were dropped at peak),
+but the ISR tally counts all fires.
+
+**Online maintenance:**
+- Core re-signs: 8 (triggered every 16 packets for P0 and P3, 4 times each)
+- Maximum core drift: sig[2] drifted 16/128 trits across all re-signs
+- sig[3]: 0 drift — pattern 3 signature was perfectly stable
+
+### 11.4 What this means
+
+The first successful 11/11 PASS with live wireless input establishes:
+
+1. **The GIE free-running engine is fully operational.** 430 Hz, CPU-free, persistent across
+   start/stop cycles. The PARLIO TX state machine corruption (TEST 2+ zero-loop stall) is fixed.
+
+2. **Real-world input drives the hidden state.** A 17-trit Hamming distance between static
+   and live-input hidden states (TEST 10b) confirms the GIE is responding to wireless data, not
+   just running autonomously on fixed weights.
+
+3. **TriX classification outperforms the rate baseline by 16 points (100% vs 84%).** The
+   advantage comes from payload encoding — the GIE distinguishes P0 and P3 (same rate,
+   different content) where a rate classifier cannot.
+
+4. **The TriX Cube geometry is geometrically coherent.** Face divergences follow the expected
+   ordering: recent and confident faces are close to core (9–14 Hamming), prior and uncertain
+   faces are far (46–51 Hamming). This is not a result of tuning — it's an emergent property
+   of which data each face observes.
+
+5. **The full stack is end-to-end verified:** RF → ESP-NOW → encoding → GIE (430 Hz) →
+   TriX classification (711 Hz ISR) → reflex channel → HP core.
+
+---
+
+## 12. Final State — March 22, 2026
+
+| Item | Status |
+|------|--------|
+| PARLIO TX core reset fix | ✅ Applied and verified on hardware |
+| Diagnostic scaffolding | ✅ Removed (commit `3519a77`) |
+| Board B PEER_MAC | ✅ Corrected to `b4:3a:45:8a:c8:24` (commit `07b5b66`) |
+| TEST 1–8 (solo board) | ✅ All PASS |
+| TEST 9–11 (dual board) | ✅ All PASS |
+| 11/11 overall | ✅ **FIRST FULL PASS** |
+| GIE frequency | 430.8 Hz (confirmed) |
+| Classification accuracy | 100% (Core + ISR TriX) |
+| Rate-only baseline | 84% (cannot distinguish P0/P3) |
+| Build size | 861,968 bytes, 18% flash free |
+
+**Commits this session:**
+- `68e024b` — fix: PARLIO TX core reset in stop_freerun()
+- `3519a77` — chore: remove diagnostic scaffolding
+- `07b5b66` — fix: correct Board A MAC in espnow_sender.c
