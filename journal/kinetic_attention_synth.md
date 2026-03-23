@@ -19,7 +19,7 @@ This is not a complication of the design. It is the design. A prior that can't b
 
 ### New Components
 
-**`gate_bias[4]`** — int8_t array in LP SRAM, one value per pattern group (16 neurons each). Written by HP core before each CMD 5 dispatch. Read by ISR at each CfC blend step.
+**`gate_bias[4]`** — int8_t array in LP SRAM, one value per pattern group (8 neurons each, since CFC_HIDDEN_DIM=32 and TRIX_NEURONS_PP=8). Written by HP core before each CMD 5 dispatch. Read by ISR at each CfC blend step.
 
 **Agreement computation** — on each confirmed packet:
 ```c
@@ -109,7 +109,7 @@ memcpy((void *)ulp_gate_bias, gate_bias_staging, 4);
 In `geometry_cfc_freerun.c`, inside the ISR at the CfC blend decision:
 
 ```c
-int group = current_neuron >> 4;
+int group = current_neuron / TRIX_NEURONS_PP;  // CFC_HIDDEN_DIM=32, TRIX_NEURONS_PP=8
 int eff_threshold = (int)cfc.gate_threshold + (int)ulp_gate_bias[group];
 if (eff_threshold < MIN_THRESHOLD) eff_threshold = MIN_THRESHOLD;
 if (f_dot > eff_threshold || f_dot < -eff_threshold) {

@@ -135,8 +135,51 @@ UART Falsification (independent, can run at any time)
 
 ---
 
+## Operating Modes
+
+The Reflex has two distinct operating modes with different power claims. All documentation and papers must specify which mode they describe.
+
+**Autonomous Mode (~30 µA):**
+C6 only. GIE + VDB + LP CfC + kinetic attention (gate bias via ISR). No Nucleo, no SPI, no QSPI. This is the operating mode for the TEST 12/13/14 paper series. The ~30 µA power claim applies only to this mode.
+
+**APU-Expanded Mode (~10-50 mA):**
+C6 + Nucleo APU (L4R5ZI-P or L4A6ZG). Adds VDB search acceleration via SPI at 40 MHz, MTFP21 inference via QSPI at 160 Mbps. Power budget dominated by the Nucleo. This mode is for MTFP21/L-Cache papers and future SAMA work.
+
+The firmware must detect Nucleo presence at startup (SPI handshake) and fall back to autonomous VDB path if absent. Autonomous mode must work when the Nucleo is unplugged.
+
+---
+
+## Publication Strategy
+
+The Reflex's contributions are stratified across three levels. Each targets a different audience and should be submitted to its own venue:
+
+**Stratum 1 — Engineering** (embedded systems venues):
+TEST 12/13/14 papers. GDMA→PARLIO→PCNT as ternary neural substrate. NSW graph in LP SRAM at ~30 µA. Agreement-weighted gate bias. All claims silicon-verified, ablation-controlled.
+
+**Stratum 2 — Architecture** (computational neuroscience / neuromorphic venues):
+CLS architecture paper. Fixed-weight CLS analog: VDB as permanent hippocampal layer, LP CfC as fixed neocortical extractor. CLS predictions tested empirically via the transition experiment (TEST 14C).
+
+**Stratum 3 — Principle** (AI/ML venues):
+Prior-signal separation note. Five-component architecture for structural hallucination resistance: prior-holder, evidence-reader, structural separation guarantee, disagreement detection, evidence-deference policy. The Reflex is the silicon-verified instantiation. Draft: `docs/PRIOR_SIGNAL_SEPARATION.md`.
+
+Before coordinating submissions: write one internal unified framework memo mapping all 8 research projects to a common frame (hardware-native ternary computing). Coordinated cluster submission is more visible than 8 independent papers.
+
+---
+
+## Blocking Prerequisites (Must Complete Before Any Paper Submission)
+
+1. **UART Falsification:** Re-route console to GPIO 16/17, power from battery/dumb USB, run full test suite without JTAG. The "peripheral-autonomous" claim requires this data, not inference from JTAG-attached runs.
+
+2. **Firmware refactor:** Separate core layer (stable GIE, VDB, LP, CMD dispatch) from test layer (condition flags, parameters, logging) before Phase 5 code lands. Reviewers must be able to find the difference between TEST 14A and 14B in under 10 lines.
+
+---
+
 ## Philosophy
 
 *The hardware is the teacher. The signal is the lesson. Abstraction is the enemy.*
 
 The path forward is not adding more software. It is finding more computation already in the silicon — more peripheral behavior that can be wired into the loop without CPU instruction cycles. The gate bias (Phase 5) uses the ISR that already exists. The VDB pruning (Pillar 1) uses LP core wake cycles that already exist. The Hebbian update (Pillar 3) uses the GDMA chain that already exists. Each step-change is not a new system; it is new use of the same substrate.
+
+**The one-sentence description of what this system is:**
+
+> A wireless signal classifier that draws ~30 µA and accumulates a temporal model of what it has been perceiving, using a structure that mirrors Complementary Learning Systems theory — where the memory layer cannot corrupt the classifier, but the classifier's accumulated history actively biases future perception.

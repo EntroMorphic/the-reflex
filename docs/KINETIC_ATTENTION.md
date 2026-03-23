@@ -165,7 +165,8 @@ The ISR change is minimal:
 
 ```c
 // In ISR, at CfC blend step:
-int group = (neuron_idx >> 4);  // neuron_idx / 16
+// CFC_HIDDEN_DIM=32, TRIX_NEURONS_PP=8 → 4 groups of 8 neurons each
+int group = neuron_idx / TRIX_NEURONS_PP;  // 0→7: P0, 8→15: P1, 16→23: P2, 24→31: P3
 int effective_threshold = gate_threshold + (int)lp_gate_bias[group];
 effective_threshold = MAX(effective_threshold, 10);  // hard floor
 if (f_dot > effective_threshold || f_dot < -effective_threshold) {
