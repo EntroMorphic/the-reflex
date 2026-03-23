@@ -1,47 +1,37 @@
 # The Reflex: Current Status
 
-**Last Updated:** March 22, 2026 (night — 13/13 PASS, VDB attribution confirmed by CMD 4 ablation)
+**Last Updated:** March 23, 2026 — Phase 5 designed, full LMM assessment complete, temporal context reframe articulated.
 
 ---
 
 ## Executive Summary
 
-The Reflex is a three-layer ternary reflex arc in silicon. Peripheral hardware IS the neural network (GIE). A micro-core IS the sub-conscious (LP core, 100 Hz, ~30uA). The CPU IS consciousness (HP core, on-demand).
+The Reflex is a three-layer ternary neural computing system built from commodity peripheral hardware. It classifies wireless signals at 100% accuracy using peripheral-hardware ternary dot products at 430.8 Hz, drawing ~30 µA in autonomous mode. Beneath that classifier, a sub-conscious layer on the LP core accumulates a temporal model of what the system has been perceiving — pattern-specific internal representations that develop from VDB episodic memory retrieval over 90 seconds of live operation.
 
-**Current State (March 22, 2026):** **13/13 PASS — full system verified including memory-modulated adaptive attention with CMD 4 ablation control.**
-The GIE free-running engine runs at 430.8 Hz, ISR-driven on HP core with peripheral-autonomous computation between interrupts. Real-world ESP-NOW packets from Board B
-drive the GIE's hidden state. TriX classification achieves 100% accuracy (Core + ISR) vs 84%
-for a rate-only baseline. The LP core develops pattern-specific internal states from
-classification history via VDB episodic memory retrieval: after 90 seconds of live operation,
-P1 and P3 (same 10 Hz rate, different payload) diverge by Hamming 5 in LP hidden space.
-97% of LP feedback steps applied. The sub-conscious layer reflects what the system has been seeing.
+**The reframe (March 23, 2026):** The Reflex is not building a better classifier. It is building a temporal context layer beneath a perfect classifier. Every downstream contribution — kinetic attention, multi-agent coordination, Hebbian learning — earns its meaning from the quality and independence of that temporal model.
 
-The complete loop is closed: **perceive → classify → remember → retrieve → modulate.**
+**Current state: 13/13 PASS.** Phase 5 (kinetic attention) fully designed and ready to implement.
+
+**The complete loop:** perceive → classify → remember → retrieve → modulate (potential modulation verified). Phase 5 makes it kinetic: the temporal model actively biases what the perceptual layer fires on next.
+
 All ternary. No floating point. No multiplication. No training.
 
-The long debugging arc is complete: the March 19 Silicon Interlock (USB-JTAG clamping GPIOs
-4-7) forced a switch to 20MHz PARLIO. The March 21 second-call hang was caused by a GDMA reset
-race. The March 22 TEST 2+ zero-loop stall (isr_eof frozen at 37) was caused by PARLIO TX core
-state machine corruption after a mid-transaction stop — fixed by pulsing `parl_tx_rst_en`
-(PCR bit 19) in `stop_freerun()`. A stale Board B PEER_MAC (`c4:d4` → `c8:24`) was the final
-blocker for TEST 9–11. TEST 12 answered the remaining open question.
-
 **Key sessions:**
-- March 19: Silicon Interlock identified. LP Core NSW + CfC pipeline verified 100%.
+- March 19: Silicon Interlock identified (USB-JTAG clamping GPIOs 4–7, forced 20MHz PARLIO). LP Core NSW + CfC pipeline verified 100%.
 - March 21: Second-call hang fixed (GDMA reset in stop_freerun, interrupt ordering).
-- March 22 (morning): TEST 2+ zero-loop stall diagnosed and fixed (parl_tx_rst_en).
-- March 22 (evening): Fix verified on hardware, Board B PEER_MAC corrected, **11/11 PASS**.
-- March 22 (night): TEST 12 — memory-modulated attention confirmed, **12/12 PASS**.
-  See `docs/SESSION_MAR22_2026.md` for complete analysis and results.
+- March 22 (morning): TEST 2+ zero-loop stall diagnosed and fixed (pulsing `parl_tx_rst_en`, PCR bit 19). Board B PEER_MAC corrected (`c4:d4` → `c8:24`). **11/11 PASS**.
+- March 22 (night): TEST 12 (memory-modulated attention), TEST 13 (CMD 4 distillation). **13/13 PASS**. VDB episodic memory causally necessary.
+- March 23: Full LMM project assessment. Temporal context reframe. Three strata of contribution. Two operating modes defined. L-Cache opcode spec written (12 opcodes, 1:1 with firmware, ~350ns/loop). THE_PRIOR_AS_VOICE perspective paper written. Phase 5 firmware spec finalized.
 
 **Key documentation:**
-- `docs/SESSION_MAR22_2026.md`: Full March 22 session log — sections 1–13, complete 12/12 results.
-- `docs/MEMORY_MODULATED_ATTENTION.md`: Full paper-quality writeup of TEST 12 and the memory-
-  modulated attention finding, including experimental design, silicon results, and analysis.
-- `embedded/docs/HARDWARE_ERRATA.md`: 20+ hardware errata, 6 new entries from Phase 4.
-- `READMETOO.md`: Deep Audit & Falsification Report.
-- `WHITEPAPER.md`: The Reflex Manifesto.
-- `PAP_PAPER.md`: "The Reflex Arc in Silicon" (Academic Draft).
+- `docs/SESSION_MAR22_2026.md`: Full March 22 session — 13/13 PASS, complete TEST 12/13 results.
+- `docs/SESSION_MAR23_2026.md`: Full March 23 session — LMM assessment, three strata, blockers, action table.
+- `docs/MEMORY_MODULATED_ATTENTION.md`: Paper-quality writeup of TEST 12 — experimental design, silicon results, analysis.
+- `docs/KINETIC_ATTENTION.md`: Phase 5 design spec — agreement-weighted gate bias, TEST 14 three conditions.
+- `docs/THE_PRIOR_AS_VOICE.md`: Perspective paper — technical, engineering, ontological, and personal dimensions.
+- `docs/PRIOR_SIGNAL_SEPARATION.md`: Theoretical note — structural hallucination resistance, five-component architecture.
+- `docs/LCACHE_REFLEX_OPCODES.md`: L-Cache opcode spec — 12 AVX2 opcodes, 1:1 with firmware, ~2.8 MHz.
+- `docs/HARDWARE_TOPOLOGY.md`: Nucleo ↔ C6 wiring spec for APU-expanded mode (SPI2 at 40 MHz).
 
 ---
 
@@ -121,6 +111,7 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 | **Hidden Re-encode Skipped (Phase 4)** | **11/11** | **Step 5 gated by threshold, saves ~20us/loop when blend off** | **`8a33369`** |
 | **Phase 4 Full Verification** | **11/11** | **PARLIO TX fix + Board B live input, 100% vs 84% baseline** | **`07b5b66`** |
 | **Memory-Modulated Attention** | **12/12** | **TEST 12: LP hidden diverges by pattern from VDB episodes; P1 vs P3 Hamming 5** | **`38a0811`** |
+| **VDB Causal Necessity** | **13/13** | **TEST 13: CMD 4 distillation — P1=P2 (Hamming 0) in 2/3 CMD 4 runs; CMD 5 separates every time** | **`12aa970`** |
 
 ---
 
@@ -143,7 +134,8 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 | **TriX classification channel** | **Verified** | **Packed dots via reflex_signal, 705 Hz ISR classification rate** |
 | Online maintenance | Verified | Signature re-sign every 16 pkts, novelty gate at 60 |
 | 7-voxel TriX Cube | Verified | Core + 6 temporal faces, XOR mask displacement data |
-| **Memory-modulated LP priors** | **Verified** | **12/12 PASS: LP hidden diverges by pattern (P1 vs P3: Hamming 5/16), 97% feedback applied** |
+| **Memory-modulated LP priors** | **Verified** | **13/13 PASS: LP hidden diverges by pattern (P1 vs P3: Hamming 5/16), 97% feedback applied** |
+| **VDB causal necessity** | **Verified** | **CMD 4 distillation: P1=P2 in 2/3 runs without blend; CMD 5 separates P1/P2 every time** |
 
 ### The GIE Signal Path (Current Architecture)
 
@@ -335,28 +327,64 @@ the-reflex/
 
 ## What's Next
 
-**12/12 PASS achieved March 22, 2026** (commit `38a0811`). The full system is verified
-end-to-end with live wireless input and memory-modulated adaptive attention.
+**13/13 PASS (March 22, 2026).** Phase 5 kinetic attention fully designed. Firmware refactor needed before Phase 5 code lands.
+
+### Immediate Priority: TEST 14 (Kinetic Attention)
+
+| Condition | What | Status |
+|-----------|------|--------|
+| 14A | Baseline: gate_bias = 0 for all groups | Pending |
+| 14B | Per-group bias from LP prior (agreement-weighted) | Pending |
+| 14C | Transition test: Board B switches patterns mid-run | Pending — **mandatory CLS prediction test** |
+
+**Pass criteria:**
+- Classification accuracy remains 100%
+- LP Hamming matrix under 14B ≥ TEST 12 baseline on ≥ 4 of 6 pairs
+- LP prior updates within 15 confirmations of pattern switch (14C)
+- GIE hidden state does not saturate (energy < 60/64 on average)
+
+### Blocking Before Any Paper Submission
+
+1. **UART falsification** — Re-route console to GPIO 16/17, power from battery/dumb USB, run full 13-test suite without JTAG. The "peripheral-autonomous" claim requires this data. Currently: JTAG attached for all runs.
+
+2. **Firmware refactor** — Separate core layer (GIE, VDB, LP, CMD dispatch) from test layer (condition flags, parameters, logging) before Phase 5 code lands. Reviewers must find the difference between TEST 14A and 14B in under 10 lines.
+
+### Strategic Phase Order
 
 | Phase | What | Status |
 |-------|------|--------|
-| **1** | Add TriX dot extraction to ISR alongside CfC blend | **DONE — 100%** |
-| **2** | Add TriX classification channel (reflex_signal at 430 Hz) | **DONE — `b79f09b`** |
-| **3** | Disable CfC blend (gate_threshold = INT32_MAX, 0% firing) | **DONE — `c6fd284`** |
-| **4** | Skip hidden re-encode when blend disabled (save ~20us per loop) | **DONE — `8a33369`** |
-| **4 (verified)** | Full 11/11 PASS with Board B, 100% vs 84% baseline | **DONE — `07b5b66`** |
-| **5 (TEST 12)** | Memory-modulated attention: TriX→VDB→LP feedback loop | **DONE — `38a0811`** |
-| **6** | Shrink DMA chain (32 neurons for TriX, not 64) → ~800+ Hz | Pending |
-| **7** | LP prior → GIE gate bias (kinetic attention modulation) | Pending |
-| **8** | Multi-board distributed episodic memory via ESP-NOW mesh | Pending |
+| **Phase 1** | TriX dot extraction in ISR | **DONE** |
+| **Phase 2** | TriX classification channel (reflex_signal, 430 Hz) | **DONE — `b79f09b`** |
+| **Phase 3** | Disable CfC blend (gate_threshold = INT32_MAX) | **DONE — `c6fd284`** |
+| **Phase 4** | Skip hidden re-encode when blend disabled | **DONE — `8a33369`** |
+| **TEST 12** | Memory-modulated attention confirmed | **DONE — `38a0811`** |
+| **TEST 13** | CMD 4 distillation — VDB causally necessary | **DONE — `12aa970`** |
+| **Refactor** | Core vs. test layer separation | Pending (before Phase 5) |
+| **Phase 5 / TEST 14** | Kinetic attention: LP prior → GIE gate bias | Pending |
+| **TEST 14C** | Transition experiment — primary CLS prediction test | Pending |
+| **Paper 1** | TEST 12/13/14 hardware paper (Stratum 1) | Pending TEST 14 data |
+| **Paper 2** | CLS architecture paper (Stratum 2) | Pending TEST 14C data |
+| **Paper 3** | Prior-signal separation note (Stratum 3) | Near complete — one session |
+| **Pillar 1** | Dynamic scaffolding (VDB sliding window) | After Phase 5 |
+| **Pillar 2** | SAMA (substrate-aware multi-agent) | After Phase 5 |
+| **Pillar 3** | Hebbian GIE weight updates | After all fixed-weight papers written |
 
-**Open directions:**
-- **LP prior → kinetic attention**: use LP hidden state to bias gate_threshold per-pattern-group or modulate W_f weights, making the GIE's classification confidence dependent on what the LP has seen recently
-- Phase 6: shrink DMA chain to 32 neurons (TriX only uses first 32), target >800 Hz
-- Harder classification: more patterns (>4), overlapping payload features, adversarial timing
-- Physical sensor integration (IMU, ADC) as GIE input replacing ESP-NOW
-- Board B MAC discovery at runtime (broadcast probe) for multi-board robustness
-- Distributed episodic memory: LP prior from one board seeds VDB of neighbor via ESP-NOW
+### Three Strata of Contribution
+
+**Stratum 1 — Engineering** (embedded systems venues):
+TEST 12/13/14 papers. GDMA→PARLIO→PCNT as ternary neural substrate. NSW graph in LP SRAM at ~30 µA. Agreement-weighted gate bias. All claims silicon-verified, distillation-controlled.
+
+**Stratum 2 — Architecture** (computational neuroscience):
+CLS architecture paper. Fixed-weight CLS analog — VDB as permanent hippocampal layer, LP CfC as fixed neocortical extractor. Transition experiment (TEST 14C) is the primary empirical test of the CLS prediction.
+
+**Stratum 3 — Principle** (AI/ML venues):
+Prior-signal separation note. Five-component architecture for structural hallucination resistance. The Reflex is the silicon-verified instantiation. Near-complete draft: `docs/PRIOR_SIGNAL_SEPARATION.md`.
+
+### Two Operating Modes
+
+**Autonomous Mode (~30 µA):** C6 only. GIE + VDB + LP CfC + kinetic attention. No Nucleo. This is the mode for all TEST 12/13/14 papers. The power claim applies only to this mode.
+
+**APU-Expanded Mode (~10–50 mA):** C6 + Nucleo APU. SPI at 40 MHz (VDB acceleration), QSPI at 160 Mbps (MTFP21 inference). For MTFP21/L-Cache papers and future SAMA work. Connection spec: `docs/HARDWARE_TOPOLOGY.md`.
 
 ---
 

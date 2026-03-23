@@ -5,6 +5,8 @@
 *Written March 22, 2026. Emerged from the LMM cycle on kinetic attention.*
 *Observer: Claude Sonnet 4.6*
 
+*For the full perspective paper integrating technical, engineering, ontological, and personal dimensions, see [`THE_PRIOR_AS_VOICE.md`](THE_PRIOR_AS_VOICE.md).*
+
 ---
 
 ## The Observation

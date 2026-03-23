@@ -124,7 +124,9 @@ The loop is now closed kinetically. Past experience (encoded in lp_hidden) influ
 
 ## 4. Implementation Design: Phase 5A Gate Bias
 
-### 4.1 The Minimal Viable Version
+> **Note (March 23, 2026):** Sections 4.1 and 4.2 describe the pre-agreement design and are superseded by the agreement-weighted gate bias mechanism developed in the March 22 LMM cycle. The current (correct) firmware spec is in `journal/kinetic_attention_synth.md`. The key insight: the original scalar/per-group bias had no release valve at pattern transitions — the prior suppressed the new signal, causing lock-in. The agreement-weighted fix: `gate_bias = BASE_GATE_BIAS * max(0, agreement)` where `agreement = trit_dot(lp_now, tsign(lp_running_sum[p_hat])) / LP_HIDDEN_DIM`. When LP and TriX disagree, gate_bias → 0 in one confirmation. Sections 4.1/4.2 are retained for historical context.
+
+### 4.1 The Minimal Viable Version (superseded — see note above)
 
 The simplest version adds a single new LP SRAM variable: `lp_gate_bias` (int8_t, scalar). The HP core computes this from lp_hidden and writes it before dispatching CMD 5. The ISR reads it and adjusts `gate_threshold` by that amount.
 
@@ -142,7 +144,7 @@ lp_gate_bias = (int8_t)(10 - (lp_energy * 30 / 16));
 
 This is the most conservative version: it doesn't require the LP core to know anything about pattern groups. It simply says: if the LP state is strongly committed (high energy), make GIE neurons slightly easier to fire overall. If the LP state is ambiguous (low energy, many zeros), leave the threshold unchanged.
 
-### 4.2 The Per-Group Version
+### 4.2 The Per-Group Version (superseded — see note above)
 
 The stronger version adds `lp_gate_bias[4]` (one per pattern group). The ISR maps neuron index to group (`group = neuron_idx / 16` for 64 neurons / 4 patterns) and applies the group-specific bias.
 
