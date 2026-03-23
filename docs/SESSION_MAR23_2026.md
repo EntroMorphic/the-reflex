@@ -230,6 +230,125 @@ Session goal: SPI loopback test at 10 MHz → 20 MHz → 40 MHz. IRQ line test. 
 
 ---
 
-*Date: March 23, 2026*
+*Date: March 23, 2026 (morning/afternoon — LMM + documentation)*
 *Commit: aceb7f9 (LMM assessment) + this session*
 *Depends on: `docs/KINETIC_ATTENTION.md`, `journal/kinetic_attention_synth.md`, all project_assessment_* journal files*
+
+---
+
+## Section 12: Evening Session — TEST 14C Simulation and CLS Clarification
+
+The afternoon documentation session extended into an evening simulation session. Three threads:
+Mnemo cross-project analysis, TEST 14C simulation in AVX2 C, and a conceptual clarification
+on CLS theory. Each produced standalone documentation.
+
+### Thread 1: Mnemo Prior-Signal Gap Analysis
+
+The user shared `github.com/anjaustin/mnemo` (production Rust memory system, v0.5.5) as a
+RAG system for discussion. Analysis against the five-component prior-signal separation
+architecture revealed:
+
+- **Components 1–3 partially present:** `identity_core` (slow prior), `experience` layer
+  (fast accumulator), cryptographic audit wall on writes. Strong on structural separation
+  of writes; weak on query construction.
+- **Gap: TinyLoRA contamination.** Rank-8 LoRA adapters rotate query embeddings toward
+  prior relevance history before retrieval. The evidence-reader is prior-contaminated at
+  query construction time — the structural separation fails at the input.
+- **Components 4–5 absent:** No retrieval-time disagreement detection; no evidence-deference
+  policy.
+
+Proposed fixes documented in `docs/MNEMO_PRIOR_SIGNAL_GAPS.md`:
+1. **LoRA gate:** `effective_lora_scale = BASE_LORA_SCALE * max(0, agreement - threshold)`
+   — identical mechanism to Reflex kinetic attention gate bias, different substrate.
+   Fungible computation: the algorithm does not care what it runs on.
+2. **`retrieval_disagreement_score`:** Cross-channel comparison (literal vs. semantic)
+   to surface prior-vs-evidence conflicts.
+3. **`deference_policy`:** API field (none / guided / strict) controlling context assembly
+   when disagreement is high.
+
+The LoRA gate connection to kinetic attention is the key insight: the Reflex's
+`gate_bias = BASE_GATE_BIAS * max(0, agreement)` and Mnemo's proposed
+`effective_lora_scale = BASE_LORA_SCALE * max(0, agreement - threshold)` are the same
+algorithm. The substrate is different. The computation is fungible.
+
+### Thread 2: TEST 14C AVX2 Simulation
+
+`sim/test14c.c` implemented and run. Full results in `docs/LCACHE_TEST14C_SIM_RESULTS.md`.
+
+**Key architectural clarification found during implementation:**
+
+Gate bias affects `gie_state` (which neurons fire into VDB/LP), not TriX classification.
+TriX is always correct by `W_f hidden = 0`. This means the interesting 14A vs 14C comparison
+is not speed-of-TriX-confirmation (trivially identical — structural guarantee) but LP state
+quality post-transition.
+
+**Results:**
+- Structural guarantee: 1000/1000 trials pass in T14_MIN_SAMPLES=15 steps, both conditions.
+- LP alignment at step 30+: 14C ahead by ~+0.025, stable through step 200.
+- Crossover at exactly T14_MIN_SAMPLES — gate_bias[P2] arms at the cold-start guard.
+- gate_bias[P1] self-extinguishes to 1.57 (vs naive 3.09) because agreement stops refreshing
+  it the moment p_hat switches to P2.
+- LP firing rate: 14C 3% higher than 14A through Phase 2.
+
+**Three-phase transition structure confirmed:**
+1. Assimilation (steps 1–15): VDB/TriX immediate. Both conditions identical.
+2. Gate arms (step 15): gate_bias[P2] activates. 14C pulls ahead.
+3. Integration (steps 15–200+): 14C holds ~0.025 alignment advantage. 14A drifts.
+
+### Thread 3: CLS — Assimilation, Integration, and the Pre-Training Assumption
+
+Two conceptual clarifications emerged from the simulation discussion:
+
+**CLS defined (for the record):** Complementary Learning Systems — McClelland, McNaughton,
+O'Reilly (1995). Two memory systems that solve fundamentally incompatible requirements
+(fast one-shot encoding vs. slow statistical generalization) by operating on structurally
+separate substrates rather than a single shared one. Hippocampus = fast assimilation,
+isolated from neocortical prior. Neocortex = slow integration, compressed statistics across
+many episodes.
+
+**Assimilation vs. Integration:** Assimilation takes new experience in with high fidelity,
+without distorting it to fit existing schema. Integration extracts statistical structure
+across many assimilated episodes. These are not two speeds of the same operation — they are
+structurally different operations that require structural separation to coexist without
+interference.
+
+**The gross assumption corrected:** Pre-training / fine-tuning maps onto the *timescale*
+distinction (slow broad learning vs. fast targeted learning) but misses the structural
+requirement entirely. CLS requires not just different timescales but different substrates
+where the fast learner's encoding is not shaped by the slow learner's prior expectations.
+
+Fine-tuning updates the same weights that hold the prior. When fine-tuning data conflicts
+with the pre-training prior, there is no independent arbiter — the prior usually wins. This
+is why fine-tuned models remain confidently wrong on out-of-distribution inputs from the
+pre-training distribution.
+
+The Reflex has structural separation because hardware enforced it. Pre-training / fine-tuning
+is two timescales in one substrate. CLS is two timescales in two structurally separated
+substrates. The distinction is not a detail — it is the mechanism.
+
+---
+
+## Immediate Actions Updated
+
+| Priority | Action | Status |
+|----------|--------|--------|
+| — | Documentation: README, CURRENT_STATUS, cross-references | **Done** |
+| — | Complete `PRIOR_SIGNAL_SEPARATION.md` (abstract + research program) | **Done** |
+| — | Mnemo gap analysis (`MNEMO_PRIOR_SIGNAL_GAPS.md`) | **Done** |
+| — | TEST 14C AVX2 simulation (`sim/test14c.c`) | **Done** |
+| — | TEST 14C simulation results (`LCACHE_TEST14C_SIM_RESULTS.md`) | **Done** |
+| 1 | Firmware refactor (core vs. test layers) | Pending |
+| 2 | Implement TEST 14A/14B/14C firmware | Pending |
+| 3 | UART falsification | **Blocking all submissions** |
+| 4 | Run hardware TEST 14 (all three conditions) | Pending |
+| 5 | Unified framework memo | Pending |
+| 6 | Write TEST 12/13/14 paper | Pending |
+
+---
+
+*Date: March 23, 2026 (full day)*
+*Commits: aceb7f9 → 3a1fdd1 (documentation) + sim/ (new)*
+*New documents: `docs/MNEMO_PRIOR_SIGNAL_GAPS.md`, `docs/LCACHE_TEST14C_SIM_RESULTS.md`*
+*New code: `sim/test14c.c`, `sim/Makefile`*
+*Depends on: `docs/PRIOR_SIGNAL_SEPARATION.md`, `docs/KINETIC_ATTENTION.md`,*
+*  `journal/kinetic_attention_synth.md`, `docs/LCACHE_REFLEX_OPCODES.md`*
