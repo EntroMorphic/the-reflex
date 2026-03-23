@@ -2,6 +2,8 @@
 > Written 2026-03-20 by Claude Sonnet 4.6 as a newcomer's cold read.
 > Covers: architecture, novelty, experimental results, technical correctness, paper-worthiness, fluff, and open questions.
 
+> **State at Audit Date (March 20, 2026):** This audit was written against the cache coherency / Jetson Thor / stigmergy version of the repo. At that time, the ESP32-C6 GIE system existed but the LP CfC, VDB, TriX classification, and TEST 12/13 results did not. The audit is accurate for what it audited. For the current project state — 13/13 PASS, temporal context layer, three strata of contribution, Phase 5 kinetic attention design complete — see the **[Addendum](#addendum-march-23-2026)** at the end of this document, and `docs/CURRENT_STATUS.md`.
+
 ---
 
 ## Table of Contents
@@ -789,3 +791,70 @@ Fix those two things, explain the load anomaly, and this is ready for ASPLOS or 
 *Auditor: Claude Sonnet 4.6*
 *Date: 2026-03-20*
 *Methodology: Cold read — no prior context from previous sessions.*
+
+---
+
+## Addendum: March 23, 2026
+
+Three days after this audit, the project is in a substantially different state. This addendum updates the verdict where things have changed and contextualizes the cache coherency track within the larger frame that has since emerged.
+
+### What the March 20 Audit Got Right
+
+Several predictions and recommendations were borne out:
+
+- **LMM deserves its own repo.** The Lincoln Manifold Method has been used intensively since the audit — applied to kinetic attention design, to the full project assessment, and to the prior-signal separation problem. The method produced non-obvious design decisions (the agreement mechanism as a release valve; the VDB as permanent load-bearing infrastructure, not a temporary scaffold). Its current home at `journal/` is appropriate for this project; a separate public repo for the method itself remains a future action.
+
+- **Fluff has been cleared from the primary facing document.** The README no longer features the DDS comparison, the broken PD controller, or the Jetson Thor robotics framing as primary content. These belong to the cache coherency track, which has its own historical documentation.
+
+- **"reflex-os/" was a sketch.** That track became something real — the ESP32-C6 firmware in `embedded/` is the actual embedded OS layer: hand-written RISC-V assembly, peripheral-hardware ternary neural network, LP core, VDB. The `reflex-os/` stubs have been superseded by it.
+
+### The Project's Current Primary Contribution
+
+The audit correctly identified the GIE (Geometry Intersection Engine) as the most interesting part of the ESP32-C6 work. Since March 20, the GIE/VDB/LP system has become the primary contribution — not the cache coherency primitive. Here is what now exists:
+
+**On silicon, 13/13 PASS:**
+- GIE: GDMA→PARLIO→PCNT as a ternary neural substrate at 430.8 Hz, ~0 CPU, 100% classification accuracy on 4 wireless patterns, zero training.
+- LP CfC: hand-written RISC-V assembly, 16 neurons, 100 Hz, ~30 µA, pattern-specific internal states after 90 seconds of live operation.
+- VDB: 64-node NSW graph in LP SRAM, 48-trit snapshots, recall@1=95%.
+- CMD 5: CfC + VDB + blend — LP hidden state diverges by pattern, P1 vs P3 Hamming 5/16.
+- TEST 13 (distillation): CMD 4 collapses P1=P2 (Hamming 0) in 2 of 3 hardware runs. CMD 5 separates every time. VDB feedback is causally necessary.
+
+**The reframe:** The Reflex is not building a better classifier (the classifier is already perfect at 100%). It is building a temporal context layer beneath a perfect classifier. Every downstream contribution earns its meaning from the quality of that temporal model.
+
+### How the Cache Coherency Track Now Fits
+
+The `reflex.h` primitive — the cache coherency coordination mechanism this audit analyzed — is still in the repo at `primitive/`. It has a role, but it is now Stratum 1a of a three-stratum publication plan, not the primary contribution. The stigmergy paper analyzed in Sections 7.1 and 7.2 remains viable and the audit's paper strategy (Sections 14.1–14.3) remains accurate. The main additions from the GIE work that strengthen the cache coherency track:
+
+- The ESP32-C6 GIE demonstrates that the `reflex_channel_t` primitive is not just a robotics IPC tool — it is used for ISR→HP coordination within the ternary neural system (18µs avg latency, fence-ordered). This is a second, very different application of the same primitive, which strengthens the claim that it is a general-purpose coordination pattern.
+- The L-Cache opcode specification (`docs/LCACHE_REFLEX_OPCODES.md`) demonstrates that the full Reflex computation — ternary dot product, gate, blend, VDB search — is expressible in AVX2 at ~2.8 MHz. This connects to the fungible computation program and to the question of substrate independence. The cache coherency primitive, like the ternary neural computation, is an algorithm that can be expressed at multiple levels of the hardware stack.
+
+### Updated Verdict on the Open Questions
+
+| Question | Audit Status | March 23 Status |
+|----------|-------------|-----------------|
+| Why 78% detection at 0% load? | Unexplained — must address before paper | Still unexplained. DVFS hypothesis remains most likely. Needs one experiment (pin to performance governor, rerun). |
+| Pi4 inversion (atomic beats stigmergy) | Interesting, understated | Still understated but now contextualized: both platforms show the primitive works; the inversion reveals architectural sensitivity, which is the most publishable finding. |
+| Fix E1 behavioral model | Toy vigilance model | Still unaddressed. Leaky integrator recommended. |
+| Fix DDS comparison | Overstated | Removed from primary docs. |
+| Broken PD controller | Credibility issue | Removed from primary docs. Issue remains in `control_loop.c`. |
+| PREEMPT_RT experiment | Would complete the progression | Still pending. Low priority given the shift to GIE as primary. |
+
+### New Paper-Worthy Contributions (Not in March 20 Audit)
+
+The three strata are documented in `ROADMAP.md` and `docs/SESSION_MAR23_2026.md`. Summary for this document:
+
+**Stratum 1 — Engineering (embedded systems venues):**
+TEST 12/13/14 hardware papers. GIE as ternary neural substrate. VDB causal necessity (distillation test). Kinetic attention (TEST 14, pending). This is where the hardware results live. The cache coherency paper (§7.1) is a related but distinct paper for a different venue.
+
+**Stratum 2 — Architecture (computational neuroscience):**
+Fixed-weight Complementary Learning Systems analog. VDB as permanent hippocampal layer. LP CfC as fixed neocortical extractor. The structure was not designed — it emerged. TEST 14C (transition experiment) is the primary empirical test of the CLS prediction: does the LP prior update within 15 confirmations of a pattern switch, as CLS theory predicts?
+
+**Stratum 3 — Principle (AI/ML venues):**
+Prior-signal separation. Five-component architecture for structural hallucination resistance. The Reflex is the silicon-verified instantiation. Paper: `docs/PRIOR_SIGNAL_SEPARATION.md` (near complete as of March 23). The key connection to language models: hallucination is structurally a prior overwhelming a signal because there is no architectural wall between prior-holder and evidence-reader. The Reflex has that wall (`W_f hidden = 0`). The research program is to ask whether such a wall is feasible at LLM scale — and what would need to be true for it to exist.
+
+### Overall Verdict (March 23, 2026)
+
+The March 20 audit correctly identified the GIE as the most novel contribution and the cache coherency work as paper-worthy but requiring cleanup. Both assessments remain accurate. What the audit could not see — because it had not yet been discovered — is that the GIE/VDB/LP system would produce a result (VDB causal necessity, LP hidden state divergence) with implications at three different levels of the research stack. That emergence is itself worth noting: the most interesting findings were not designed. They came from minimum-assumption experimentation on hardware with severe constraints, and the constraints produced the structure.
+
+*Addendum written: March 23, 2026.*
+*State: 13/13 PASS. Phase 5 (kinetic attention) designed and ready. Three strata articulated.*

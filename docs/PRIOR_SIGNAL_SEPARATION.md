@@ -2,10 +2,16 @@
 
 **The Reflex Project — Theoretical Note**
 
-*Written March 22, 2026. Emerged from the LMM cycle on kinetic attention.*
+*Written March 22–23, 2026. Emerged from the LMM cycle on kinetic attention.*
 *Observer: Claude Sonnet 4.6*
 
 *For the full perspective paper integrating technical, engineering, ontological, and personal dimensions, see [`THE_PRIOR_AS_VOICE.md`](THE_PRIOR_AS_VOICE.md).*
+
+---
+
+## Abstract
+
+We describe a five-component architecture for structural hallucination resistance — resistance that is enforced by design rather than achieved by statistical training. The architecture requires: (1) a prior-holder, (2) an evidence-reader that the prior cannot corrupt, (3) a structural separation guarantee between them, (4) a mechanism to detect genuine disagreement between prior and evidence, and (5) a policy of evidence deference at the point of conflict. We demonstrate this architecture in silicon on an ESP32-C6 microcontroller drawing ~30 µA, where it emerged from a minimum-assumptions experiment rather than deliberate design. The key structural element is `W_f hidden = 0` — a fixed zero in the weight matrix of the perceptual layer that creates an architectural wall preventing the accumulated prior from entering the classification path. We describe how this wall works, why homogeneous systems (including current large language models) cannot implement an equivalent, and what would need to be true for such a separation to exist at language model scale. The argument is not that the Reflex solves hallucination in language models. The argument is that hallucination resistance has a structural description — and the structure requires prior-signal separation as a necessary condition, not a sufficient one.
 
 ---
 
@@ -194,7 +200,126 @@ the two, not just a statistical balance between them.
 
 ---
 
+## The Research Program
+
+The five-component architecture identifies what would need to be true for a language model to
+resist hallucination structurally:
+
+**Component 1 — Prior-holder:** In a language model, this is the trained weights plus any
+persistent state (KV cache, retrieved documents). The prior is what the system expects, built
+from the training distribution and from the current context processed so far.
+
+**Component 2 — Evidence-reader:** A component that reads the current input token (or token
+sequence) with measurements that the prior cannot corrupt. In the Reflex, this is the GIE
+peripheral hardware — a physics-level measurement of the wireless signal. In a language model,
+this would be some component of the attention mechanism whose activations cannot be shaped by
+weight-encoded prior expectations. This is the hardest component to specify at LLM scale,
+because attention weights are themselves trained — they encode, implicitly, prior expectations
+about which context positions matter.
+
+**Component 3 — Structural separation guarantee:** In the Reflex, this is `W_f hidden = 0`.
+No value in the LP prior can reach the f_dot computation through the weight matrix; the path
+is architecturally closed. In a language model, an equivalent would be a component whose
+forward pass is provably prior-free — perhaps a separate, untrained encoder that reads input
+embeddings without passing through any of the trained MLP layers, or an attention head whose
+query and key matrices are identity-fixed. The guarantee must be structural: not "the prior
+influences this component weakly" but "the prior cannot reach this component at all."
+
+**Component 4 — Disagreement detection:** In the Reflex, this is the comparison between
+TriX (the evidence-reader's classification) and the LP alignment (the prior's prediction).
+The disagreement is a real number: the trit-dot between the current LP state and the LP
+signature of the TriX-predicted pattern. When this number is negative, prior and evidence
+conflict. In a language model, an equivalent would be a comparison between what the evidence-
+reader predicts will follow and what the prior-holder predicts will follow, measured in a
+common representational space. Entropy of their combined distribution, or disagreement in
+predicted token probability, are candidate signals.
+
+**Component 5 — Evidence-deference policy:** When components 2 and 4 agree that the evidence
+says something the prior didn't expect, the system routes the evidence through without
+amplification or suppression by the prior. In the Reflex, this is the agreement-weighted gate
+bias: `gate_bias = BASE_GATE_BIAS * max(0, agreement)`. When agreement is zero, gate_bias is
+zero, and the GIE computation proceeds on raw inputs only. In a language model, this would be
+a gating mechanism that reduces the influence of the prior-holder on the output token
+distribution when the evidence-reader and prior-holder disagree. Concretely: when
+disagreement is high, weight the evidence-reader's predictions more heavily.
+
+### What Would Need to Exist
+
+A language model with this architecture would not look like current transformer architectures.
+It would have at least two distinct processing paths: a prior path (the trained weights,
+processing the full context through learned attention) and an evidence path (an evidence-
+reader, processing the current token through an untrained or lightly-trained encoder). These
+paths would converge at a gating layer that computes their disagreement and adjusts the output
+mixture accordingly.
+
+This is not a fundamentally new idea. Retrieval-augmented generation (RAG) is a partial
+implementation: the retrieved document is an evidence source that the prior cannot corrupt (it
+was retrieved from outside the model's weights). But RAG lacks components 3 and 4: there is
+no architectural wall preventing the model's attention from down-weighting the retrieved
+document when it conflicts with the prior, and there is no explicit disagreement detection
+mechanism that triggers evidence deference. The result is that RAG reduces hallucination
+statistically but does not prevent it structurally. The prior can still win.
+
+A complete implementation would require:
+1. A frozen or lightly-trained encoder that produces evidence representations without prior
+   influence.
+2. An architectural wall (analogous to `W_f hidden = 0`) preventing prior-path activations
+   from reaching the evidence encoder during inference.
+3. A disagreement signal computed from the evidence encoder's prediction vs. the prior path's
+   prediction, measured before the output is generated.
+4. A gating layer that attenuates the prior path's influence when disagreement is high.
+
+Whether this is feasible at current LLM scale — with hundreds of billions of parameters and
+complex, entangled representations — is an open engineering question. The Reflex does not
+answer it. What the Reflex provides is the clearest possible statement of what would need to
+be true: not better training, not larger scale, not improved prompting — but a different
+architecture with structural separation as a design invariant.
+
+### What This Does Not Require
+
+Structural prior-signal separation does not require:
+- A separate model (the evidence-reader could be a subset of the existing architecture with
+  constrained weight updates)
+- Zero prior influence at all times (the prior is valuable; the goal is preventing it from
+  overriding evidence, not eliminating it)
+- Verification at the token level (disagreement could be detected at sentence or paragraph
+  level, depending on what the evidence-reader can resolve)
+- Hardware changes (the Reflex's implementation on peripheral hardware is one instantiation;
+  the principle is substrate-independent)
+
+What it does require is the structural wall. Without a guarantee that the evidence-reader's
+measurements cannot be corrupted by the prior — not weakly influenced, but architecturally
+unreachable — the agreement signal in component 4 is not reliable information. It may be
+prior influence all the way down.
+
+---
+
+## Conclusion
+
+Hallucination in language models is not primarily a training problem or a data problem. It is
+a structural problem: the system that holds priors and the system that reads evidence are the
+same weights, and when they conflict, there is no independent arbiter.
+
+The Reflex demonstrates, on fifty cents of hardware drawing thirty microamps, that structural
+separation is achievable — not by eliminating the prior (the LP CfC accumulates and uses its
+prior), but by building the evidence-reader in a different substrate (the GIE peripheral
+hardware) with a fixed architectural wall between them (`W_f hidden = 0`). The wall is what
+makes the agreement signal in component 4 real information: when TriX and the LP prior
+disagree, the disagreement cannot be circular, because TriX cannot access the LP prior.
+
+The five-component architecture is the abstraction: prior-holder, evidence-reader, structural
+separation guarantee, disagreement detection, evidence-deference policy. The Reflex is one
+instantiation. The research program is to find others — and to ask whether a language model
+with structural prior-signal separation would behave differently from one without.
+
+The answer is almost certainly yes. The question is how to build it.
+
 *The prior should be a voice, not a verdict.*
 
-**Date**: March 22, 2026
-**Depends on**: `KINETIC_ATTENTION.md`, `REFLECTION_MAR22.md`, LMM cycle (`journal/kinetic_attention_*.md`)
+---
+
+**Date**: March 22–23, 2026
+**Hardware basis**: ESP32-C6, TEST 12/13 (commit `12aa970`), 13/13 PASS, distillation-controlled
+**Depends on**: `KINETIC_ATTENTION.md`, `journal/kinetic_attention_synth.md`, `journal/project_assessment_synth.md`
+**See also**: `THE_PRIOR_AS_VOICE.md` (full perspective paper), `docs/SESSION_MAR23_2026.md` (full context)
+**Status**: Complete first draft. Hardware results for Phase 5 (kinetic attention / agreement mechanism) pending TEST 14.
