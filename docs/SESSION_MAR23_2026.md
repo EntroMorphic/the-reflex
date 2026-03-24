@@ -346,9 +346,111 @@ substrates. The distinction is not a detail — it is the mechanism.
 
 ---
 
+## Section 13: LMM on TEST 14C Open Risks
+
+After the simulation session, three open items from the red-team remained unresolved:
+BLEND_ALPHA has no firmware grounding, the +0.019 LP delta is below trit_dot resolution,
+and HOLD-dominated hardware might suppress LP dynamics to near zero. Deployed a four-phase
+Lincoln Manifold Method cycle on these three items.
+
+**Source files:**
+- `journal/open_risks_raw.md` — Phase 1: stream of consciousness
+- `journal/open_risks_nodes.md` — Phase 2: 10 nodes, tension table
+- `journal/open_risks_reflect.md` — Phase 3: resolved tensions, hidden assumptions challenged
+- `journal/open_risks_synth.md` — Phase 4: synthesis, decision tree, action sequence
+
+**Root finding:** The three open items are not three problems. They are three symptoms of one
+unknown: what is the dominant LP update path on hardware?
+
+**Two paths, two regimes:**
+
+| | Path A (CfC firing) | Path B (VDB blend) |
+|---|---|---|
+| Mechanism | `trit_gate(f, keep, g)` fires when f ≠ 0 | VDB nearest-neighbor blended into `lp_hidden` |
+| Controls | Weight sparsity, input distribution | `ulp_fb_threshold`, VDB node count |
+| Metric | `lp_running_sum` alignment | VDB P2 recall fraction |
+| Effect size (sim) | +0.019 at step 30, +0.041 at step 200 | Unknown (BLEND_ALPHA invented) |
+
+**Key insight:** HOLD-dominance applies to the GIE CfC (gate_threshold=90), not the LP
+CfC. The LP fires when `|dot_f| > 0` — no gate threshold. The LP is not necessarily
+HOLD-dominated at all. The `fb_blend_count` and `lp_dots_f` observables in LP SRAM can
+answer the question directly.
+
+**Decision tree after LP characterization:**
+- `fires/step > 2`: Path A dominant → `lp_running_sum` metric valid, TEST 14C as designed
+- `fires/step < 1`, `implied_alpha > 0.1`: Path B dominant → VDB recall quality is the metric
+- Both weak: extend steps, lower `ulp_fb_threshold`, or re-examine firmware
+
+**Firmware findings from source read:**
+- LP CfC runs in RISC-V assembly (`main.S`), dispatched by `lp_command` (0–5)
+- `lp_dots_f[16]` written every CfC step — direct Path A rate measurement
+- `fb_blend_count` written every cmd=5 step — direct Path B rate measurement
+- `fb_applied`, `fb_score`, `fb_threshold` give full VDB feedback observability
+- VDB blend is deterministic (gap fill / conflict / agreement rules), not probabilistic BLEND_ALPHA
+
+---
+
+## Section 14: LP Characterization Firmware
+
+Implemented LP characterization as a diagnostic test block in `geometry_cfc_freerun.c`,
+inserted after TEST 13 and before the summary. Commit: `625b00d`.
+
+**What it does (per LP step via cmd=5):**
+- Reads `lp_dots_f[16]` → counts non-zero entries → Path A firing rate
+- Reads `ulp_fb_blend_count` → Path B blend count (trits changed per step)
+- Reads `ulp_fb_score` / `ulp_fb_applied` → VDB match quality
+- Records full `lp_hidden[16]` at each step in the switch window
+
+**Protocol:**
+- Phase 1: synthetic P1 gie_hidden (first 16 GIE dims = +1), 500 steps (~5s)
+- Phase 2: synthetic P2 gie_hidden (last 16 GIE dims = +1), 100 steps (~1s)
+- 3 repetitions. VDB seeded every 25 steps during Phase 1.
+- `ulp_fb_threshold = 1` (apply feedback for any positive VDB match score)
+- No gate bias (14A baseline condition)
+
+**Output:**
+- Per-rep: `fires/step`, `blend/step`, `implied_alpha = blend/LP_HIDDEN_DIM`
+- Switch-window table: last 20 P1 steps → first 30 P2 steps, with `lp_hidden` as +/0/- string
+- REGIME verdict: Path A dominant / Mixed / Path B dominant
+- Sim calibration line: `BLEND_ALPHA = xxx` to replace the invented 0.2 in `sim/test14c.c`
+
+**Why this is the right next step:** All three open items from Section 13 close when this
+runs. The LP characterization data directly feeds the TEST 14C firmware parameter choices
+and resolves the metric question before any hardware cycles are spent on the wrong approach.
+
+**After LP CHAR runs:**
+1. If Path A dominant: `lp_running_sum` metric valid. Proceed with TEST 14C as designed.
+   Recalibrate `LP_SIM_THRESHOLD` to match observed firing rate.
+2. If Path B dominant: Switch to VDB P2 recall quality metric. Replace `BLEND_ALPHA = 0.2`
+   in `sim/test14c.c` with the measured `implied_alpha`. Re-run sim with correct calibration.
+3. In both cases: UART falsification can proceed in parallel.
+
+---
+
+## Immediate Actions (Updated — End of Session)
+
+| Priority | Action | Status |
+|----------|--------|--------|
+| — | Fix KINETIC_ATTENTION.md group formula | **Done** |
+| — | Fix kinetic_attention_synth.md group formula | **Done** |
+| — | TEST 14C AVX2 simulation (three-claim, three-condition) | **Done** |
+| — | TEST 14C simulation results doc | **Done** |
+| — | LMM on TEST 14C open risks (4 journal files) | **Done** |
+| — | Read firmware source (LP CfC, VDB blend, main.S dispatch) | **Done** |
+| — | LP characterization firmware in geometry_cfc_freerun.c | **Done — commit 625b00d** |
+| 1 | **Run LP CHAR on hardware** — flash firmware, capture UART output | **Ready to run** |
+| 2 | Recalibrate `sim/test14c.c` with hardware-grounded `BLEND_ALPHA` | After LP CHAR run |
+| 3 | Re-run TEST 14C simulation at correct calibration | After recalibration |
+| 4 | Implement TEST 14C firmware with regime-appropriate metric | After LP CHAR + sim |
+| 5 | UART falsification | **Blocking all paper submissions** |
+| 6 | Firmware refactor (core vs. test layers) | Before Phase 5 code lands |
+
+---
+
 *Date: March 23, 2026 (full day)*
-*Commits: aceb7f9 → 3a1fdd1 (documentation) + sim/ (new)*
+*Commits: aceb7f9 → 625b00d*
 *New documents: `docs/MNEMO_PRIOR_SIGNAL_GAPS.md`, `docs/LCACHE_TEST14C_SIM_RESULTS.md`*
-*New code: `sim/test14c.c`, `sim/Makefile`*
+*New journal: `journal/open_risks_{raw,nodes,reflect,synth}.md` (LMM cycle 2)*
+*New code: `sim/test14c.c`, `sim/Makefile`; LP CHAR in `embedded/main/geometry_cfc_freerun.c`*
 *Depends on: `docs/PRIOR_SIGNAL_SEPARATION.md`, `docs/KINETIC_ATTENTION.md`,*
 *  `journal/kinetic_attention_synth.md`, `docs/LCACHE_REFLEX_OPCODES.md`*

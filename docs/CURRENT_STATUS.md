@@ -1,6 +1,6 @@
 # The Reflex: Current Status
 
-**Last Updated:** March 23, 2026 — Phase 5 designed, full LMM assessment complete, temporal context reframe articulated.
+**Last Updated:** March 23, 2026 — LP characterization firmware complete. LP CHAR runs after TEST 13 and measures Path A (CfC firing rate) vs Path B (VDB blend rate) directly from hardware. Ready to flash and characterize LP dynamics before TEST 14C firmware is written.
 
 ---
 
@@ -10,7 +10,7 @@ The Reflex is a three-layer ternary neural computing system built from commodity
 
 **The reframe (March 23, 2026):** The Reflex is not building a better classifier. It is building a temporal context layer beneath a perfect classifier. Every downstream contribution — kinetic attention, multi-agent coordination, Hebbian learning — earns its meaning from the quality and independence of that temporal model.
 
-**Current state: 13/13 PASS.** Phase 5 (kinetic attention) fully designed and ready to implement.
+**Current state: 13/13 PASS.** LP characterization firmware written and building clean. Flash and run to determine dominant LP update path before TEST 14C firmware.
 
 **The complete loop:** perceive → classify → remember → retrieve → modulate (potential modulation verified). Phase 5 makes it kinetic: the temporal model actively biases what the perceptual layer fires on next.
 
@@ -21,7 +21,8 @@ All ternary. No floating point. No multiplication. No training.
 - March 21: Second-call hang fixed (GDMA reset in stop_freerun, interrupt ordering).
 - March 22 (morning): TEST 2+ zero-loop stall diagnosed and fixed (pulsing `parl_tx_rst_en`, PCR bit 19). Board B PEER_MAC corrected (`c4:d4` → `c8:24`). **11/11 PASS**.
 - March 22 (night): TEST 12 (memory-modulated attention), TEST 13 (CMD 4 distillation). **13/13 PASS**. VDB episodic memory causally necessary.
-- March 23: Full LMM project assessment. Temporal context reframe. Three strata of contribution. Two operating modes defined. L-Cache opcode spec written (12 opcodes, 1:1 with firmware, ~350ns/loop). THE_PRIOR_AS_VOICE perspective paper written. Phase 5 firmware spec finalized.
+- March 23 (morning): Full LMM project assessment. Temporal context reframe. Three strata of contribution. Two operating modes defined. L-Cache opcode spec. THE_PRIOR_AS_VOICE perspective paper. Phase 5 firmware spec finalized.
+- March 23 (evening): TEST 14C AVX2 simulation (3 conditions × 1000 trials, three-claim structure confirmed). Red-team + LMM cycle on 3 open risks — root cause identified as unknown LP dominant path. LP characterization firmware written (`625b00d`): measures Path A firing rate + Path B blend rate + switch-window trajectory. Ready to flash.
 
 **Key documentation:**
 - `docs/SESSION_MAR22_2026.md`: Full March 22 session — 13/13 PASS, complete TEST 12/13 results.
@@ -327,21 +328,23 @@ the-reflex/
 
 ## What's Next
 
-**13/13 PASS (March 22, 2026).** Phase 5 kinetic attention fully designed. Firmware refactor needed before Phase 5 code lands.
+**13/13 PASS (March 22, 2026).** LP characterization firmware written and clean. Next hardware action: flash and run to characterize LP dynamics.
 
-### Immediate Priority: TEST 14 (Kinetic Attention)
+### Immediate Priority: LP CHAR → Calibration → TEST 14C
 
-| Condition | What | Status |
-|-----------|------|--------|
-| 14A | Baseline: gate_bias = 0 for all groups | Pending |
-| 14B | Per-group bias from LP prior (agreement-weighted) | Pending |
-| 14C | Transition test: Board B switches patterns mid-run | Pending — **mandatory CLS prediction test** |
+| Step | What | Status |
+|------|------|--------|
+| **LP CHAR run** | Flash firmware, capture UART output. Measures Path A (fires/step) and Path B (blend/step, implied_alpha) | **Ready — firmware at commit `625b00d`** |
+| **Sim recalibration** | Replace `BLEND_ALPHA=0.2` in `sim/test14c.c` with hardware-measured value | After LP CHAR |
+| **TEST 14C sim v3** | Re-run simulation at correct calibration, verify effect size is measurable | After recalibration |
+| **TEST 14C firmware** | Implement with regime-appropriate metric (lp_running_sum if Path A; VDB recall if Path B) | After LP CHAR + sim |
+| **Run TEST 14C** | 50+ repeated switch trials (Path A) or 3–5 trials (Path B) | After firmware |
 
-**Pass criteria:**
-- Classification accuracy remains 100%
-- LP Hamming matrix under 14B ≥ TEST 12 baseline on ≥ 4 of 6 pairs
-- LP prior updates within 15 confirmations of pattern switch (14C)
-- GIE hidden state does not saturate (energy < 60/64 on average)
+### Decision After LP CHAR
+
+- `fires/step > 2`: **Path A dominant** — lp_running_sum metric valid, proceed with TEST 14C as designed, need ~50+ trials
+- `fires/step < 1`, `implied_alpha > 0.1`: **Path B dominant** — switch to VDB P2 recall quality metric, fewer trials needed
+- Both weak: extend `LC_P1_STEPS`, lower `ulp_fb_threshold`, or investigate VDB seeding
 
 ### Blocking Before Any Paper Submission
 
@@ -359,6 +362,7 @@ the-reflex/
 | **Phase 4** | Skip hidden re-encode when blend disabled | **DONE — `8a33369`** |
 | **TEST 12** | Memory-modulated attention confirmed | **DONE — `38a0811`** |
 | **TEST 13** | CMD 4 distillation — VDB causally necessary | **DONE — `12aa970`** |
+| **LP CHAR** | LP dynamics characterization firmware (Path A vs B, implied_alpha) | **DONE — `625b00d`, ready to run** |
 | **Refactor** | Core vs. test layer separation | Pending (before Phase 5) |
 | **Phase 5 / TEST 14** | Kinetic attention: LP prior → GIE gate bias | Pending |
 | **TEST 14C** | Transition experiment — primary CLS prediction test | Pending |
