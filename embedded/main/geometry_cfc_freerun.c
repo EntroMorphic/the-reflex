@@ -4798,6 +4798,250 @@ void app_main(void) {
         }
     }
 
+    /* ══════════════════════════════════════════════════════════════
+     *  LP CHARACTERIZATION — LP Dynamics Baseline Measurement
+     *
+     *  Answers the root question from open_risks_synth.md:
+     *  "What is the dominant LP update path on hardware?"
+     *
+     *  Path A (CfC firing):  LP neuron updates when |dot_f| > 0.
+     *                        Rate = mean non-zero lp_dots_f entries per step.
+     *  Path B (VDB blend):   VDB nearest-neighbor blended into lp_hidden.
+     *                        Rate = mean fb_blend_count per step.
+     *
+     *  Protocol (no gate bias — 14A baseline condition):
+     *    Phase 1: gie_hidden = P1_synthetic (LC_P1_STEPS steps, ~5s)
+     *    Phase 2: gie_hidden = P2_synthetic (LC_P2_STEPS steps, ~1s)
+     *    Repeat LC_REPS times. VDB seeded with P1 snapshots every
+     *    LC_INSERT_EVERY steps.
+     *
+     *  Decision criteria (per open_risks_synth.md):
+     *    Path A dominant:   mean lp_cfc_fired > 2 neurons/step
+     *    Implied alpha:     mean(fb_blend_count) / LP_HIDDEN_DIM per step
+     *    Path B convergence: lp_hidden change profile over Phase 2 steps 1-15
+     *
+     *  Not a pass/fail test — diagnostic only.
+     * ══════════════════════════════════════════════════════════════ */
+    printf("-- LP CHAR: LP Dynamics Characterization --\n");
+    printf("   (diagnostic — not counted in pass/fail)\n");
+    fflush(stdout);
+    {
+        #define LC_P1_STEPS     500   /* ~5s at 100 Hz LP step rate */
+        #define LC_P2_STEPS     100   /* ~1s: captures LP response to P1→P2 switch */
+        #define LC_REPS           3   /* repetitions for consistency check */
+        #define LC_INSERT_EVERY  25   /* VDB insert every N P1 steps */
+        #define LC_WIN_PRE       20   /* switch-window steps before switch */
+        #define LC_WIN_POST      30   /* switch-window steps after switch */
+        #define LC_WIN_TOTAL     (LC_WIN_PRE + LC_WIN_POST)
+
+        /* Synthetic GIE hidden states: two orthogonal 32-dim ternary vectors.
+         * P1: first half = +1, second half = 0
+         * P2: first half =  0, second half = +1
+         * Maximally orthogonal — dot(P1,P2) = 0 by construction. */
+        int8_t lc_gie_p1[LP_GIE_HIDDEN];
+        int8_t lc_gie_p2[LP_GIE_HIDDEN];
+        memset(lc_gie_p1, 0, LP_GIE_HIDDEN);
+        memset(lc_gie_p2, 0, LP_GIE_HIDDEN);
+        for (int i = 0; i < LP_GIE_HIDDEN / 2; i++) lc_gie_p1[i] = 1;
+        for (int i = LP_GIE_HIDDEN / 2; i < LP_GIE_HIDDEN; i++) lc_gie_p2[i] = 1;
+
+        /* Per-rep accumulators */
+        float rep_fires_p1[LC_REPS], rep_fires_p2[LC_REPS];
+        float rep_blend_p1[LC_REPS], rep_blend_p2[LC_REPS];
+        memset(rep_fires_p1, 0, sizeof(rep_fires_p1));
+        memset(rep_fires_p2, 0, sizeof(rep_fires_p2));
+        memset(rep_blend_p1, 0, sizeof(rep_blend_p1));
+        memset(rep_blend_p2, 0, sizeof(rep_blend_p2));
+
+        /* Switch-window log from last rep (stack allocation) */
+        int8_t  win_lp_h[LC_WIN_TOTAL][LP_HIDDEN_DIM];
+        int     win_fires[LC_WIN_TOTAL];
+        int     win_blend[LC_WIN_TOTAL];
+        int     win_score[LC_WIN_TOTAL];
+        int     win_applied[LC_WIN_TOTAL];
+        memset(win_lp_h,   0, sizeof(win_lp_h));
+        memset(win_fires,  0, sizeof(win_fires));
+        memset(win_blend,  0, sizeof(win_blend));
+        memset(win_score,  0, sizeof(win_score));
+        memset(win_applied,0, sizeof(win_applied));
+
+        for (int rep = 0; rep < LC_REPS; rep++) {
+            printf("  Rep %d/%d:\n", rep + 1, LC_REPS);
+            fflush(stdout);
+
+            /* Reset LP and VDB state for clean observation */
+            vdb_clear();
+            memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
+            ulp_fb_total_blends = 0;
+            /* Low threshold: apply feedback for any positive VDB match score.
+             * Maximises Path B observability during characterisation. */
+            ulp_fb_threshold = 1;
+
+            int64_t fires_p1 = 0, fires_p2 = 0;
+            int64_t blend_p1 = 0, blend_p2 = 0;
+
+            /* ── Phase 1: P1 synthetic for LC_P1_STEPS steps ── */
+            for (int step = 0; step < LC_P1_STEPS; step++) {
+                memcpy(ulp_addr(&ulp_gie_hidden), lc_gie_p1, LP_GIE_HIDDEN);
+                vdb_result_t lc_r;
+                if (vdb_cfc_feedback_step(&lc_r) != 0) continue;
+
+                /* Path A: count non-zero f-pathway dots */
+                int32_t dots_f[LP_HIDDEN_DIM];
+                memcpy(dots_f, ulp_addr(&ulp_lp_dots_f),
+                       LP_HIDDEN_DIM * sizeof(int32_t));
+                int fires = 0;
+                for (int n = 0; n < LP_HIDDEN_DIM; n++)
+                    if (dots_f[n] != 0) fires++;
+
+                /* Path B: VDB blend count and score */
+                int blend   = (int)ulp_fb_blend_count;
+                int score   = (int)ulp_fb_score;
+                int applied = (int)ulp_fb_applied;
+
+                fires_p1 += fires;
+                blend_p1 += blend;
+
+                /* Periodic VDB seeding: build episodic memory of P1 state */
+                if ((step % LC_INSERT_EVERY) == 0 &&
+                    vdb_count() < VDB_MAX_NODES) {
+                    int8_t snap[VDB_TRIT_DIM];
+                    memcpy(snap, lc_gie_p1, LP_GIE_HIDDEN);
+                    memcpy(snap + LP_GIE_HIDDEN,
+                           ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
+                    vdb_insert(snap);
+                }
+
+                /* Record switch window: last LC_WIN_PRE steps of Phase 1 */
+                int wi = step - (LC_P1_STEPS - LC_WIN_PRE);
+                if (wi >= 0 && wi < LC_WIN_PRE) {
+                    memcpy(win_lp_h[wi], ulp_addr(&ulp_lp_hidden),
+                           LP_HIDDEN_DIM);
+                    win_fires[wi]   = fires;
+                    win_blend[wi]   = blend;
+                    win_score[wi]   = score;
+                    win_applied[wi] = applied;
+                }
+
+                if (step % 100 == 0) {
+                    printf("    P1 step %3d: fires=%2d blend=%2d score=%3d vdb=%d\n",
+                           step, fires, blend, score, vdb_count());
+                    fflush(stdout);
+                }
+            }
+
+            printf("    P1 done: vdb_nodes=%d\n", vdb_count());
+            fflush(stdout);
+
+            /* ── Phase 2: switch to P2 synthetic for LC_P2_STEPS steps ── */
+            for (int step = 0; step < LC_P2_STEPS; step++) {
+                memcpy(ulp_addr(&ulp_gie_hidden), lc_gie_p2, LP_GIE_HIDDEN);
+                vdb_result_t lc_r;
+                if (vdb_cfc_feedback_step(&lc_r) != 0) continue;
+
+                int32_t dots_f[LP_HIDDEN_DIM];
+                memcpy(dots_f, ulp_addr(&ulp_lp_dots_f),
+                       LP_HIDDEN_DIM * sizeof(int32_t));
+                int fires = 0;
+                for (int n = 0; n < LP_HIDDEN_DIM; n++)
+                    if (dots_f[n] != 0) fires++;
+
+                int blend   = (int)ulp_fb_blend_count;
+                int score   = (int)ulp_fb_score;
+                int applied = (int)ulp_fb_applied;
+
+                fires_p2 += fires;
+                blend_p2 += blend;
+
+                /* Record switch window: first LC_WIN_POST steps of Phase 2 */
+                int wi = LC_WIN_PRE + step;
+                if (wi < LC_WIN_TOTAL) {
+                    memcpy(win_lp_h[wi], ulp_addr(&ulp_lp_hidden),
+                           LP_HIDDEN_DIM);
+                    win_fires[wi]   = fires;
+                    win_blend[wi]   = blend;
+                    win_score[wi]   = score;
+                    win_applied[wi] = applied;
+                }
+
+                printf("    P2 step %2d: fires=%2d blend=%2d score=%3d applied=%d\n",
+                       step, fires, blend, score, applied);
+                fflush(stdout);
+            }
+
+            rep_fires_p1[rep] = (float)fires_p1 / LC_P1_STEPS;
+            rep_blend_p1[rep] = (float)blend_p1 / LC_P1_STEPS;
+            rep_fires_p2[rep] = (float)fires_p2 / LC_P2_STEPS;
+            rep_blend_p2[rep] = (float)blend_p2 / LC_P2_STEPS;
+
+            printf("    P1 mean: fires/step=%.1f  blend/step=%.1f  "
+                   "implied_alpha=%.3f\n",
+                   rep_fires_p1[rep], rep_blend_p1[rep],
+                   rep_blend_p1[rep] / LP_HIDDEN_DIM);
+            printf("    P2 mean: fires/step=%.1f  blend/step=%.1f  "
+                   "implied_alpha=%.3f\n\n",
+                   rep_fires_p2[rep], rep_blend_p2[rep],
+                   rep_blend_p2[rep] / LP_HIDDEN_DIM);
+            fflush(stdout);
+        }
+
+        /* ── Switch-window trajectory (from last rep) ── */
+        printf("  Switch window (rep %d, last %d P1 → first %d P2):\n",
+               LC_REPS, LC_WIN_PRE, LC_WIN_POST);
+        printf("  step | fires | blend | score | appl | lp_hidden\n");
+        printf("  -----|-------|-------|-------|------|----------\n");
+        for (int i = 0; i < LC_WIN_TOTAL; i++) {
+            int rel = i - LC_WIN_PRE;
+            char lp_str[LP_HIDDEN_DIM + 1];
+            for (int n = 0; n < LP_HIDDEN_DIM; n++) {
+                int8_t v = win_lp_h[i][n];
+                lp_str[n] = (v > 0) ? '+' : (v < 0) ? '-' : '0';
+            }
+            lp_str[LP_HIDDEN_DIM] = '\0';
+            printf("  %+4d | %5d | %5d | %5d | %4d | %s\n",
+                   rel, win_fires[i], win_blend[i],
+                   win_score[i], win_applied[i], lp_str);
+        }
+        fflush(stdout);
+
+        /* ── Overall summary ── */
+        float mean_fires_p1 = 0, mean_blend_p1 = 0;
+        float mean_fires_p2 = 0, mean_blend_p2 = 0;
+        for (int r = 0; r < LC_REPS; r++) {
+            mean_fires_p1 += rep_fires_p1[r];
+            mean_blend_p1 += rep_blend_p1[r];
+            mean_fires_p2 += rep_fires_p2[r];
+            mean_blend_p2 += rep_blend_p2[r];
+        }
+        mean_fires_p1 /= LC_REPS;
+        mean_blend_p1 /= LC_REPS;
+        mean_fires_p2 /= LC_REPS;
+        mean_blend_p2 /= LC_REPS;
+
+        float implied_alpha_p1 = mean_blend_p1 / LP_HIDDEN_DIM;
+
+        printf("\n  SUMMARY (%d reps, P1=%d steps, P2=%d steps):\n",
+               LC_REPS, LC_P1_STEPS, LC_P2_STEPS);
+        printf("  P1 steady: fires/step=%.1f  blend/step=%.1f  "
+               "implied_alpha=%.3f\n",
+               mean_fires_p1, mean_blend_p1, implied_alpha_p1);
+        printf("  P2 phase:  fires/step=%.1f  blend/step=%.1f  "
+               "implied_alpha=%.3f\n",
+               mean_fires_p2, mean_blend_p2,
+               mean_blend_p2 / LP_HIDDEN_DIM);
+        printf("  REGIME: %s\n",
+               mean_fires_p1 > 2.0f
+                   ? "Path A dominant (CfC fires > 2/step)"
+               : mean_fires_p1 > 0.5f
+                   ? "Mixed (0.5 < fires/step <= 2)"
+               : implied_alpha_p1 > 0.1f
+                   ? "Path B dominant (VDB blend primary)"
+                   : "Both paths weak — extend steps or check VDB seeding");
+        printf("  Sim calibration: LP_SIM_THRESHOLD should match Path A "
+               "threshold; BLEND_ALPHA = %.3f\n\n", implied_alpha_p1);
+        fflush(stdout);
+    }
+
     /* ── Summary ── */
     printf("============================================================\n");
     printf("  RESULTS: %d / %d PASSED\n", pass_count, test_count);
