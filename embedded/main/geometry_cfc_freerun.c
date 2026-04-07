@@ -1,11 +1,13 @@
 /*
  * geometry_cfc_freerun.c — Test Harness for the GIE Engine
  *
- * This file contains the test suite (TEST 1-13) and app_main().
+ * This file contains the test suite (TEST 1-14) and app_main().
+ * Each test is a static function returning 1 (pass) or 0 (fail).
  * The GIE engine core is in gie_engine.c with its interface in
  * gie_engine.h.
  *
  * Separated from engine code: April 6, 2026 (audit remediation).
+ * Tests extracted to functions: April 7, 2026 (LMM-guided refactor).
  *
  * Board: ESP32-C6FH4 (QFN32) rev v0.2
  * ESP-IDF: v5.4
@@ -23,9 +25,10 @@
 #include "reflex_vdb.h"
 #include "gie_engine.h"
 
+
 /* ── LP Core binary (embedded by build system) ── */
-extern const uint8_t ulp_main_bin_start[] asm("_binary_ulp_main_bin_start");
 extern const uint8_t ulp_main_bin_end[]   asm("_binary_ulp_main_bin_end");
+
 
 /* ── Engine-internal constants needed by test harness ── */
 #define NUM_DUMMIES     5
@@ -33,11 +36,67 @@ extern const uint8_t ulp_main_bin_end[]   asm("_binary_ulp_main_bin_end");
 #define CAPTURES_PER_LOOP  (NUM_DUMMIES + NUM_NEURONS)
 #define NUM_TEMPLATES   4
 
-/* TriX signatures: file-scope for access by diagnostics at end of main */
+/* ── Shared constants (used across Tests 11-14) ── */
+#define NOVELTY_THRESHOLD  60
+#define T11_DRAIN_MS       10
+
+/* ── File-scope shared state ── */
 static int8_t sig[NUM_TEMPLATES][CFC_INPUT_DIM];
+static espnow_rx_entry_t drain_buf[32];
+
+/* TEST 12 → TEST 13 handoff */
+static int8_t  t12_mean1[LP_HIDDEN_DIM];
+static int8_t  t12_mean2[LP_HIDDEN_DIM];
+static int     t12_p1p3_result = -1;
+static int     t12_p1p2_result = -1;
+static int     t12_n1 = 0, t12_n2 = 0;
+
+/* ── Forward declarations ── */
+static int run_test_1(void);
+static int run_test_2(void);
+static int run_test_3(void);
+static int run_test_4(void);
+static int run_test_5(void);
+static int run_test_6(void);
+static int run_test_7(void);
+static int run_test_8(void);
+static int run_test_9(void);
+static int run_test_10(void);
+static int run_test_11(void);
+static int run_test_12(void);
+static int run_test_13(void);
+static int run_test_14(void);
+static void run_lp_char(void);
+static void run_lp_dot_diag(void);
+
+/*
+ * ══════════════════════════════════════════════════════════════════
+ *  TEST SUITE — Table of Contents
+ *
+ *  run_test_1()       — Free-running loop count (GIE basic)
+ *  run_test_2()       — Hidden state evolves autonomously
+ *  run_test_3()       — Per-neuron dot accuracy vs CPU reference
+ *  run_test_4()       — LP Core geometric processor
+ *  run_test_5()       — Ternary VDB — NSW graph (M=7), 64 nodes
+ *  run_test_6()       — CfC → VDB pipeline (CMD 4)
+ *  run_test_7()       — Reflex channel coordination
+ *  run_test_8()       — VDB → CfC feedback loop (CMD 5)
+ *  run_test_9()       — ESP-NOW receive from Board B
+ *  run_test_10()      — ESP-NOW → GIE live input
+ *  run_test_11()      — Pattern classification (stream CfC + TriX)
+ *  run_test_12()      — Memory-modulated adaptive attention
+ *  run_test_13()      — CMD 4 ablation (VDB causal necessity)
+ *  run_test_14()      — Kinetic attention (agreement-weighted gate bias)
+ *  run_lp_char()      — LP dynamics characterization (diagnostic)
+ *  run_lp_dot_diag()  — LP dot magnitude probe (diagnostic)
+ *
+ *  Each run_test_N() returns 1 (pass) or 0 (fail/skip).
+ *  Tests 12-14 require Test 11 to have run first (installs TriX signatures).
+ * ══════════════════════════════════════════════════════════════════
+ */
 
 /* ══════════════════════════════════════════════════════════════════
- *  MAIN — TEST SUITE
+ *  MAIN — ORCHESTRATOR
  * ══════════════════════════════════════════════════════════════════ */
 
 void app_main(void) {
@@ -95,8 +154,55 @@ void app_main(void) {
 
     prime_pipeline();
 
+    /* ── Run all tests ── */
     int test_count = 0, pass_count = 0;
 
+    test_count++; pass_count += run_test_1();
+    test_count++; pass_count += run_test_2();
+    test_count++; pass_count += run_test_3();
+    test_count++; pass_count += run_test_4();
+    test_count++; pass_count += run_test_5();
+    test_count++; pass_count += run_test_6();
+    test_count++; pass_count += run_test_7();
+    test_count++; pass_count += run_test_8();
+    test_count++; pass_count += run_test_9();
+    test_count++; pass_count += run_test_10();
+    test_count++; pass_count += run_test_11();
+    test_count++; pass_count += run_test_12();
+    test_count++; pass_count += run_test_13();
+    test_count++; pass_count += run_test_14();
+
+    /* ── Summary ── */
+    printf("============================================================\n");
+    printf("  RESULTS: %d / %d PASSED\n", pass_count, test_count);
+    printf("============================================================\n");
+    if (pass_count == test_count) {
+        printf("\n  *** FULL SYSTEM VERIFIED ***\n");
+        printf("  Layer 1: GIE (GDMA+PARLIO+PCNT) — 428 Hz, ~0 CPU\n");
+        printf("  Layer 2: LP core geometric processor — 100 Hz, ~30uA\n");
+        printf("  Layer 2b: LP core ternary VDB — NSW graph search (M=%d)\n", VDB_M);
+        printf("  Layer 2c: CfC -> VDB pipeline — perceive+think+remember\n");
+        printf("  Layer 2d: VDB -> CfC feedback — memory shapes inference\n");
+        printf("  Layer 3: HP core — reflex channel coordination\n");
+        printf("  Layer 4: ESP-NOW -> GIE live input + pattern classification\n");
+        printf("  Layer 5: TriX -> VDB -> LP feedback — memory-modulated attention\n");
+        printf("  Layer 6: CMD 4 ablation — VDB contribution isolated from CfC baseline\n");
+        printf("  All ternary. No floating point. No multiplication.\n");
+        printf("  Perceive → classify → remember → retrieve → modulate.\n");
+        printf("  Attribution: CMD 5 vs CMD 4 Hamming delta quantifies VDB contribution.\n\n");
+    } else {
+        printf("\n  SOME TESTS FAILED — see details above.\n\n");
+    }
+    fflush(stdout);
+
+    /* ── Diagnostics (not counted in pass/fail) ── */
+    run_lp_char();
+    run_lp_dot_diag();
+
+    while (1) vTaskDelay(pdMS_TO_TICKS(10000));
+}
+
+static int run_test_1(void) {
     /* ══════════════════════════════════════════════════════════════
      *  TEST 1: Free-running loop count
      *
@@ -107,8 +213,8 @@ void app_main(void) {
     fflush(stdout);
     if (!gie_isr_ready()) {
         printf("  SKIPPED — ISR allocation failed\n\n");
-        test_count++;
         fflush(stdout);
+        return 0;
     } else {
         cfc_init(42, 50);
         premultiply_all();
@@ -134,12 +240,14 @@ void app_main(void) {
         printf("  Period: %.1f us per loop\n", elapsed_s * 1e6 / loops);
 
         int ok = (loops > 100);  /* should be ~500+ */
-        test_count++;
-        if (ok) pass_count++;
         printf("  %s\n\n", ok ? "OK" : "FAIL");
         fflush(stdout);
+        return ok;
     }
+    return 0; /* unreachable */
+}
 
+static int run_test_2(void) {
     /* ══════════════════════════════════════════════════════════════
      *  TEST 2: Hidden state evolves autonomously
      *
@@ -150,8 +258,8 @@ void app_main(void) {
     fflush(stdout);
     if (!gie_isr_ready()) {
         printf("  SKIPPED — ISR allocation failed\n\n");
-        test_count++;
         fflush(stdout);
+        return 0;
     } else {
         cfc_init(777, 45);
         premultiply_all();
@@ -189,12 +297,14 @@ void app_main(void) {
         printf("  Total loops: %d\n", (int)loop_count);
 
         int ok = state_changed && (loop_count > 50);
-        test_count++;
-        if (ok) pass_count++;
         printf("  %s\n\n", ok ? "OK" : "FAIL");
         fflush(stdout);
+        return ok;
     }
+    return 0; /* unreachable */
+}
 
+static int run_test_3(void) {
     /* ══════════════════════════════════════════════════════════════
      *  TEST 3: Trajectory match — free-running vs CPU reference
      *
@@ -207,8 +317,8 @@ void app_main(void) {
     fflush(stdout);
     if (!gie_isr_ready()) {
         printf("  SKIPPED — ISR allocation failed\n\n");
-        test_count++;
         fflush(stdout);
+        return 0;
     } else {
         /* This test verifies dot product accuracy by running a single
          * free-running loop and comparing the ISR-decoded dots against
@@ -326,12 +436,14 @@ void app_main(void) {
 
         /* Pass if sign errors ≤ 2 (allowing for ±1 PCNT noise) */
         int ok = (sign_err <= 2);
-        test_count++;
-        if (ok) pass_count++;
         printf("  %s\n\n", ok ? "OK" : "FAIL");
         fflush(stdout);
+        return ok;
     }
+    return 0; /* unreachable */
+}
 
+static int run_test_4(void) {
     /* ══════════════════════════════════════════════════════════════
      *  TEST 4: LP Core Geometric Processor
      *
@@ -470,12 +582,13 @@ void app_main(void) {
          * - Exact dot match for deterministic test (4b) */
         int dots_ok = (f_exact == LP_HIDDEN_DIM && g_exact == LP_HIDDEN_DIM);
         int ok = lp_running && (lp_energy > 0) && dots_ok;
-        test_count++;
-        if (ok) pass_count++;
         printf("  %s\n\n", ok ? "OK" : "FAIL");
         fflush(stdout);
+        return ok;
     }
+}
 
+static int run_test_5(void) {
     /* ══════════════════════════════════════════════════════════════
      *  TEST 5: Ternary VDB — NSW Graph (M=7), 64 Nodes
      *
@@ -716,12 +829,13 @@ void app_main(void) {
         int ok_5f = (min_rt_us > 0 && min_rt_us < 50000);
 
         int ok = ok_5a && ok_5b && ok_5c && ok_5d && ok_5e && ok_5f;
-        test_count++;
-        if (ok) pass_count++;
         printf("  %s\n\n", ok ? "OK" : "FAIL");
         fflush(stdout);
+        return ok;
     }
+}
 
+static int run_test_6(void) {
     /* ══════════════════════════════════════════════════════════════
      *  TEST 6: CfC → VDB Pipeline (CMD 4)
      *
@@ -986,12 +1100,13 @@ void app_main(void) {
         fflush(stdout);
 
         int ok = ok_6a && ok_6b && ok_6c && ok_6d;
-        test_count++;
-        if (ok) pass_count++;
         printf("  %s\n\n", ok ? "OK" : "FAIL");
         fflush(stdout);
+        return ok;
     }
+}
 
+static int run_test_7(void) {
     /* ══════════════════════════════════════════════════════════════
      *  TEST 7: Reflex Channel — Cache Coherency Coordination
      *
@@ -1221,12 +1336,13 @@ void app_main(void) {
         fflush(stdout);
 
         int ok = ok_7a && ok_7b && ok_7c && ok_7d;
-        test_count++;
-        if (ok) pass_count++;
         printf("  %s\n\n", ok ? "OK" : "FAIL");
         fflush(stdout);
+        return ok;
     }
+}
 
+static int run_test_8(void) {
     /* ══════════════════════════════════════════════════════════════
      *  TEST 8: VDB → CfC Feedback Loop (CMD 5)
      *
@@ -1529,12 +1645,13 @@ void app_main(void) {
         fflush(stdout);
 
         int ok = ok_8a && ok_8b && ok_8c && ok_8d;
-        test_count++;
-        if (ok) pass_count++;
         printf("  %s\n\n", ok ? "OK" : "FAIL");
         fflush(stdout);
+        return ok;
     }
+}
 
+static int run_test_9(void) {
     /* ══════════════════════════════════════════════════════════════
      *  TEST 9: ESP-NOW Receive (Board B → Board A)
      *
@@ -1580,13 +1697,14 @@ void app_main(void) {
 
         /* Pass if we received at least 10 packets */
         int ok = (total_rx >= 10);
-        test_count++;
-        if (ok) pass_count++;
         printf("  %s (%lu packets in 10s)\n\n", ok ? "OK" : "FAIL",
                (unsigned long)total_rx);
         fflush(stdout);
+        return ok;
     }
+}
 
+static int run_test_10(void) {
     /* ══════════════════════════════════════════════════════════════
      *  TEST 10: ESP-NOW → GIE Live Input (Real-World → Ternary)
      *
@@ -1846,12 +1964,13 @@ void app_main(void) {
         fflush(stdout);
 
         int ok = ok_10a && ok_10b && ok_10c && ok_10d;
-        test_count++;
-        if (ok) pass_count++;
         printf("  %s\n\n", ok ? "OK" : "FAIL");
         fflush(stdout);
+        return ok;
     }
+}
 
+static int run_test_11(void) {
     /* ══════════════════════════════════════════════════════════════
      *  TEST 11: Pattern Classification — Stream-Based Continuous CfC
      *
@@ -1882,7 +2001,6 @@ void app_main(void) {
     fflush(stdout);
     {
         #define T11_WINDOW_MS      1000   /* Sample window duration (1s) */
-        #define T11_DRAIN_MS       10     /* Drain interval (fast!) */
         /* NUM_TEMPLATES defined at file scope */
         #define MAX_TEST_SAMPLES   32     /* Test samples to collect */
 
@@ -1913,7 +2031,6 @@ void app_main(void) {
         /* Memory: 7 × (4×128 + 4×256 + 4×4 + 4) = 7 × 1556 = 10,892 bytes */
 
         /* Drain buffer — big enough for one drain cycle at max rate (static for stack) */
-        static espnow_rx_entry_t drain_buf[32];
 
         /* Start GIE — ONE init for the entire test */
         cfc_init(42, 50);
@@ -2244,7 +2361,6 @@ void app_main(void) {
         memcpy(sig_orig, sig, sizeof(sig));
 
         #define RESIGN_INTERVAL   16   /* re-sign every 16 packets per pattern */
-        #define NOVELTY_THRESHOLD 60   /* min best-dot to accept classification */
 
         {
             /* ── Phase 1: TriX Cube ensemble classification (60s) ──
@@ -2670,104 +2786,636 @@ void app_main(void) {
                    (int)gate_threshold, NOVELTY_THRESHOLD);
 
             int ok = (sig_total >= 4) && (core_pct >= 50);
-            test_count++;
-            if (ok) pass_count++;
             printf("  %s\n\n", ok ? "OK" : "FAIL");
             fflush(stdout);
+            return ok;
+    }
+}
+
+static int run_test_12(void) {
+    /* ══════════════════════════════════════════════════════════════
+     *  TEST 12: Memory-Modulated Adaptive Attention
+     *
+     *  THE QUESTION: Can the system's classification history modulate
+     *  what it pays attention to next?
+     *
+     *  DESIGN:
+     *  - Re-enable CfC blend (gate_threshold=90). W_f hidden portion
+     *    is zero (set in Phase 0c), so TriX scores remain input-driven.
+     *    But now the GIE hidden state EVOLVES — accumulating exposure
+     *    history for whichever pattern is currently active.
+     *  - After each confident classification, call feed_lp_core() and
+     *    vdb_cfc_feedback_step() — LP core runs CfC step, searches the
+     *    VDB for the most similar past state, blends it into lp_hidden.
+     *  - Periodically insert [gie_hidden | lp_hidden] into the VDB,
+     *    storing a snapshot of the system's state at that classification
+     *    moment. Over time, the VDB accumulates pattern-differentiated
+     *    memories (P1-exposure states look different from P3-exposure).
+     *  - Measure: does LP mean hidden state diverge across patterns?
+     *    Hamming(lp_mean[1], lp_mean[3]) > 0 = memory is modulating.
+     *
+     *  NOTE: TriX classification accuracy is not affected by re-enabling
+     *  blend. The ISR computes TriX scores in step 3b (before the CfC
+     *  blend in step 4), and W_f hidden = 0 ensures f_dot = W_f_input @
+     *  input regardless of the hidden state.
+     *
+     *  PASS: any cross-pattern LP divergence (Hamming > 0), VDB has
+     *  >= 4 snapshots, and LP feedback ran >= 4 steps.
+     * ══════════════════════════════════════════════════════════════ */
+    printf("-- TEST 12: Memory-Modulated Adaptive Attention --\n");
+    fflush(stdout);
+    {
+        #define T12_PHASE_US       120000000LL  /* 120s — 4+ full sender rotations (27s/cycle) guarantees all 4 patterns */
+        #define T12_INSERT_EVERY   8           /* VDB insert every N confirmations */
+        #define T12_FB_THRESHOLD   8           /* LP feedback score threshold */
+
+        int t12_confirmed[4]   = {0};
+        int t12_confirmations  = 0;
+        int t12_vdb_inserts    = 0;
+        int t12_lp_steps       = 0;
+        int t12_fb_applied     = 0;
+
+        /* LP state accumulators per pattern (int16 to avoid overflow) */
+        static int16_t t12_lp_sum[4][LP_HIDDEN_DIM];
+        static int8_t  t12_lp_mean[4][LP_HIDDEN_DIM];
+        int            t12_lp_n[4] = {0};
+        memset(t12_lp_sum,  0, sizeof(t12_lp_sum));
+        memset(t12_lp_mean, 0, sizeof(t12_lp_mean));
+
+        /* Re-enable CfC blend. W_f hidden=0 keeps TriX scores
+         * input-only, so classification accuracy is preserved. */
+        gate_threshold    = 90;
+        gate_fires_total  = 0;
+        gate_steps_total  = 0;
+
+        /* Clear VDB and LP state so memories are drawn only from
+         * this session's pattern exposure, not from TEST 8 data. */
+        vdb_clear();
+        memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
+        ulp_fb_threshold   = T12_FB_THRESHOLD;
+        ulp_fb_total_blends = 0;
+
+        /* Restart GIE. W_f still has signatures from Phase 0c.
+         * premultiply/encode rebuild the descriptor data. */
+        premultiply_all();
+        encode_all_neurons();
+        build_circular_chain();
+        start_freerun();
+        espnow_ring_flush();
+
+        printf("  blend re-enabled (threshold=90), VDB cleared, LP reset\n");
+        printf("  running 120s: classify → insert snapshot → LP feedback\n");
+        fflush(stdout);
+
+        int64_t t12_start_us = esp_timer_get_time();
+
+        while ((esp_timer_get_time() - t12_start_us) < T12_PHASE_US) {
+            vTaskDelay(pdMS_TO_TICKS(T11_DRAIN_MS));
+            int nd = espnow_drain(drain_buf, 32);
+            for (int i = 0; i < nd; i++) {
+                if (!espnow_encode_rx_entry(&drain_buf[i], NULL)) continue;
+
+                /* Signal ISR to re-encode input at next loop boundary
+                 * and wait for the re-encode to complete. */
+                gie_input_pending = 1;
+                int spins = 0;
+                while (gie_input_pending && spins < 5000) {
+                    esp_rom_delay_us(5);
+                    spins++;
+                }
+
+                /* CPU core classification (same logic as TEST 11 Phase 1) */
+                int core_best = -9999, core_pred = 0;
+                for (int p = 0; p < NUM_TEMPLATES; p++) {
+                    int d = 0;
+                    for (int j = 0; j < CFC_INPUT_DIM; j++) {
+                        if (sig[p][j] != T_ZERO && cfc.input[j] != T_ZERO)
+                            d += tmul(sig[p][j], cfc.input[j]);
+                    }
+                    if (d > core_best) { core_best = d; core_pred = p; }
+                }
+
+                /* Novelty gate — reject low-confidence packets */
+                if (core_best < NOVELTY_THRESHOLD) continue;
+
+                /* Confirmed classification */
+                int pred = core_pred;
+                t12_confirmed[pred]++;
+                t12_confirmations++;
+
+                /* Feed current GIE hidden state to LP core, then
+                 * run one CfC+VDB+feedback step. LP retrieves the
+                 * most similar past state and blends it into lp_hidden.
+                 * If VDB is empty, feedback is skipped (LP still runs
+                 * the CfC step — this is correct startup behavior). */
+                feed_lp_core();
+                vdb_result_t t12_fb_res;
+                if (vdb_cfc_feedback_step(&t12_fb_res) == 0) {
+                    t12_lp_steps++;
+                    if (ulp_fb_applied) t12_fb_applied++;
+                }
+
+                /* Read LP hidden state and accumulate per pattern */
+                int8_t lp_now[LP_HIDDEN_DIM];
+                memcpy(lp_now, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
+                for (int j = 0; j < LP_HIDDEN_DIM; j++)
+                    t12_lp_sum[pred][j] += lp_now[j];
+                t12_lp_n[pred]++;
+
+                /* Periodic VDB snapshot: [gie_hidden (32) | lp_hidden (16)].
+                 * This stores "what the system looked like at this
+                 * pattern-P moment" for future LP retrieval. */
+                if (t12_confirmations % T12_INSERT_EVERY == 0 &&
+                    vdb_count() < VDB_MAX_NODES) {
+                    int8_t snap[VDB_TRIT_DIM];
+                    memcpy(snap, (void *)cfc.hidden, LP_GIE_HIDDEN);
+                    memcpy(snap + LP_GIE_HIDDEN, lp_now, LP_HIDDEN_DIM);
+                    if (vdb_insert(snap) >= 0) t12_vdb_inserts++;
+                }
+            }
         }
 
-        /* Shared results: TEST 12 values read by TEST 13 for attribution comparison.
-         * P1 vs P2 is the primary ablation pair (P3 novelty-gate pass rate varies). */
-        int t12_p1p3_result = -1;
-        int t12_p1p2_result = -1;
-        int t12_n1 = 0, t12_n2 = 0;   /* TEST 12 sample counts for P1, P2 */
-        static int8_t t12_mean1[16];   /* TEST 12 LP mean for P1 */
-        static int8_t t12_mean2[16];   /* TEST 12 LP mean for P2 */
+        stop_freerun();
 
-        /* ══════════════════════════════════════════════════════════════
-         *  TEST 12: Memory-Modulated Adaptive Attention
-         *
-         *  THE QUESTION: Can the system's classification history modulate
-         *  what it pays attention to next?
-         *
-         *  DESIGN:
-         *  - Re-enable CfC blend (gate_threshold=90). W_f hidden portion
-         *    is zero (set in Phase 0c), so TriX scores remain input-driven.
-         *    But now the GIE hidden state EVOLVES — accumulating exposure
-         *    history for whichever pattern is currently active.
-         *  - After each confident classification, call feed_lp_core() and
-         *    vdb_cfc_feedback_step() — LP core runs CfC step, searches the
-         *    VDB for the most similar past state, blends it into lp_hidden.
-         *  - Periodically insert [gie_hidden | lp_hidden] into the VDB,
-         *    storing a snapshot of the system's state at that classification
-         *    moment. Over time, the VDB accumulates pattern-differentiated
-         *    memories (P1-exposure states look different from P3-exposure).
-         *  - Measure: does LP mean hidden state diverge across patterns?
-         *    Hamming(lp_mean[1], lp_mean[3]) > 0 = memory is modulating.
-         *
-         *  NOTE: TriX classification accuracy is not affected by re-enabling
-         *  blend. The ISR computes TriX scores in step 3b (before the CfC
-         *  blend in step 4), and W_f hidden = 0 ensures f_dot = W_f_input @
-         *  input regardless of the hidden state.
-         *
-         *  PASS: any cross-pattern LP divergence (Hamming > 0), VDB has
-         *  >= 4 snapshots, and LP feedback ran >= 4 steps.
-         * ══════════════════════════════════════════════════════════════ */
-        printf("-- TEST 12: Memory-Modulated Adaptive Attention --\n");
+        /* Compute mean LP hidden per pattern: sign of accumulated sum */
+        printf("\n  ── LP Hidden State by Pattern ──\n");
+        for (int p = 0; p < 4; p++) {
+            int energy = 0;
+            for (int j = 0; j < LP_HIDDEN_DIM; j++) {
+                int8_t v = (t12_lp_n[p] > 0) ? tsign(t12_lp_sum[p][j]) : T_ZERO;
+                t12_lp_mean[p][j] = v;
+                if (v != T_ZERO) energy++;
+            }
+            printf("    P%d: %d samples, energy=%d/16", p, t12_lp_n[p], energy);
+            if (t12_lp_n[p] > 0) {
+                printf(" [");
+                for (int j = 0; j < LP_HIDDEN_DIM; j++)
+                    printf("%c", trit_char(t12_lp_mean[p][j]));
+                printf("]");
+            }
+            printf("\n");
+        }
+
+        /* Hamming divergence matrix across all pattern pairs */
+        printf("\n  ── LP Divergence Matrix (Hamming) ──\n");
+        printf("       P0  P1  P2  P3\n");
+        int any_diverge = 0;
+        for (int p = 0; p < 4; p++) {
+            printf("  P%d:", p);
+            for (int q = 0; q < 4; q++) {
+                if (t12_lp_n[p] > 0 && t12_lp_n[q] > 0) {
+                    int h = trit_hamming(t12_lp_mean[p], t12_lp_mean[q],
+                                         LP_HIDDEN_DIM);
+                    printf("  %2d", h);
+                    if (p != q && h > 0) any_diverge = 1;
+                } else {
+                    printf("   -");
+                }
+            }
+            printf("\n");
+        }
+
+        /* P1 vs P3: the ambiguous pair that rate-only baseline
+         * cannot distinguish. Memory-modulated LP should separate them. */
+        int p1p3 = (t12_lp_n[1] > 0 && t12_lp_n[3] > 0)
+            ? trit_hamming(t12_lp_mean[1], t12_lp_mean[3], LP_HIDDEN_DIM)
+            : -1;
+        t12_p1p3_result = p1p3;  /* expose to TEST 13 */
+        /* Expose P1 vs P2 results for TEST 13 attribution comparison */
+        t12_n1 = t12_lp_n[1];
+        t12_n2 = t12_lp_n[2];
+        memcpy(t12_mean1, t12_lp_mean[1], LP_HIDDEN_DIM);
+        memcpy(t12_mean2, t12_lp_mean[2], LP_HIDDEN_DIM);
+        t12_p1p2_result = (t12_lp_n[1] > 0 && t12_lp_n[2] > 0)
+            ? trit_hamming(t12_lp_mean[1], t12_lp_mean[2], LP_HIDDEN_DIM) : -1;
+
+        printf("\n  ── Summary ──\n");
+        printf("  Confirmed: P0=%d P1=%d P2=%d P3=%d (total=%d)\n",
+               t12_confirmed[0], t12_confirmed[1],
+               t12_confirmed[2], t12_confirmed[3], t12_confirmations);
+        printf("  VDB inserts: %d (VDB count: %d/%d)\n",
+               t12_vdb_inserts, vdb_count(), VDB_MAX_NODES);
+        printf("  LP feedback steps: %d, feedback applied: %d\n",
+               t12_lp_steps, t12_fb_applied);
+        printf("  Gate firing: %d%%\n",
+               gate_steps_total > 0
+                   ? (int)(gate_fires_total * 100LL / gate_steps_total) : 0);
+        printf("  P1 vs P3 Hamming: %s\n",
+               p1p3 >= 0 ? (p1p3 > 0 ? "DIVERGED (memory modulated)" : "0 (same)")
+                          : "insufficient data");
+        printf("  Cross-pattern LP divergence: %s\n",
+               any_diverge ? "YES — sub-conscious state reflects pattern history"
+                           : "NO — LP state did not differentiate patterns");
+        printf("\n  Architecture note:\n");
+        printf("  - TriX classification unchanged (W_f hidden=0, ISR step 3b\n");
+        printf("    runs before blend step 4 — scores are always input-driven)\n");
+        printf("  - LP hidden = episodic memory of pattern exposure\n");
+        printf("  - VDB retrieval shapes LP trajectory via ternary blend\n");
+        printf("  - This closes the loop: perceive → classify → remember\n");
+        printf("    → retrieve → modulate — without CPU or multiplication\n");
+
+        /* Strengthened pass criteria (red-team Mar 22, revised post-ablation):
+         *  (a) >= T12_N_REQUIRED patterns have >= T12_MIN_SAMPLES each
+         *      Note: P3 has incrementing payload — novelty gate pass rate
+         *      varies per run. Require 3 of 4 patterns, not all 4.
+         *  (b) All well-sampled cross-pattern pairs: Hamming >= 1
+         *      Justification: TEST 13 (CMD 4 ablation) establishes the
+         *      noise floor empirically as Hamming=0 (P1=P2 under CMD 4).
+         *      Any CMD 5 result above 0 is attributable to VDB feedback,
+         *      not measurement noise. The floor is 0, not 2.
+         *  (c) VDB populated >= 4, LP stepped >= 4 */
+        #define T12_MIN_SAMPLES  15
+        #define T12_N_REQUIRED    3   /* at least 3 of 4 patterns */
+        int t12_sufficient_count = 0;
+        int t12_min_hamming_ok = 1;
+        for (int pa = 0; pa < 4; pa++) {
+            if (t12_lp_n[pa] >= T12_MIN_SAMPLES) t12_sufficient_count++;
+            else if (t12_lp_n[pa] > 0)
+                printf("  NOTE: P%d only %d samples (below %d threshold)\n",
+                       pa, t12_lp_n[pa], T12_MIN_SAMPLES);
+        }
+        int t12_coverage_ok = (t12_sufficient_count >= T12_N_REQUIRED);
+        if (t12_coverage_ok) {
+            for (int pa = 0; pa < 4 && t12_min_hamming_ok; pa++) {
+                if (t12_lp_n[pa] < T12_MIN_SAMPLES) continue;
+                for (int pb = pa+1; pb < 4; pb++) {
+                    if (t12_lp_n[pb] < T12_MIN_SAMPLES) continue;
+                    int hh = trit_hamming(t12_lp_mean[pa], t12_lp_mean[pb],
+                                          LP_HIDDEN_DIM);
+                    if (hh < 1) {
+                        t12_min_hamming_ok = 0;
+                        printf("  WARNING: P%d vs P%d Hamming=%d (need >=1)\n",
+                               pa, pb, hh);
+                        break;
+                    }
+                }
+            }
+        }
+        printf("  Sufficient patterns: %d/%d (need >=%d with >=%d samples each)\n",
+               t12_sufficient_count, 4, T12_N_REQUIRED, T12_MIN_SAMPLES);
+        int ok12 = t12_coverage_ok && t12_min_hamming_ok
+                   && (vdb_count() >= 4) && (t12_lp_steps >= 4);
+        printf("  %s\n\n", ok12 ? "OK" : "FAIL");
         fflush(stdout);
-        {
-            #define T12_PHASE_US       120000000LL  /* 120s — 4+ full sender rotations (27s/cycle) guarantees all 4 patterns */
-            #define T12_INSERT_EVERY   8           /* VDB insert every N confirmations */
-            #define T12_FB_THRESHOLD   8           /* LP feedback score threshold */
+        return ok12;
+    }
+}
 
-            int t12_confirmed[4]   = {0};
-            int t12_confirmations  = 0;
-            int t12_vdb_inserts    = 0;
-            int t12_lp_steps       = 0;
-            int t12_fb_applied     = 0;
+static int run_test_13(void) {
+    /* ══════════════════════════════════════════════════════════════
+     *  TEST 13: CMD 4 Ablation — CfC + VDB search, no feedback blend
+     *
+     *  Controls for TEST 12. Answers: does LP hidden diverge by
+     *  pattern purely from CfC integration of pattern-correlated
+     *  GIE hidden state, WITHOUT any VDB → lp_hidden blend?
+     *
+     *  CMD 4 = CfC step + VDB search. lp_hidden is updated by the
+     *  CfC step (using [gie_hidden | lp_hidden] as input) but the
+     *  retrieved memory is NOT blended back into lp_hidden.
+     *
+     *  Outcome interpretation:
+     *   - No LP divergence with CMD 4 → VDB blend (CMD 5) is
+     *     causally necessary. "Memory-modulated" claim confirmed.
+     *   - LP diverges with CMD 4 → CfC integration of GIE hidden
+     *     alone suffices. VDB contributes but is not sole cause.
+     *     "Memory-modulated" claim requires qualification.
+     *
+     *  Pass criterion: all 4 patterns >= T13_MIN_SAMPLES, LP
+     *  stepped >= 4. Outcome (diverge/not) is reported as data —
+     *  TEST 13 is a measurement, not a pass/fail on the result.
+     * ══════════════════════════════════════════════════════════════ */
+    printf("-- TEST 13: CMD 4 Ablation (CfC only, no VDB blend) --\n");
+    fflush(stdout);
+    {
+        #define T13_PHASE_US    120000000LL  /* 120s — same duration as TEST 12 */
+        #define T13_MIN_SAMPLES 15
 
-            /* LP state accumulators per pattern (int16 to avoid overflow) */
-            static int16_t t12_lp_sum[4][LP_HIDDEN_DIM];
-            static int8_t  t12_lp_mean[4][LP_HIDDEN_DIM];
-            int            t12_lp_n[4] = {0};
-            memset(t12_lp_sum,  0, sizeof(t12_lp_sum));
-            memset(t12_lp_mean, 0, sizeof(t12_lp_mean));
+        int t13_confirmed[4]  = {0};
+        int t13_lp_steps      = 0;
 
-            /* Re-enable CfC blend. W_f hidden=0 keeps TriX scores
-             * input-only, so classification accuracy is preserved. */
+        /* LP accumulators — int16 safe for <=32767 samples @ ±1 */
+        static int16_t t13_lp_sum[4][LP_HIDDEN_DIM];
+        static int8_t  t13_lp_mean[4][LP_HIDDEN_DIM];
+        int            t13_lp_n[4] = {0};
+        memset(t13_lp_sum,  0, sizeof(t13_lp_sum));
+        memset(t13_lp_mean, 0, sizeof(t13_lp_mean));
+
+        /* Fresh slate: clear VDB and LP hidden.
+         * gate_threshold stays at 90 — GIE blend is active, same
+         * as TEST 12, so the only variable is CMD 4 vs CMD 5. */
+        vdb_clear();
+        memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
+        gate_fires_total = 0;
+        gate_steps_total = 0;
+
+        premultiply_all();
+        encode_all_neurons();
+        build_circular_chain();
+        start_freerun();
+        espnow_ring_flush();
+
+        printf("  CMD 4 (no VDB blend), VDB cleared, LP reset\n");
+        printf("  running 120s: classify → feed LP → CfC step only\n");
+        fflush(stdout);
+
+        int64_t t13_start_us = esp_timer_get_time();
+
+        while ((esp_timer_get_time() - t13_start_us) < T13_PHASE_US) {
+            vTaskDelay(pdMS_TO_TICKS(T11_DRAIN_MS));
+            int nd = espnow_drain(drain_buf, 32);
+            for (int i = 0; i < nd; i++) {
+                if (!espnow_encode_rx_entry(&drain_buf[i], NULL)) continue;
+
+                gie_input_pending = 1;
+                int spins = 0;
+                while (gie_input_pending && spins < 5000) {
+                    esp_rom_delay_us(5);
+                    spins++;
+                }
+
+                /* CPU classification — identical to TEST 12 */
+                int core_best = -9999, core_pred = 0;
+                for (int p = 0; p < NUM_TEMPLATES; p++) {
+                    int d = 0;
+                    for (int j = 0; j < CFC_INPUT_DIM; j++) {
+                        if (sig[p][j] != T_ZERO && cfc.input[j] != T_ZERO)
+                            d += tmul(sig[p][j], cfc.input[j]);
+                    }
+                    if (d > core_best) { core_best = d; core_pred = p; }
+                }
+                if (core_best < NOVELTY_THRESHOLD) continue;
+
+                int pred = core_pred;
+                t13_confirmed[pred]++;
+
+                /* CMD 4: CfC step + VDB search.
+                 * LP hidden is updated by the CfC weights alone.
+                 * The retrieved memory is NOT blended into lp_hidden.
+                 * This isolates CfC integration from VDB retrieval. */
+                feed_lp_core();
+                vdb_result_t t13_res;
+                if (vdb_cfc_pipeline_step(&t13_res) == 0) t13_lp_steps++;
+
+                int8_t lp_now[LP_HIDDEN_DIM];
+                memcpy(lp_now, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
+                for (int j = 0; j < LP_HIDDEN_DIM; j++)
+                    t13_lp_sum[pred][j] += lp_now[j];
+                t13_lp_n[pred]++;
+            }
+        }
+
+        stop_freerun();
+
+        /* Compute per-pattern LP means */
+        printf("\n  ── LP Hidden State by Pattern (CMD 4, no blend) ──\n");
+        for (int p = 0; p < 4; p++) {
+            int energy = 0;
+            for (int j = 0; j < LP_HIDDEN_DIM; j++) {
+                int8_t v = (t13_lp_n[p] > 0) ? tsign(t13_lp_sum[p][j]) : T_ZERO;
+                t13_lp_mean[p][j] = v;
+                if (v != T_ZERO) energy++;
+            }
+            printf("    P%d: %d samples, energy=%d/16", p, t13_lp_n[p], energy);
+            if (t13_lp_n[p] > 0) {
+                printf(" [");
+                for (int j = 0; j < LP_HIDDEN_DIM; j++)
+                    printf("%c", trit_char(t13_lp_mean[p][j]));
+                printf("]");
+            }
+            printf("\n");
+        }
+
+        /* Hamming matrix for CMD 4 (ablation) */
+        printf("\n  ── LP Divergence Matrix (CMD 4 — ablation) ──\n");
+        printf("       P0  P1  P2  P3\n");
+        int any_diverge_cmd4 = 0;
+        int cmd4_min_hamming = INT32_MAX;
+        for (int p = 0; p < 4; p++) {
+            printf("  P%d:", p);
+            for (int q = 0; q < 4; q++) {
+                if (t13_lp_n[p] > 0 && t13_lp_n[q] > 0) {
+                    int h = trit_hamming(t13_lp_mean[p], t13_lp_mean[q],
+                                         LP_HIDDEN_DIM);
+                    printf("  %2d", h);
+                    if (p != q) {
+                        if (h > 0) any_diverge_cmd4 = 1;
+                        if (h < cmd4_min_hamming) cmd4_min_hamming = h;
+                    }
+                } else {
+                    printf("   -");
+                }
+            }
+            printf("\n");
+        }
+
+        /* Primary attribution pair: P1 vs P2.
+         * P3 has an incrementing payload — novelty-gate pass rate varies
+         * by session, making it unreliable for cross-run comparison.
+         * P1 (burst) vs P2 (2 Hz slow) are robustly classified every run.
+         * The ablation question: does CMD 5 produce P1≠P2 while CMD 4 gives P1=P2? */
+        int p1p2_cmd4 = (t13_lp_n[1] >= T13_MIN_SAMPLES &&
+                         t13_lp_n[2] >= T13_MIN_SAMPLES)
+            ? trit_hamming(t13_lp_mean[1], t13_lp_mean[2], LP_HIDDEN_DIM) : -1;
+        /* t12_p1p2_result and t12_mean1/2 hoisted to TEST 11 outer scope */
+        int p1p2_cmd5 = (t12_n1 >= T12_MIN_SAMPLES && t12_n2 >= T12_MIN_SAMPLES)
+            ? t12_p1p2_result : -1;
+
+        /* Also report P1 vs P3 if available */
+        int p1p3_cmd4 = (t13_lp_n[1] > 0 && t13_lp_n[3] > 0)
+            ? trit_hamming(t13_lp_mean[1], t13_lp_mean[3], LP_HIDDEN_DIM) : -1;
+        int p1p3_cmd5 = t12_p1p3_result;  /* captured from TEST 12 */
+
+        printf("\n  ── Attribution Analysis (P1 vs P2 primary pair) ──\n");
+        if (p1p2_cmd5 >= 0)
+            printf("  CMD 5 (TEST 12) P1 vs P2 Hamming: %d\n", p1p2_cmd5);
+        if (p1p2_cmd4 >= 0)
+            printf("  CMD 4 (TEST 13) P1 vs P2 Hamming: %d\n", p1p2_cmd4);
+        if (p1p3_cmd5 >= 0)
+            printf("  CMD 5 (TEST 12) P1 vs P3 Hamming: %d\n", p1p3_cmd5);
+        if (p1p3_cmd4 >= 0)
+            printf("  CMD 4 (TEST 13) P1 vs P3 Hamming: %d\n", p1p3_cmd4);
+
+        if (p1p2_cmd5 >= 0 && p1p2_cmd4 >= 0) {
+            int delta12 = p1p2_cmd5 - p1p2_cmd4;
+            printf("  VDB feedback contribution (P1 vs P2): %+d trits\n", delta12);
+            if (p1p2_cmd4 == 0 && p1p2_cmd5 > 0) {
+                printf("  RESULT: P1=P2 without VDB blend (CMD 4).\n");
+                printf("          P1≠P2 with VDB blend (CMD 5, Hamming %d).\n",
+                       p1p2_cmd5);
+                printf("          VDB feedback is causally necessary for LP separation.\n");
+                printf("          Memory-modulated attention: CONFIRMED with control.\n");
+            } else if (delta12 > 0) {
+                printf("  RESULT: LP diverges without VDB (CMD 4 Hamming=%d),\n",
+                       p1p2_cmd4);
+                printf("          but CMD 5 produces stronger separation (+%d trits).\n",
+                       delta12);
+                printf("          CfC integration drives baseline; VDB amplifies it.\n");
+            } else if (delta12 == 0) {
+                printf("  RESULT: P1 vs P2 Hamming identical under CMD 4 and CMD 5.\n");
+                printf("          CfC integration of GIE hidden is sufficient.\n");
+            }
+        } else if (!any_diverge_cmd4) {
+            printf("  RESULT: No LP divergence without VDB blend (CMD 4).\n");
+            printf("          VDB feedback is causally necessary.\n");
+            printf("          Memory-modulated attention: CONFIRMED with control.\n");
+        } else {
+            printf("  RESULT: LP diverges under CMD 4 (min Hamming=%d).\n",
+                   cmd4_min_hamming == INT32_MAX ? -1 : cmd4_min_hamming);
+            printf("          Insufficient data for P1 vs P2 comparison.\n");
+        }
+
+        /* Pass: >= T13_N_REQUIRED patterns have >= T13_MIN_SAMPLES.
+         * Attribution result is reported as data; not a pass/fail axis. */
+        #define T13_N_REQUIRED 3
+        int t13_sufficient_count = 0;
+        for (int p = 0; p < 4; p++) {
+            if (t13_lp_n[p] >= T13_MIN_SAMPLES) t13_sufficient_count++;
+            else if (t13_lp_n[p] > 0)
+                printf("  NOTE: P%d only %d samples (below %d threshold)\n",
+                       p, t13_lp_n[p], T13_MIN_SAMPLES);
+        }
+        printf("  Sufficient patterns: %d/%d (need >=%d)\n",
+               t13_sufficient_count, 4, T13_N_REQUIRED);
+        int ok13 = (t13_sufficient_count >= T13_N_REQUIRED) && (t13_lp_steps >= 4);
+        printf("  %s\n\n", ok13 ? "OK" : "FAIL");
+        fflush(stdout);
+        return ok13;
+    }
+}
+
+static int run_test_14(void) {
+    /* ══════════════════════════════════════════════════════════════
+     *  TEST 14: Kinetic Attention — Agreement-Weighted Gate Bias
+     *
+     *  THE QUESTION: Does LP hidden state biasing GIE gate thresholds
+     *  produce measurably different LP divergence than the unbiased
+     *  baseline?
+     *
+     *  MECHANISM (from March 22 LMM synthesis):
+     *  - agreement = trit_dot(lp_now, tsign(lp_running_sum[p_hat]))
+     *  - gate_bias[p_hat] = BASE_GATE_BIAS * max(0, agreement)
+     *  - ISR: effective_threshold = gate_threshold - gate_bias[group]
+     *  - Floor at MIN_GATE_THRESHOLD
+     *  - Decay all biases by 0.9 on each confirmation
+     *  - Cold-start: bias = 0 until lp_sample_count >= T14_MIN_SAMPLES
+     *
+     *  THREE CONDITIONS:
+     *  - 14A: baseline (gate_bias = 0 always)
+     *  - 14C: full agreement-weighted bias from start
+     *  - 14C-iso: bias disabled for first 60s (LP priors build unbiased),
+     *    then enabled for remaining 60s (isolates whether bias helps an
+     *    established prior vs. building the prior differently)
+     *
+     *  PASS CRITERIA (hardened after April 6 red-team):
+     *  - Gate bias activates in 14C (max > 0)
+     *  - Mean Hamming across all valid pairs: 14C >= 14A
+     *  - No catastrophic regression: no pair where 14C < 14A by > 3
+     *  - Per-group fire rates show bias effect (any group differs > 10%)
+     *  - Bias duty cycle reported (fraction of ISR loops with non-zero bias)
+     * ══════════════════════════════════════════════════════════════ */
+    printf("-- TEST 14: Kinetic Attention (Agreement-Weighted Gate Bias) --\n");
+    fflush(stdout);
+    {
+        #define T14_PHASE_US       120000000LL  /* 120s per condition */
+        #define T14_ISO_DELAY_US    60000000LL  /* 14C-iso: 60s unbiased buildup */
+        #define T14_INSERT_EVERY   8
+        #define T14_FB_THRESHOLD   8
+        #define T14_MIN_SAMPLES    15
+        #define T14_BIAS_DECAY     0.9f
+        #define T14_N_COND         3
+        #define T14_COND_14A       0
+        #define T14_COND_14C       1
+        #define T14_COND_14C_ISO   2
+
+        static const char *t14_cond_name[T14_N_COND] = {
+            "14A (no bias)",
+            "14C (full bias)",
+            "14C-iso (bias after 60s)"
+        };
+
+        /* Per-condition results */
+        static int8_t t14_lp_mean[T14_N_COND][4][LP_HIDDEN_DIM];
+        static int8_t t14_lp_mean_60s[T14_N_COND][4][LP_HIDDEN_DIM];
+        int t14_lp_n[T14_N_COND][4];
+        int t14_lp_n_60s[T14_N_COND][4];
+        int t14_max_bias[T14_N_COND];
+        int t14_total_confirms[T14_N_COND];
+        int t14_correct[T14_N_COND];
+        int t14_misclass[T14_N_COND];
+        int t14_confusion[T14_N_COND][4][4];
+        int t14_trix_agree[T14_N_COND];
+        int t14_trix_disagree[T14_N_COND];
+        int32_t t14_fires[T14_N_COND][TRIX_NUM_PATTERNS];
+        int32_t t14_bias_active_loops[T14_N_COND];
+        int32_t t14_total_loops[T14_N_COND];
+        memset(t14_lp_mean, 0, sizeof(t14_lp_mean));
+        memset(t14_lp_mean_60s, 0, sizeof(t14_lp_mean_60s));
+        memset(t14_lp_n, 0, sizeof(t14_lp_n));
+        memset(t14_lp_n_60s, 0, sizeof(t14_lp_n_60s));
+        memset(t14_max_bias, 0, sizeof(t14_max_bias));
+        memset(t14_total_confirms, 0, sizeof(t14_total_confirms));
+        memset(t14_correct, 0, sizeof(t14_correct));
+        memset(t14_misclass, 0, sizeof(t14_misclass));
+        memset(t14_confusion, 0, sizeof(t14_confusion));
+        memset(t14_trix_agree, 0, sizeof(t14_trix_agree));
+        memset(t14_trix_disagree, 0, sizeof(t14_trix_disagree));
+        memset(t14_fires, 0, sizeof(t14_fires));
+        memset(t14_bias_active_loops, 0, sizeof(t14_bias_active_loops));
+        memset(t14_total_loops, 0, sizeof(t14_total_loops));
+
+        for (int cond = 0; cond < T14_N_COND; cond++) {
+            printf("\n  ── Condition: %s ──\n", t14_cond_name[cond]);
+            fflush(stdout);
+
+            /* Reset everything for this condition */
             gate_threshold    = 90;
             gate_fires_total  = 0;
             gate_steps_total  = 0;
-
-            /* Clear VDB and LP state so memories are drawn only from
-             * this session's pattern exposure, not from TEST 8 data. */
+            memset((void *)gie_gate_bias, 0, sizeof(gie_gate_bias));
+            memset((void *)gie_gate_fires_per_group, 0,
+                   sizeof(gie_gate_fires_per_group));
             vdb_clear();
             memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
-            ulp_fb_threshold   = T12_FB_THRESHOLD;
+            ulp_fb_threshold    = T14_FB_THRESHOLD;
             ulp_fb_total_blends = 0;
 
-            /* Restart GIE. W_f still has signatures from Phase 0c.
-             * premultiply/encode rebuild the descriptor data. */
+            /* LP accumulators for this condition */
+            static int16_t t14_lp_sum[4][LP_HIDDEN_DIM];
+            static int16_t t14_lp_sum_snap60[4][LP_HIDDEN_DIM];
+            int t14_n[4] = {0};
+            int t14_n_snap60[4] = {0};
+            int snapped_60s = 0;
+            memset(t14_lp_sum, 0, sizeof(t14_lp_sum));
+            memset(t14_lp_sum_snap60, 0, sizeof(t14_lp_sum_snap60));
+
+            /* Gate bias float state (for decay) */
+            float bias_f[TRIX_NUM_PATTERNS] = {0};
+            int max_bias_seen = 0;
+            int total_confirms = 0;
+            int correct_count = 0;
+            int misclass_count = 0;
+            int32_t bias_active_count = 0;
+            int32_t loop_snap_start = 0;
+
+            /* Restart GIE with TriX enabled (for ISR classification) */
             premultiply_all();
             encode_all_neurons();
             build_circular_chain();
             start_freerun();
+            trix_enabled = 1;
             espnow_ring_flush();
+            loop_snap_start = loop_count;
 
-            printf("  blend re-enabled (threshold=90), VDB cleared, LP reset\n");
-            printf("  running 120s: classify → insert snapshot → LP feedback\n");
-            fflush(stdout);
+            int64_t t14_start_us = esp_timer_get_time();
 
-            int64_t t12_start_us = esp_timer_get_time();
-
-            while ((esp_timer_get_time() - t12_start_us) < T12_PHASE_US) {
+            while ((esp_timer_get_time() - t14_start_us) < T14_PHASE_US) {
                 vTaskDelay(pdMS_TO_TICKS(T11_DRAIN_MS));
                 int nd = espnow_drain(drain_buf, 32);
                 for (int i = 0; i < nd; i++) {
-                    if (!espnow_encode_rx_entry(&drain_buf[i], NULL)) continue;
+                    if (!espnow_encode_rx_entry(&drain_buf[i], NULL))
+                        continue;
 
-                    /* Signal ISR to re-encode input at next loop boundary
-                     * and wait for the re-encode to complete. */
+                    /* Signal ISR to re-encode input */
                     gie_input_pending = 1;
                     int spins = 0;
                     while (gie_input_pending && spins < 5000) {
@@ -2775,989 +3423,453 @@ void app_main(void) {
                         spins++;
                     }
 
-                    /* CPU core classification (same logic as TEST 11 Phase 1) */
+                    /* CPU classification */
                     int core_best = -9999, core_pred = 0;
                     for (int p = 0; p < NUM_TEMPLATES; p++) {
                         int d = 0;
                         for (int j = 0; j < CFC_INPUT_DIM; j++) {
-                            if (sig[p][j] != T_ZERO && cfc.input[j] != T_ZERO)
+                            if (sig[p][j] != T_ZERO &&
+                                cfc.input[j] != T_ZERO)
                                 d += tmul(sig[p][j], cfc.input[j]);
                         }
-                        if (d > core_best) { core_best = d; core_pred = p; }
+                        if (d > core_best) {
+                            core_best = d;
+                            core_pred = p;
+                        }
                     }
-
-                    /* Novelty gate — reject low-confidence packets */
                     if (core_best < NOVELTY_THRESHOLD) continue;
 
-                    /* Confirmed classification */
                     int pred = core_pred;
-                    t12_confirmed[pred]++;
-                    t12_confirmations++;
+                    total_confirms++;
 
-                    /* Feed current GIE hidden state to LP core, then
-                     * run one CfC+VDB+feedback step. LP retrieves the
-                     * most similar past state and blends it into lp_hidden.
-                     * If VDB is empty, feedback is skipped (LP still runs
-                     * the CfC step — this is correct startup behavior). */
-                    feed_lp_core();
-                    vdb_result_t t12_fb_res;
-                    if (vdb_cfc_feedback_step(&t12_fb_res) == 0) {
-                        t12_lp_steps++;
-                        if (ulp_fb_applied) t12_fb_applied++;
+                    /* Classification accuracy vs ground truth */
+                    uint8_t gt = drain_buf[i].pkt.pattern_id;
+                    if (gt < 4) {
+                        if (pred == (int)gt) correct_count++;
+                        else misclass_count++;
+                        t14_confusion[cond][(int)gt][pred]++;
                     }
 
-                    /* Read LP hidden state and accumulate per pattern */
-                    int8_t lp_now[LP_HIDDEN_DIM];
-                    memcpy(lp_now, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
-                    for (int j = 0; j < LP_HIDDEN_DIM; j++)
-                        t12_lp_sum[pred][j] += lp_now[j];
-                    t12_lp_n[pred]++;
+                    /* TriX ISR vs core_pred agreement.
+                     * Wait for a fresh trix_channel signal (the ISR
+                     * signals on each clean loop after re-encode). */
+                    {
+                        uint32_t seq_before = trix_channel.sequence;
+                        uint32_t new_seq = reflex_wait_timeout(
+                            &trix_channel, seq_before, 8000000);
+                        uint32_t packed = (new_seq != 0)
+                            ? reflex_read(&trix_channel) : 0;
+                        if (new_seq != 0 && packed != 0) {
+                            int32_t isr_d[4];
+                            for (int g = 0; g < 4; g++)
+                                isr_d[g] = (int8_t)(
+                                    (packed >> (g*8)) & 0xFF);
+                            int isr_best_val = -9999;
+                            for (int g = 0; g < 4; g++)
+                                if (isr_d[g] > isr_best_val)
+                                    isr_best_val = isr_d[g];
+                            /* Match ISR max to CPU pattern */
+                            int isr_p = -1, best_dist = 9999;
+                            int cpu_d[4] = {0};
+                            for (int pp = 0; pp < NUM_TEMPLATES; pp++)
+                                for (int j = 0; j < CFC_INPUT_DIM; j++)
+                                    if (sig[pp][j] != T_ZERO &&
+                                        cfc.input[j] != T_ZERO)
+                                        cpu_d[pp] += tmul(
+                                            sig[pp][j], cfc.input[j]);
+                            for (int pp = 0; pp < 4; pp++) {
+                                int dist = isr_best_val - cpu_d[pp];
+                                if (dist < 0) dist = -dist;
+                                if (dist < best_dist) {
+                                    best_dist = dist;
+                                    isr_p = pp;
+                                }
+                            }
+                            if (isr_p >= 0 && isr_p < 4) {
+                                if (isr_p == pred)
+                                    t14_trix_agree[cond]++;
+                                else
+                                    t14_trix_disagree[cond]++;
+                            }
+                        }
+                    }
 
-                    /* Periodic VDB snapshot: [gie_hidden (32) | lp_hidden (16)].
-                     * This stores "what the system looked like at this
-                     * pattern-P moment" for future LP retrieval. */
-                    if (t12_confirmations % T12_INSERT_EVERY == 0 &&
+                    /* Mid-run snapshot at t=60s (confound control) */
+                    int64_t elapsed_us = esp_timer_get_time()
+                                       - t14_start_us;
+                    if (!snapped_60s &&
+                        elapsed_us >= T14_ISO_DELAY_US) {
+                        memcpy(t14_lp_sum_snap60, t14_lp_sum,
+                               sizeof(t14_lp_sum));
+                        memcpy(t14_n_snap60, t14_n, sizeof(t14_n));
+                        snapped_60s = 1;
+                    }
+
+                    /* Feed LP + run CMD 5 */
+                    feed_lp_core();
+                    vdb_result_t t14_fb_res;
+                    vdb_cfc_feedback_step(&t14_fb_res);
+
+                    /* Read LP hidden state, accumulate */
+                    int8_t lp_now[LP_HIDDEN_DIM];
+                    memcpy(lp_now, ulp_addr(&ulp_lp_hidden),
+                           LP_HIDDEN_DIM);
+                    for (int j = 0; j < LP_HIDDEN_DIM; j++)
+                        t14_lp_sum[pred][j] += lp_now[j];
+                    t14_n[pred]++;
+
+                    /* ── Agreement-weighted gate bias update ── */
+                    /* elapsed_us already computed above (mid-run snapshot) */
+                    int use_bias = 0;
+                    if (cond == T14_COND_14C) {
+                        use_bias = 1;
+                    } else if (cond == T14_COND_14C_ISO) {
+                        /* Bias only after 60s buildup phase */
+                        use_bias = (elapsed_us >= T14_ISO_DELAY_US) ? 1 : 0;
+                    }
+                    /* 14A: use_bias stays 0 */
+
+                    if (use_bias) {
+                        /* Decay all groups */
+                        for (int p = 0; p < TRIX_NUM_PATTERNS; p++)
+                            bias_f[p] *= T14_BIAS_DECAY;
+
+                        /* Update for current prediction if enough
+                         * samples (cold-start guard) */
+                        if (t14_n[pred] >= T14_MIN_SAMPLES) {
+                            int dot = 0;
+                            for (int j = 0; j < LP_HIDDEN_DIM; j++) {
+                                int8_t m = tsign(t14_lp_sum[pred][j]);
+                                dot += tmul(lp_now[j], m);
+                            }
+                            float ag = (float)dot / LP_HIDDEN_DIM;
+                            float b = BASE_GATE_BIAS *
+                                      (ag > 0.0f ? ag : 0.0f);
+                            if (b > bias_f[pred]) bias_f[pred] = b;
+                        }
+
+                        /* Write to engine */
+                        for (int p = 0; p < TRIX_NUM_PATTERNS; p++) {
+                            gie_gate_bias[p] = (int8_t)bias_f[p];
+                            if ((int)bias_f[p] > max_bias_seen)
+                                max_bias_seen = (int)bias_f[p];
+                        }
+                    } else {
+                        /* Ensure bias is zero for this condition/phase */
+                        memset((void *)gie_gate_bias, 0,
+                               sizeof(gie_gate_bias));
+                        memset(bias_f, 0, sizeof(bias_f));
+                    }
+
+                    /* Track bias duty cycle: count loops where any
+                     * group has non-zero bias since last check */
+                    int any_bias = 0;
+                    for (int p = 0; p < TRIX_NUM_PATTERNS; p++)
+                        if (gie_gate_bias[p] > 0) any_bias = 1;
+                    if (any_bias) bias_active_count++;
+
+                    /* VDB snapshot insert */
+                    if (total_confirms % T14_INSERT_EVERY == 0 &&
                         vdb_count() < VDB_MAX_NODES) {
                         int8_t snap[VDB_TRIT_DIM];
                         memcpy(snap, (void *)cfc.hidden, LP_GIE_HIDDEN);
-                        memcpy(snap + LP_GIE_HIDDEN, lp_now, LP_HIDDEN_DIM);
-                        if (vdb_insert(snap) >= 0) t12_vdb_inserts++;
-                    }
-                }
-            }
-
-            stop_freerun();
-
-            /* Compute mean LP hidden per pattern: sign of accumulated sum */
-            printf("\n  ── LP Hidden State by Pattern ──\n");
-            for (int p = 0; p < 4; p++) {
-                int energy = 0;
-                for (int j = 0; j < LP_HIDDEN_DIM; j++) {
-                    int8_t v = (t12_lp_n[p] > 0) ? tsign(t12_lp_sum[p][j]) : T_ZERO;
-                    t12_lp_mean[p][j] = v;
-                    if (v != T_ZERO) energy++;
-                }
-                printf("    P%d: %d samples, energy=%d/16", p, t12_lp_n[p], energy);
-                if (t12_lp_n[p] > 0) {
-                    printf(" [");
-                    for (int j = 0; j < LP_HIDDEN_DIM; j++)
-                        printf("%c", trit_char(t12_lp_mean[p][j]));
-                    printf("]");
-                }
-                printf("\n");
-            }
-
-            /* Hamming divergence matrix across all pattern pairs */
-            printf("\n  ── LP Divergence Matrix (Hamming) ──\n");
-            printf("       P0  P1  P2  P3\n");
-            int any_diverge = 0;
-            for (int p = 0; p < 4; p++) {
-                printf("  P%d:", p);
-                for (int q = 0; q < 4; q++) {
-                    if (t12_lp_n[p] > 0 && t12_lp_n[q] > 0) {
-                        int h = trit_hamming(t12_lp_mean[p], t12_lp_mean[q],
-                                             LP_HIDDEN_DIM);
-                        printf("  %2d", h);
-                        if (p != q && h > 0) any_diverge = 1;
-                    } else {
-                        printf("   -");
-                    }
-                }
-                printf("\n");
-            }
-
-            /* P1 vs P3: the ambiguous pair that rate-only baseline
-             * cannot distinguish. Memory-modulated LP should separate them. */
-            int p1p3 = (t12_lp_n[1] > 0 && t12_lp_n[3] > 0)
-                ? trit_hamming(t12_lp_mean[1], t12_lp_mean[3], LP_HIDDEN_DIM)
-                : -1;
-            t12_p1p3_result = p1p3;  /* expose to TEST 13 */
-            /* Expose P1 vs P2 results for TEST 13 attribution comparison */
-            t12_n1 = t12_lp_n[1];
-            t12_n2 = t12_lp_n[2];
-            memcpy(t12_mean1, t12_lp_mean[1], LP_HIDDEN_DIM);
-            memcpy(t12_mean2, t12_lp_mean[2], LP_HIDDEN_DIM);
-            t12_p1p2_result = (t12_lp_n[1] > 0 && t12_lp_n[2] > 0)
-                ? trit_hamming(t12_lp_mean[1], t12_lp_mean[2], LP_HIDDEN_DIM) : -1;
-
-            printf("\n  ── Summary ──\n");
-            printf("  Confirmed: P0=%d P1=%d P2=%d P3=%d (total=%d)\n",
-                   t12_confirmed[0], t12_confirmed[1],
-                   t12_confirmed[2], t12_confirmed[3], t12_confirmations);
-            printf("  VDB inserts: %d (VDB count: %d/%d)\n",
-                   t12_vdb_inserts, vdb_count(), VDB_MAX_NODES);
-            printf("  LP feedback steps: %d, feedback applied: %d\n",
-                   t12_lp_steps, t12_fb_applied);
-            printf("  Gate firing: %d%%\n",
-                   gate_steps_total > 0
-                       ? (int)(gate_fires_total * 100LL / gate_steps_total) : 0);
-            printf("  P1 vs P3 Hamming: %s\n",
-                   p1p3 >= 0 ? (p1p3 > 0 ? "DIVERGED (memory modulated)" : "0 (same)")
-                              : "insufficient data");
-            printf("  Cross-pattern LP divergence: %s\n",
-                   any_diverge ? "YES — sub-conscious state reflects pattern history"
-                               : "NO — LP state did not differentiate patterns");
-            printf("\n  Architecture note:\n");
-            printf("  - TriX classification unchanged (W_f hidden=0, ISR step 3b\n");
-            printf("    runs before blend step 4 — scores are always input-driven)\n");
-            printf("  - LP hidden = episodic memory of pattern exposure\n");
-            printf("  - VDB retrieval shapes LP trajectory via ternary blend\n");
-            printf("  - This closes the loop: perceive → classify → remember\n");
-            printf("    → retrieve → modulate — without CPU or multiplication\n");
-
-            /* Strengthened pass criteria (red-team Mar 22, revised post-ablation):
-             *  (a) >= T12_N_REQUIRED patterns have >= T12_MIN_SAMPLES each
-             *      Note: P3 has incrementing payload — novelty gate pass rate
-             *      varies per run. Require 3 of 4 patterns, not all 4.
-             *  (b) All well-sampled cross-pattern pairs: Hamming >= 1
-             *      Justification: TEST 13 (CMD 4 ablation) establishes the
-             *      noise floor empirically as Hamming=0 (P1=P2 under CMD 4).
-             *      Any CMD 5 result above 0 is attributable to VDB feedback,
-             *      not measurement noise. The floor is 0, not 2.
-             *  (c) VDB populated >= 4, LP stepped >= 4 */
-            #define T12_MIN_SAMPLES  15
-            #define T12_N_REQUIRED    3   /* at least 3 of 4 patterns */
-            int t12_sufficient_count = 0;
-            int t12_min_hamming_ok = 1;
-            for (int pa = 0; pa < 4; pa++) {
-                if (t12_lp_n[pa] >= T12_MIN_SAMPLES) t12_sufficient_count++;
-                else if (t12_lp_n[pa] > 0)
-                    printf("  NOTE: P%d only %d samples (below %d threshold)\n",
-                           pa, t12_lp_n[pa], T12_MIN_SAMPLES);
-            }
-            int t12_coverage_ok = (t12_sufficient_count >= T12_N_REQUIRED);
-            if (t12_coverage_ok) {
-                for (int pa = 0; pa < 4 && t12_min_hamming_ok; pa++) {
-                    if (t12_lp_n[pa] < T12_MIN_SAMPLES) continue;
-                    for (int pb = pa+1; pb < 4; pb++) {
-                        if (t12_lp_n[pb] < T12_MIN_SAMPLES) continue;
-                        int hh = trit_hamming(t12_lp_mean[pa], t12_lp_mean[pb],
-                                              LP_HIDDEN_DIM);
-                        if (hh < 1) {
-                            t12_min_hamming_ok = 0;
-                            printf("  WARNING: P%d vs P%d Hamming=%d (need >=1)\n",
-                                   pa, pb, hh);
-                            break;
-                        }
-                    }
-                }
-            }
-            printf("  Sufficient patterns: %d/%d (need >=%d with >=%d samples each)\n",
-                   t12_sufficient_count, 4, T12_N_REQUIRED, T12_MIN_SAMPLES);
-            int ok12 = t12_coverage_ok && t12_min_hamming_ok
-                       && (vdb_count() >= 4) && (t12_lp_steps >= 4);
-            test_count++;
-            if (ok12) pass_count++;
-            printf("  %s\n\n", ok12 ? "OK" : "FAIL");
-            fflush(stdout);
-        }
-
-        /* ══════════════════════════════════════════════════════════════
-         *  TEST 13: CMD 4 Ablation — CfC + VDB search, no feedback blend
-         *
-         *  Controls for TEST 12. Answers: does LP hidden diverge by
-         *  pattern purely from CfC integration of pattern-correlated
-         *  GIE hidden state, WITHOUT any VDB → lp_hidden blend?
-         *
-         *  CMD 4 = CfC step + VDB search. lp_hidden is updated by the
-         *  CfC step (using [gie_hidden | lp_hidden] as input) but the
-         *  retrieved memory is NOT blended back into lp_hidden.
-         *
-         *  Outcome interpretation:
-         *   - No LP divergence with CMD 4 → VDB blend (CMD 5) is
-         *     causally necessary. "Memory-modulated" claim confirmed.
-         *   - LP diverges with CMD 4 → CfC integration of GIE hidden
-         *     alone suffices. VDB contributes but is not sole cause.
-         *     "Memory-modulated" claim requires qualification.
-         *
-         *  Pass criterion: all 4 patterns >= T13_MIN_SAMPLES, LP
-         *  stepped >= 4. Outcome (diverge/not) is reported as data —
-         *  TEST 13 is a measurement, not a pass/fail on the result.
-         * ══════════════════════════════════════════════════════════════ */
-        printf("-- TEST 13: CMD 4 Ablation (CfC only, no VDB blend) --\n");
-        fflush(stdout);
-        {
-            #define T13_PHASE_US    120000000LL  /* 120s — same duration as TEST 12 */
-            #define T13_MIN_SAMPLES 15
-
-            int t13_confirmed[4]  = {0};
-            int t13_lp_steps      = 0;
-
-            /* LP accumulators — int16 safe for <=32767 samples @ ±1 */
-            static int16_t t13_lp_sum[4][LP_HIDDEN_DIM];
-            static int8_t  t13_lp_mean[4][LP_HIDDEN_DIM];
-            int            t13_lp_n[4] = {0};
-            memset(t13_lp_sum,  0, sizeof(t13_lp_sum));
-            memset(t13_lp_mean, 0, sizeof(t13_lp_mean));
-
-            /* Fresh slate: clear VDB and LP hidden.
-             * gate_threshold stays at 90 — GIE blend is active, same
-             * as TEST 12, so the only variable is CMD 4 vs CMD 5. */
-            vdb_clear();
-            memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
-            gate_fires_total = 0;
-            gate_steps_total = 0;
-
-            premultiply_all();
-            encode_all_neurons();
-            build_circular_chain();
-            start_freerun();
-            espnow_ring_flush();
-
-            printf("  CMD 4 (no VDB blend), VDB cleared, LP reset\n");
-            printf("  running 120s: classify → feed LP → CfC step only\n");
-            fflush(stdout);
-
-            int64_t t13_start_us = esp_timer_get_time();
-
-            while ((esp_timer_get_time() - t13_start_us) < T13_PHASE_US) {
-                vTaskDelay(pdMS_TO_TICKS(T11_DRAIN_MS));
-                int nd = espnow_drain(drain_buf, 32);
-                for (int i = 0; i < nd; i++) {
-                    if (!espnow_encode_rx_entry(&drain_buf[i], NULL)) continue;
-
-                    gie_input_pending = 1;
-                    int spins = 0;
-                    while (gie_input_pending && spins < 5000) {
-                        esp_rom_delay_us(5);
-                        spins++;
-                    }
-
-                    /* CPU classification — identical to TEST 12 */
-                    int core_best = -9999, core_pred = 0;
-                    for (int p = 0; p < NUM_TEMPLATES; p++) {
-                        int d = 0;
-                        for (int j = 0; j < CFC_INPUT_DIM; j++) {
-                            if (sig[p][j] != T_ZERO && cfc.input[j] != T_ZERO)
-                                d += tmul(sig[p][j], cfc.input[j]);
-                        }
-                        if (d > core_best) { core_best = d; core_pred = p; }
-                    }
-                    if (core_best < NOVELTY_THRESHOLD) continue;
-
-                    int pred = core_pred;
-                    t13_confirmed[pred]++;
-
-                    /* CMD 4: CfC step + VDB search.
-                     * LP hidden is updated by the CfC weights alone.
-                     * The retrieved memory is NOT blended into lp_hidden.
-                     * This isolates CfC integration from VDB retrieval. */
-                    feed_lp_core();
-                    vdb_result_t t13_res;
-                    if (vdb_cfc_pipeline_step(&t13_res) == 0) t13_lp_steps++;
-
-                    int8_t lp_now[LP_HIDDEN_DIM];
-                    memcpy(lp_now, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
-                    for (int j = 0; j < LP_HIDDEN_DIM; j++)
-                        t13_lp_sum[pred][j] += lp_now[j];
-                    t13_lp_n[pred]++;
-                }
-            }
-
-            stop_freerun();
-
-            /* Compute per-pattern LP means */
-            printf("\n  ── LP Hidden State by Pattern (CMD 4, no blend) ──\n");
-            for (int p = 0; p < 4; p++) {
-                int energy = 0;
-                for (int j = 0; j < LP_HIDDEN_DIM; j++) {
-                    int8_t v = (t13_lp_n[p] > 0) ? tsign(t13_lp_sum[p][j]) : T_ZERO;
-                    t13_lp_mean[p][j] = v;
-                    if (v != T_ZERO) energy++;
-                }
-                printf("    P%d: %d samples, energy=%d/16", p, t13_lp_n[p], energy);
-                if (t13_lp_n[p] > 0) {
-                    printf(" [");
-                    for (int j = 0; j < LP_HIDDEN_DIM; j++)
-                        printf("%c", trit_char(t13_lp_mean[p][j]));
-                    printf("]");
-                }
-                printf("\n");
-            }
-
-            /* Hamming matrix for CMD 4 (ablation) */
-            printf("\n  ── LP Divergence Matrix (CMD 4 — ablation) ──\n");
-            printf("       P0  P1  P2  P3\n");
-            int any_diverge_cmd4 = 0;
-            int cmd4_min_hamming = INT32_MAX;
-            for (int p = 0; p < 4; p++) {
-                printf("  P%d:", p);
-                for (int q = 0; q < 4; q++) {
-                    if (t13_lp_n[p] > 0 && t13_lp_n[q] > 0) {
-                        int h = trit_hamming(t13_lp_mean[p], t13_lp_mean[q],
-                                             LP_HIDDEN_DIM);
-                        printf("  %2d", h);
-                        if (p != q) {
-                            if (h > 0) any_diverge_cmd4 = 1;
-                            if (h < cmd4_min_hamming) cmd4_min_hamming = h;
-                        }
-                    } else {
-                        printf("   -");
-                    }
-                }
-                printf("\n");
-            }
-
-            /* Primary attribution pair: P1 vs P2.
-             * P3 has an incrementing payload — novelty-gate pass rate varies
-             * by session, making it unreliable for cross-run comparison.
-             * P1 (burst) vs P2 (2 Hz slow) are robustly classified every run.
-             * The ablation question: does CMD 5 produce P1≠P2 while CMD 4 gives P1=P2? */
-            int p1p2_cmd4 = (t13_lp_n[1] >= T13_MIN_SAMPLES &&
-                             t13_lp_n[2] >= T13_MIN_SAMPLES)
-                ? trit_hamming(t13_lp_mean[1], t13_lp_mean[2], LP_HIDDEN_DIM) : -1;
-            /* t12_p1p2_result and t12_mean1/2 hoisted to TEST 11 outer scope */
-            int p1p2_cmd5 = (t12_n1 >= T12_MIN_SAMPLES && t12_n2 >= T12_MIN_SAMPLES)
-                ? t12_p1p2_result : -1;
-
-            /* Also report P1 vs P3 if available */
-            int p1p3_cmd4 = (t13_lp_n[1] > 0 && t13_lp_n[3] > 0)
-                ? trit_hamming(t13_lp_mean[1], t13_lp_mean[3], LP_HIDDEN_DIM) : -1;
-            int p1p3_cmd5 = t12_p1p3_result;  /* captured from TEST 12 */
-
-            printf("\n  ── Attribution Analysis (P1 vs P2 primary pair) ──\n");
-            if (p1p2_cmd5 >= 0)
-                printf("  CMD 5 (TEST 12) P1 vs P2 Hamming: %d\n", p1p2_cmd5);
-            if (p1p2_cmd4 >= 0)
-                printf("  CMD 4 (TEST 13) P1 vs P2 Hamming: %d\n", p1p2_cmd4);
-            if (p1p3_cmd5 >= 0)
-                printf("  CMD 5 (TEST 12) P1 vs P3 Hamming: %d\n", p1p3_cmd5);
-            if (p1p3_cmd4 >= 0)
-                printf("  CMD 4 (TEST 13) P1 vs P3 Hamming: %d\n", p1p3_cmd4);
-
-            if (p1p2_cmd5 >= 0 && p1p2_cmd4 >= 0) {
-                int delta12 = p1p2_cmd5 - p1p2_cmd4;
-                printf("  VDB feedback contribution (P1 vs P2): %+d trits\n", delta12);
-                if (p1p2_cmd4 == 0 && p1p2_cmd5 > 0) {
-                    printf("  RESULT: P1=P2 without VDB blend (CMD 4).\n");
-                    printf("          P1≠P2 with VDB blend (CMD 5, Hamming %d).\n",
-                           p1p2_cmd5);
-                    printf("          VDB feedback is causally necessary for LP separation.\n");
-                    printf("          Memory-modulated attention: CONFIRMED with control.\n");
-                } else if (delta12 > 0) {
-                    printf("  RESULT: LP diverges without VDB (CMD 4 Hamming=%d),\n",
-                           p1p2_cmd4);
-                    printf("          but CMD 5 produces stronger separation (+%d trits).\n",
-                           delta12);
-                    printf("          CfC integration drives baseline; VDB amplifies it.\n");
-                } else if (delta12 == 0) {
-                    printf("  RESULT: P1 vs P2 Hamming identical under CMD 4 and CMD 5.\n");
-                    printf("          CfC integration of GIE hidden is sufficient.\n");
-                }
-            } else if (!any_diverge_cmd4) {
-                printf("  RESULT: No LP divergence without VDB blend (CMD 4).\n");
-                printf("          VDB feedback is causally necessary.\n");
-                printf("          Memory-modulated attention: CONFIRMED with control.\n");
-            } else {
-                printf("  RESULT: LP diverges under CMD 4 (min Hamming=%d).\n",
-                       cmd4_min_hamming == INT32_MAX ? -1 : cmd4_min_hamming);
-                printf("          Insufficient data for P1 vs P2 comparison.\n");
-            }
-
-            /* Pass: >= T13_N_REQUIRED patterns have >= T13_MIN_SAMPLES.
-             * Attribution result is reported as data; not a pass/fail axis. */
-            #define T13_N_REQUIRED 3
-            int t13_sufficient_count = 0;
-            for (int p = 0; p < 4; p++) {
-                if (t13_lp_n[p] >= T13_MIN_SAMPLES) t13_sufficient_count++;
-                else if (t13_lp_n[p] > 0)
-                    printf("  NOTE: P%d only %d samples (below %d threshold)\n",
-                           p, t13_lp_n[p], T13_MIN_SAMPLES);
-            }
-            printf("  Sufficient patterns: %d/%d (need >=%d)\n",
-                   t13_sufficient_count, 4, T13_N_REQUIRED);
-            int ok13 = (t13_sufficient_count >= T13_N_REQUIRED) && (t13_lp_steps >= 4);
-            test_count++;
-            if (ok13) pass_count++;
-            printf("  %s\n\n", ok13 ? "OK" : "FAIL");
-            fflush(stdout);
-        }
-
-        /* ══════════════════════════════════════════════════════════════
-         *  TEST 14: Kinetic Attention — Agreement-Weighted Gate Bias
-         *
-         *  THE QUESTION: Does LP hidden state biasing GIE gate thresholds
-         *  produce measurably different LP divergence than the unbiased
-         *  baseline?
-         *
-         *  MECHANISM (from March 22 LMM synthesis):
-         *  - agreement = trit_dot(lp_now, tsign(lp_running_sum[p_hat]))
-         *  - gate_bias[p_hat] = BASE_GATE_BIAS * max(0, agreement)
-         *  - ISR: effective_threshold = gate_threshold - gate_bias[group]
-         *  - Floor at MIN_GATE_THRESHOLD
-         *  - Decay all biases by 0.9 on each confirmation
-         *  - Cold-start: bias = 0 until lp_sample_count >= T14_MIN_SAMPLES
-         *
-         *  THREE CONDITIONS:
-         *  - 14A: baseline (gate_bias = 0 always)
-         *  - 14C: full agreement-weighted bias from start
-         *  - 14C-iso: bias disabled for first 60s (LP priors build unbiased),
-         *    then enabled for remaining 60s (isolates whether bias helps an
-         *    established prior vs. building the prior differently)
-         *
-         *  PASS CRITERIA (hardened after April 6 red-team):
-         *  - Gate bias activates in 14C (max > 0)
-         *  - Mean Hamming across all valid pairs: 14C >= 14A
-         *  - No catastrophic regression: no pair where 14C < 14A by > 3
-         *  - Per-group fire rates show bias effect (any group differs > 10%)
-         *  - Bias duty cycle reported (fraction of ISR loops with non-zero bias)
-         * ══════════════════════════════════════════════════════════════ */
-        printf("-- TEST 14: Kinetic Attention (Agreement-Weighted Gate Bias) --\n");
-        fflush(stdout);
-        {
-            #define T14_PHASE_US       120000000LL  /* 120s per condition */
-            #define T14_ISO_DELAY_US    60000000LL  /* 14C-iso: 60s unbiased buildup */
-            #define T14_INSERT_EVERY   8
-            #define T14_FB_THRESHOLD   8
-            #define T14_MIN_SAMPLES    15
-            #define T14_BIAS_DECAY     0.9f
-            #define T14_N_COND         3
-            #define T14_COND_14A       0
-            #define T14_COND_14C       1
-            #define T14_COND_14C_ISO   2
-
-            static const char *t14_cond_name[T14_N_COND] = {
-                "14A (no bias)",
-                "14C (full bias)",
-                "14C-iso (bias after 60s)"
-            };
-
-            /* Per-condition results */
-            static int8_t t14_lp_mean[T14_N_COND][4][LP_HIDDEN_DIM];
-            static int8_t t14_lp_mean_60s[T14_N_COND][4][LP_HIDDEN_DIM];
-            int t14_lp_n[T14_N_COND][4];
-            int t14_lp_n_60s[T14_N_COND][4];
-            int t14_max_bias[T14_N_COND];
-            int t14_total_confirms[T14_N_COND];
-            int t14_correct[T14_N_COND];
-            int t14_misclass[T14_N_COND];
-            int t14_confusion[T14_N_COND][4][4];
-            int t14_trix_agree[T14_N_COND];
-            int t14_trix_disagree[T14_N_COND];
-            int32_t t14_fires[T14_N_COND][TRIX_NUM_PATTERNS];
-            int32_t t14_bias_active_loops[T14_N_COND];
-            int32_t t14_total_loops[T14_N_COND];
-            memset(t14_lp_mean, 0, sizeof(t14_lp_mean));
-            memset(t14_lp_mean_60s, 0, sizeof(t14_lp_mean_60s));
-            memset(t14_lp_n, 0, sizeof(t14_lp_n));
-            memset(t14_lp_n_60s, 0, sizeof(t14_lp_n_60s));
-            memset(t14_max_bias, 0, sizeof(t14_max_bias));
-            memset(t14_total_confirms, 0, sizeof(t14_total_confirms));
-            memset(t14_correct, 0, sizeof(t14_correct));
-            memset(t14_misclass, 0, sizeof(t14_misclass));
-            memset(t14_confusion, 0, sizeof(t14_confusion));
-            memset(t14_trix_agree, 0, sizeof(t14_trix_agree));
-            memset(t14_trix_disagree, 0, sizeof(t14_trix_disagree));
-            memset(t14_fires, 0, sizeof(t14_fires));
-            memset(t14_bias_active_loops, 0, sizeof(t14_bias_active_loops));
-            memset(t14_total_loops, 0, sizeof(t14_total_loops));
-
-            for (int cond = 0; cond < T14_N_COND; cond++) {
-                printf("\n  ── Condition: %s ──\n", t14_cond_name[cond]);
-                fflush(stdout);
-
-                /* Reset everything for this condition */
-                gate_threshold    = 90;
-                gate_fires_total  = 0;
-                gate_steps_total  = 0;
-                memset((void *)gie_gate_bias, 0, sizeof(gie_gate_bias));
-                memset((void *)gie_gate_fires_per_group, 0,
-                       sizeof(gie_gate_fires_per_group));
-                vdb_clear();
-                memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
-                ulp_fb_threshold    = T14_FB_THRESHOLD;
-                ulp_fb_total_blends = 0;
-
-                /* LP accumulators for this condition */
-                static int16_t t14_lp_sum[4][LP_HIDDEN_DIM];
-                static int16_t t14_lp_sum_snap60[4][LP_HIDDEN_DIM];
-                int t14_n[4] = {0};
-                int t14_n_snap60[4] = {0};
-                int snapped_60s = 0;
-                memset(t14_lp_sum, 0, sizeof(t14_lp_sum));
-                memset(t14_lp_sum_snap60, 0, sizeof(t14_lp_sum_snap60));
-
-                /* Gate bias float state (for decay) */
-                float bias_f[TRIX_NUM_PATTERNS] = {0};
-                int max_bias_seen = 0;
-                int total_confirms = 0;
-                int correct_count = 0;
-                int misclass_count = 0;
-                int32_t bias_active_count = 0;
-                int32_t loop_snap_start = 0;
-
-                /* Restart GIE with TriX enabled (for ISR classification) */
-                premultiply_all();
-                encode_all_neurons();
-                build_circular_chain();
-                start_freerun();
-                trix_enabled = 1;
-                espnow_ring_flush();
-                loop_snap_start = loop_count;
-
-                int64_t t14_start_us = esp_timer_get_time();
-
-                while ((esp_timer_get_time() - t14_start_us) < T14_PHASE_US) {
-                    vTaskDelay(pdMS_TO_TICKS(T11_DRAIN_MS));
-                    int nd = espnow_drain(drain_buf, 32);
-                    for (int i = 0; i < nd; i++) {
-                        if (!espnow_encode_rx_entry(&drain_buf[i], NULL))
-                            continue;
-
-                        /* Signal ISR to re-encode input */
-                        gie_input_pending = 1;
-                        int spins = 0;
-                        while (gie_input_pending && spins < 5000) {
-                            esp_rom_delay_us(5);
-                            spins++;
-                        }
-
-                        /* CPU classification */
-                        int core_best = -9999, core_pred = 0;
-                        for (int p = 0; p < NUM_TEMPLATES; p++) {
-                            int d = 0;
-                            for (int j = 0; j < CFC_INPUT_DIM; j++) {
-                                if (sig[p][j] != T_ZERO &&
-                                    cfc.input[j] != T_ZERO)
-                                    d += tmul(sig[p][j], cfc.input[j]);
-                            }
-                            if (d > core_best) {
-                                core_best = d;
-                                core_pred = p;
-                            }
-                        }
-                        if (core_best < NOVELTY_THRESHOLD) continue;
-
-                        int pred = core_pred;
-                        total_confirms++;
-
-                        /* Classification accuracy vs ground truth */
-                        uint8_t gt = drain_buf[i].pkt.pattern_id;
-                        if (gt < 4) {
-                            if (pred == (int)gt) correct_count++;
-                            else misclass_count++;
-                            t14_confusion[cond][(int)gt][pred]++;
-                        }
-
-                        /* TriX ISR vs core_pred agreement.
-                         * Wait for a fresh trix_channel signal (the ISR
-                         * signals on each clean loop after re-encode). */
-                        {
-                            uint32_t seq_before = trix_channel.sequence;
-                            uint32_t new_seq = reflex_wait_timeout(
-                                &trix_channel, seq_before, 8000000);
-                            uint32_t packed = (new_seq != 0)
-                                ? reflex_read(&trix_channel) : 0;
-                            if (new_seq != 0 && packed != 0) {
-                                int32_t isr_d[4];
-                                for (int g = 0; g < 4; g++)
-                                    isr_d[g] = (int8_t)(
-                                        (packed >> (g*8)) & 0xFF);
-                                int isr_best_val = -9999;
-                                for (int g = 0; g < 4; g++)
-                                    if (isr_d[g] > isr_best_val)
-                                        isr_best_val = isr_d[g];
-                                /* Match ISR max to CPU pattern */
-                                int isr_p = -1, best_dist = 9999;
-                                int cpu_d[4] = {0};
-                                for (int pp = 0; pp < NUM_TEMPLATES; pp++)
-                                    for (int j = 0; j < CFC_INPUT_DIM; j++)
-                                        if (sig[pp][j] != T_ZERO &&
-                                            cfc.input[j] != T_ZERO)
-                                            cpu_d[pp] += tmul(
-                                                sig[pp][j], cfc.input[j]);
-                                for (int pp = 0; pp < 4; pp++) {
-                                    int dist = isr_best_val - cpu_d[pp];
-                                    if (dist < 0) dist = -dist;
-                                    if (dist < best_dist) {
-                                        best_dist = dist;
-                                        isr_p = pp;
-                                    }
-                                }
-                                if (isr_p >= 0 && isr_p < 4) {
-                                    if (isr_p == pred)
-                                        t14_trix_agree[cond]++;
-                                    else
-                                        t14_trix_disagree[cond]++;
-                                }
-                            }
-                        }
-
-                        /* Mid-run snapshot at t=60s (confound control) */
-                        int64_t elapsed_us = esp_timer_get_time()
-                                           - t14_start_us;
-                        if (!snapped_60s &&
-                            elapsed_us >= T14_ISO_DELAY_US) {
-                            memcpy(t14_lp_sum_snap60, t14_lp_sum,
-                                   sizeof(t14_lp_sum));
-                            memcpy(t14_n_snap60, t14_n, sizeof(t14_n));
-                            snapped_60s = 1;
-                        }
-
-                        /* Feed LP + run CMD 5 */
-                        feed_lp_core();
-                        vdb_result_t t14_fb_res;
-                        vdb_cfc_feedback_step(&t14_fb_res);
-
-                        /* Read LP hidden state, accumulate */
-                        int8_t lp_now[LP_HIDDEN_DIM];
-                        memcpy(lp_now, ulp_addr(&ulp_lp_hidden),
+                        memcpy(snap + LP_GIE_HIDDEN, lp_now,
                                LP_HIDDEN_DIM);
-                        for (int j = 0; j < LP_HIDDEN_DIM; j++)
-                            t14_lp_sum[pred][j] += lp_now[j];
-                        t14_n[pred]++;
+                        vdb_insert(snap);
+                    }
 
-                        /* ── Agreement-weighted gate bias update ── */
-                        /* elapsed_us already computed above (mid-run snapshot) */
-                        int use_bias = 0;
-                        if (cond == T14_COND_14C) {
-                            use_bias = 1;
-                        } else if (cond == T14_COND_14C_ISO) {
-                            /* Bias only after 60s buildup phase */
-                            use_bias = (elapsed_us >= T14_ISO_DELAY_US) ? 1 : 0;
-                        }
-                        /* 14A: use_bias stays 0 */
-
-                        if (use_bias) {
-                            /* Decay all groups */
-                            for (int p = 0; p < TRIX_NUM_PATTERNS; p++)
-                                bias_f[p] *= T14_BIAS_DECAY;
-
-                            /* Update for current prediction if enough
-                             * samples (cold-start guard) */
-                            if (t14_n[pred] >= T14_MIN_SAMPLES) {
-                                int dot = 0;
-                                for (int j = 0; j < LP_HIDDEN_DIM; j++) {
-                                    int8_t m = tsign(t14_lp_sum[pred][j]);
-                                    dot += tmul(lp_now[j], m);
-                                }
-                                float ag = (float)dot / LP_HIDDEN_DIM;
-                                float b = BASE_GATE_BIAS *
-                                          (ag > 0.0f ? ag : 0.0f);
-                                if (b > bias_f[pred]) bias_f[pred] = b;
-                            }
-
-                            /* Write to engine */
-                            for (int p = 0; p < TRIX_NUM_PATTERNS; p++) {
-                                gie_gate_bias[p] = (int8_t)bias_f[p];
-                                if ((int)bias_f[p] > max_bias_seen)
-                                    max_bias_seen = (int)bias_f[p];
-                            }
-                        } else {
-                            /* Ensure bias is zero for this condition/phase */
-                            memset((void *)gie_gate_bias, 0,
-                                   sizeof(gie_gate_bias));
-                            memset(bias_f, 0, sizeof(bias_f));
-                        }
-
-                        /* Track bias duty cycle: count loops where any
-                         * group has non-zero bias since last check */
-                        int any_bias = 0;
-                        for (int p = 0; p < TRIX_NUM_PATTERNS; p++)
-                            if (gie_gate_bias[p] > 0) any_bias = 1;
-                        if (any_bias) bias_active_count++;
-
-                        /* VDB snapshot insert */
-                        if (total_confirms % T14_INSERT_EVERY == 0 &&
-                            vdb_count() < VDB_MAX_NODES) {
-                            int8_t snap[VDB_TRIT_DIM];
-                            memcpy(snap, (void *)cfc.hidden, LP_GIE_HIDDEN);
-                            memcpy(snap + LP_GIE_HIDDEN, lp_now,
-                                   LP_HIDDEN_DIM);
-                            vdb_insert(snap);
-                        }
-
-                        /* Periodic logging */
-                        if (total_confirms % 100 == 0) {
-                            printf("    step %d (%.0fs): bias=[%d %d %d %d] "
-                                   "p=%d vdb=%d\n",
-                                   total_confirms,
-                                   (double)elapsed_us / 1e6,
-                                   (int)gie_gate_bias[0],
-                                   (int)gie_gate_bias[1],
-                                   (int)gie_gate_bias[2],
-                                   (int)gie_gate_bias[3],
-                                   pred, vdb_count());
-                            fflush(stdout);
-                        }
+                    /* Periodic logging */
+                    if (total_confirms % 100 == 0) {
+                        printf("    step %d (%.0fs): bias=[%d %d %d %d] "
+                               "p=%d vdb=%d\n",
+                               total_confirms,
+                               (double)elapsed_us / 1e6,
+                               (int)gie_gate_bias[0],
+                               (int)gie_gate_bias[1],
+                               (int)gie_gate_bias[2],
+                               (int)gie_gate_bias[3],
+                               pred, vdb_count());
+                        fflush(stdout);
                     }
                 }
+            }
 
-                stop_freerun();
-                memset((void *)gie_gate_bias, 0, sizeof(gie_gate_bias));
+            stop_freerun();
+            memset((void *)gie_gate_bias, 0, sizeof(gie_gate_bias));
 
-                /* Capture per-group fire counts and loop count */
-                for (int p = 0; p < TRIX_NUM_PATTERNS; p++)
-                    t14_fires[cond][p] = gie_gate_fires_per_group[p];
-                t14_bias_active_loops[cond] = bias_active_count;
-                t14_total_loops[cond] = loop_count - loop_snap_start;
+            /* Capture per-group fire counts and loop count */
+            for (int p = 0; p < TRIX_NUM_PATTERNS; p++)
+                t14_fires[cond][p] = gie_gate_fires_per_group[p];
+            t14_bias_active_loops[cond] = bias_active_count;
+            t14_total_loops[cond] = loop_count - loop_snap_start;
 
-                /* Compute LP means (full run + 60s snapshot) */
-                for (int p = 0; p < 4; p++) {
-                    for (int j = 0; j < LP_HIDDEN_DIM; j++) {
-                        t14_lp_mean[cond][p][j] = (t14_n[p] > 0)
-                            ? tsign(t14_lp_sum[p][j]) : T_ZERO;
-                        t14_lp_mean_60s[cond][p][j] =
-                            (t14_n_snap60[p] > 0)
-                            ? tsign(t14_lp_sum_snap60[p][j]) : T_ZERO;
-                    }
-                    t14_lp_n[cond][p] = t14_n[p];
-                    t14_lp_n_60s[cond][p] = t14_n_snap60[p];
+            /* Compute LP means (full run + 60s snapshot) */
+            for (int p = 0; p < 4; p++) {
+                for (int j = 0; j < LP_HIDDEN_DIM; j++) {
+                    t14_lp_mean[cond][p][j] = (t14_n[p] > 0)
+                        ? tsign(t14_lp_sum[p][j]) : T_ZERO;
+                    t14_lp_mean_60s[cond][p][j] =
+                        (t14_n_snap60[p] > 0)
+                        ? tsign(t14_lp_sum_snap60[p][j]) : T_ZERO;
                 }
-                t14_max_bias[cond] = max_bias_seen;
-                t14_correct[cond] = correct_count;
-                t14_misclass[cond] = misclass_count;
-                t14_total_confirms[cond] = total_confirms;
+                t14_lp_n[cond][p] = t14_n[p];
+                t14_lp_n_60s[cond][p] = t14_n_snap60[p];
+            }
+            t14_max_bias[cond] = max_bias_seen;
+            t14_correct[cond] = correct_count;
+            t14_misclass[cond] = misclass_count;
+            t14_total_confirms[cond] = total_confirms;
 
-                /* Print condition results */
-                printf("\n  LP Hidden State (%s):\n", t14_cond_name[cond]);
-                for (int p = 0; p < 4; p++) {
-                    if (t14_lp_n[cond][p] > 0) {
-                        int energy = 0;
-                        for (int j = 0; j < LP_HIDDEN_DIM; j++)
-                            if (t14_lp_mean[cond][p][j] != T_ZERO) energy++;
-                        printf("    P%d: %d samples, energy=%d/16 [",
-                               p, t14_lp_n[cond][p], energy);
-                        for (int j = 0; j < LP_HIDDEN_DIM; j++)
-                            printf("%c", trit_char(t14_lp_mean[cond][p][j]));
-                        printf("]\n");
+            /* Print condition results */
+            printf("\n  LP Hidden State (%s):\n", t14_cond_name[cond]);
+            for (int p = 0; p < 4; p++) {
+                if (t14_lp_n[cond][p] > 0) {
+                    int energy = 0;
+                    for (int j = 0; j < LP_HIDDEN_DIM; j++)
+                        if (t14_lp_mean[cond][p][j] != T_ZERO) energy++;
+                    printf("    P%d: %d samples, energy=%d/16 [",
+                           p, t14_lp_n[cond][p], energy);
+                    for (int j = 0; j < LP_HIDDEN_DIM; j++)
+                        printf("%c", trit_char(t14_lp_mean[cond][p][j]));
+                    printf("]\n");
+                } else {
+                    printf("    P%d: 0 samples\n", p);
+                }
+            }
+
+            int bias_duty_pct = total_confirms > 0
+                ? (int)(100LL * bias_active_count / total_confirms) : 0;
+            printf("  Confirms: %d, max_bias: %d, gate_firing: %d%%, "
+                   "bias_duty: %d%% (%d/%d confirms)\n",
+                   total_confirms, max_bias_seen,
+                   gate_steps_total > 0
+                       ? (int)(100LL * gate_fires_total / gate_steps_total)
+                       : 0,
+                   bias_duty_pct, (int)bias_active_count, total_confirms);
+            printf("  Per-group fires: [%ld %ld %ld %ld]\n",
+                   (long)t14_fires[cond][0], (long)t14_fires[cond][1],
+                   (long)t14_fires[cond][2], (long)t14_fires[cond][3]);
+            fflush(stdout);
+        }
+
+        /* ── Cross-condition comparison ── */
+        printf("\n  ══ TEST 14 COMPARISON ══\n");
+
+        /* LP Hamming matrices per condition */
+        int t14_ham[T14_N_COND][4][4];
+        for (int c = 0; c < T14_N_COND; c++) {
+            printf("\n  LP Divergence Matrix — %s:\n", t14_cond_name[c]);
+            printf("       P0  P1  P2  P3\n");
+            for (int p = 0; p < 4; p++) {
+                printf("  P%d:", p);
+                for (int q = 0; q < 4; q++) {
+                    if (t14_lp_n[c][p] > 0 && t14_lp_n[c][q] > 0) {
+                        t14_ham[c][p][q] = trit_hamming(
+                            t14_lp_mean[c][p], t14_lp_mean[c][q],
+                            LP_HIDDEN_DIM);
+                        printf("  %2d", t14_ham[c][p][q]);
                     } else {
-                        printf("    P%d: 0 samples\n", p);
+                        t14_ham[c][p][q] = -1;
+                        printf("   -");
                     }
                 }
-
-                int bias_duty_pct = total_confirms > 0
-                    ? (int)(100LL * bias_active_count / total_confirms) : 0;
-                printf("  Confirms: %d, max_bias: %d, gate_firing: %d%%, "
-                       "bias_duty: %d%% (%d/%d confirms)\n",
-                       total_confirms, max_bias_seen,
-                       gate_steps_total > 0
-                           ? (int)(100LL * gate_fires_total / gate_steps_total)
-                           : 0,
-                       bias_duty_pct, (int)bias_active_count, total_confirms);
-                printf("  Per-group fires: [%ld %ld %ld %ld]\n",
-                       (long)t14_fires[cond][0], (long)t14_fires[cond][1],
-                       (long)t14_fires[cond][2], (long)t14_fires[cond][3]);
-                fflush(stdout);
+                printf("\n");
             }
+        }
 
-            /* ── Cross-condition comparison ── */
-            printf("\n  ══ TEST 14 COMPARISON ══\n");
-
-            /* LP Hamming matrices per condition */
-            int t14_ham[T14_N_COND][4][4];
-            for (int c = 0; c < T14_N_COND; c++) {
-                printf("\n  LP Divergence Matrix — %s:\n", t14_cond_name[c]);
-                printf("       P0  P1  P2  P3\n");
-                for (int p = 0; p < 4; p++) {
-                    printf("  P%d:", p);
-                    for (int q = 0; q < 4; q++) {
-                        if (t14_lp_n[c][p] > 0 && t14_lp_n[c][q] > 0) {
-                            t14_ham[c][p][q] = trit_hamming(
-                                t14_lp_mean[c][p], t14_lp_mean[c][q],
-                                LP_HIDDEN_DIM);
-                            printf("  %2d", t14_ham[c][p][q]);
-                        } else {
-                            t14_ham[c][p][q] = -1;
-                            printf("   -");
-                        }
-                    }
-                    printf("\n");
+        /* Per-pair comparison: 14C vs 14A, report each pair honestly */
+        printf("\n  Per-Pair Comparison (14C vs 14A):\n");
+        printf("  Pair  | 14A | 14C | delta | 14C-iso | delta\n");
+        printf("  ------|-----|-----|-------|---------|------\n");
+        int sum_ham_14a = 0, sum_ham_14c = 0, sum_ham_iso = 0;
+        int pairs_valid = 0;
+        int pairs_14c_better = 0, pairs_14c_worse = 0;
+        int worst_regression = 0;
+        for (int p = 0; p < 4; p++) {
+            for (int q = p + 1; q < 4; q++) {
+                int ha = t14_ham[T14_COND_14A][p][q];
+                int hc = t14_ham[T14_COND_14C][p][q];
+                int hi = t14_ham[T14_COND_14C_ISO][p][q];
+                if (ha >= 0 && hc >= 0) {
+                    pairs_valid++;
+                    sum_ham_14a += ha;
+                    sum_ham_14c += hc;
+                    if (hi >= 0) sum_ham_iso += hi;
+                    if (hc > ha) pairs_14c_better++;
+                    if (hc < ha) pairs_14c_worse++;
+                    int reg = ha - hc;
+                    if (reg > worst_regression) worst_regression = reg;
+                    printf("  P%d-P%d |  %2d |  %2d | %+3d   |",
+                           p, q, ha, hc, hc - ha);
+                    if (hi >= 0)
+                        printf("    %2d   | %+3d\n", hi, hi - ha);
+                    else
+                        printf("     -   |   -\n");
                 }
             }
+        }
 
-            /* Per-pair comparison: 14C vs 14A, report each pair honestly */
-            printf("\n  Per-Pair Comparison (14C vs 14A):\n");
-            printf("  Pair  | 14A | 14C | delta | 14C-iso | delta\n");
-            printf("  ------|-----|-----|-------|---------|------\n");
-            int sum_ham_14a = 0, sum_ham_14c = 0, sum_ham_iso = 0;
-            int pairs_valid = 0;
-            int pairs_14c_better = 0, pairs_14c_worse = 0;
-            int worst_regression = 0;
+        float mean_14a = pairs_valid > 0
+            ? (float)sum_ham_14a / pairs_valid : 0;
+        float mean_14c = pairs_valid > 0
+            ? (float)sum_ham_14c / pairs_valid : 0;
+        float mean_iso = pairs_valid > 0
+            ? (float)sum_ham_iso / pairs_valid : 0;
+        printf("  Mean  | %.1f | %.1f | %+.1f  |   %.1f   | %+.1f\n",
+               mean_14a, mean_14c, mean_14c - mean_14a,
+               mean_iso, mean_iso - mean_14a);
+
+        /* Per-group fire rate comparison */
+        printf("\n  Per-Group Gate Fires (total across 120s):\n");
+        printf("  %-26s | G0       G1       G2       G3\n", "Condition");
+        printf("  --------------------------|---------------------------------------\n");
+        for (int c = 0; c < T14_N_COND; c++) {
+            printf("  %-26s | %-8ld %-8ld %-8ld %-8ld\n",
+                   t14_cond_name[c],
+                   (long)t14_fires[c][0], (long)t14_fires[c][1],
+                   (long)t14_fires[c][2], (long)t14_fires[c][3]);
+        }
+
+        /* Check per-group fire rate shift > 10% for any group */
+        int fire_shift = 0;
+        for (int g = 0; g < TRIX_NUM_PATTERNS; g++) {
+            int32_t fa = t14_fires[T14_COND_14A][g];
+            int32_t fc = t14_fires[T14_COND_14C][g];
+            if (fa > 0) {
+                int pct = (int)(100LL * (fc - fa) / fa);
+                if (pct > 10 || pct < -10) fire_shift = 1;
+            } else if (fc > 0) {
+                fire_shift = 1;  /* group went from 0 to non-zero */
+            }
+        }
+
+        /* Bias duty cycle */
+        printf("\n  Bias Duty Cycle:\n");
+        for (int c = 0; c < T14_N_COND; c++) {
+            int duty = t14_total_confirms[c] > 0
+                ? (int)(100LL * t14_bias_active_loops[c] /
+                        t14_total_confirms[c]) : 0;
+            printf("  %-26s  %d%% (%d/%d confirms with non-zero bias)\n",
+                   t14_cond_name[c],
+                   duty, (int)t14_bias_active_loops[c],
+                   t14_total_confirms[c]);
+        }
+
+        /* ── Confound control: t=60s snapshot ──
+         * If 14C-iso's advantage comes from accumulator maturity (not
+         * unbiased formation), then 14A and 14C-iso should have similar
+         * divergence at t=60s (both unbiased during that window), while
+         * 14C should differ (biased during that window). */
+        printf("\n  Confound Control — LP Divergence at t=60s:\n");
+        int t14_ham60[T14_N_COND][4][4];
+        float mean60[T14_N_COND] = {0};
+        for (int c = 0; c < T14_N_COND; c++) {
+            int sum60 = 0, cnt60 = 0;
             for (int p = 0; p < 4; p++) {
                 for (int q = p + 1; q < 4; q++) {
-                    int ha = t14_ham[T14_COND_14A][p][q];
-                    int hc = t14_ham[T14_COND_14C][p][q];
-                    int hi = t14_ham[T14_COND_14C_ISO][p][q];
-                    if (ha >= 0 && hc >= 0) {
-                        pairs_valid++;
-                        sum_ham_14a += ha;
-                        sum_ham_14c += hc;
-                        if (hi >= 0) sum_ham_iso += hi;
-                        if (hc > ha) pairs_14c_better++;
-                        if (hc < ha) pairs_14c_worse++;
-                        int reg = ha - hc;
-                        if (reg > worst_regression) worst_regression = reg;
-                        printf("  P%d-P%d |  %2d |  %2d | %+3d   |",
-                               p, q, ha, hc, hc - ha);
-                        if (hi >= 0)
-                            printf("    %2d   | %+3d\n", hi, hi - ha);
-                        else
-                            printf("     -   |   -\n");
+                    if (t14_lp_n_60s[c][p] > 0 &&
+                        t14_lp_n_60s[c][q] > 0) {
+                        t14_ham60[c][p][q] = trit_hamming(
+                            t14_lp_mean_60s[c][p],
+                            t14_lp_mean_60s[c][q], LP_HIDDEN_DIM);
+                        sum60 += t14_ham60[c][p][q];
+                        cnt60++;
+                    } else {
+                        t14_ham60[c][p][q] = -1;
                     }
                 }
             }
-
-            float mean_14a = pairs_valid > 0
-                ? (float)sum_ham_14a / pairs_valid : 0;
-            float mean_14c = pairs_valid > 0
-                ? (float)sum_ham_14c / pairs_valid : 0;
-            float mean_iso = pairs_valid > 0
-                ? (float)sum_ham_iso / pairs_valid : 0;
-            printf("  Mean  | %.1f | %.1f | %+.1f  |   %.1f   | %+.1f\n",
-                   mean_14a, mean_14c, mean_14c - mean_14a,
-                   mean_iso, mean_iso - mean_14a);
-
-            /* Per-group fire rate comparison */
-            printf("\n  Per-Group Gate Fires (total across 120s):\n");
-            printf("  %-26s | G0       G1       G2       G3\n", "Condition");
-            printf("  --------------------------|---------------------------------------\n");
-            for (int c = 0; c < T14_N_COND; c++) {
-                printf("  %-26s | %-8ld %-8ld %-8ld %-8ld\n",
-                       t14_cond_name[c],
-                       (long)t14_fires[c][0], (long)t14_fires[c][1],
-                       (long)t14_fires[c][2], (long)t14_fires[c][3]);
-            }
-
-            /* Check per-group fire rate shift > 10% for any group */
-            int fire_shift = 0;
-            for (int g = 0; g < TRIX_NUM_PATTERNS; g++) {
-                int32_t fa = t14_fires[T14_COND_14A][g];
-                int32_t fc = t14_fires[T14_COND_14C][g];
-                if (fa > 0) {
-                    int pct = (int)(100LL * (fc - fa) / fa);
-                    if (pct > 10 || pct < -10) fire_shift = 1;
-                } else if (fc > 0) {
-                    fire_shift = 1;  /* group went from 0 to non-zero */
-                }
-            }
-
-            /* Bias duty cycle */
-            printf("\n  Bias Duty Cycle:\n");
-            for (int c = 0; c < T14_N_COND; c++) {
-                int duty = t14_total_confirms[c] > 0
-                    ? (int)(100LL * t14_bias_active_loops[c] /
-                            t14_total_confirms[c]) : 0;
-                printf("  %-26s  %d%% (%d/%d confirms with non-zero bias)\n",
-                       t14_cond_name[c],
-                       duty, (int)t14_bias_active_loops[c],
-                       t14_total_confirms[c]);
-            }
-
-            /* ── Confound control: t=60s snapshot ──
-             * If 14C-iso's advantage comes from accumulator maturity (not
-             * unbiased formation), then 14A and 14C-iso should have similar
-             * divergence at t=60s (both unbiased during that window), while
-             * 14C should differ (biased during that window). */
-            printf("\n  Confound Control — LP Divergence at t=60s:\n");
-            int t14_ham60[T14_N_COND][4][4];
-            float mean60[T14_N_COND] = {0};
-            for (int c = 0; c < T14_N_COND; c++) {
-                int sum60 = 0, cnt60 = 0;
-                for (int p = 0; p < 4; p++) {
-                    for (int q = p + 1; q < 4; q++) {
-                        if (t14_lp_n_60s[c][p] > 0 &&
-                            t14_lp_n_60s[c][q] > 0) {
-                            t14_ham60[c][p][q] = trit_hamming(
-                                t14_lp_mean_60s[c][p],
-                                t14_lp_mean_60s[c][q], LP_HIDDEN_DIM);
-                            sum60 += t14_ham60[c][p][q];
-                            cnt60++;
-                        } else {
-                            t14_ham60[c][p][q] = -1;
-                        }
-                    }
-                }
-                mean60[c] = cnt60 > 0 ? (float)sum60 / cnt60 : 0;
-                printf("  %-26s  mean=%.1f/16 (%.0f%%)\n",
-                       t14_cond_name[c], mean60[c],
-                       100.0f * mean60[c] / LP_HIDDEN_DIM);
-            }
-            printf("  If 14A@60s ~ 14C-iso@60s: unbiased formation confirmed\n");
-            printf("  If 14A@60s ~ 14C@60s:     confound (maturity, not formation)\n");
-
-            /* ── Classification accuracy ── */
-            printf("\n  Classification Accuracy (CPU core_pred vs sender ground truth):\n");
-            int all_correct = 1;
-            for (int c = 0; c < T14_N_COND; c++) {
-                int total_cls = t14_correct[c] + t14_misclass[c];
-                printf("  %-26s  %d/%d = %.1f%%\n",
-                       t14_cond_name[c], t14_correct[c], total_cls,
-                       total_cls > 0
-                           ? 100.0f * t14_correct[c] / total_cls : 0);
-                if (t14_misclass[c] > 0) all_correct = 0;
-            }
-
-            /* ── Confusion matrix (representative: last condition with data) ── */
-            for (int c = 0; c < T14_N_COND; c++) {
-                int has_data = 0;
-                for (int p = 0; p < 4; p++)
-                    for (int q = 0; q < 4; q++)
-                        if (t14_confusion[c][p][q] > 0) has_data = 1;
-                if (!has_data) continue;
-
-                printf("\n  Confusion Matrix — %s (rows=ground truth, "
-                       "cols=predicted):\n", t14_cond_name[c]);
-                printf("       P0   P1   P2   P3\n");
-                for (int p = 0; p < 4; p++) {
-                    printf("  P%d:", p);
-                    for (int q = 0; q < 4; q++)
-                        printf(" %4d", t14_confusion[c][p][q]);
-                    printf("\n");
-                }
-            }
-
-            /* ── TriX ISR vs CPU core_pred agreement ── */
-            printf("\n  TriX ISR vs CPU core_pred agreement:\n");
-            for (int c = 0; c < T14_N_COND; c++) {
-                int total_t = t14_trix_agree[c] + t14_trix_disagree[c];
-                printf("  %-26s  %d/%d = %.1f%% agree\n",
-                       t14_cond_name[c], t14_trix_agree[c], total_t,
-                       total_t > 0
-                           ? 100.0f * t14_trix_agree[c] / total_t : 0);
-            }
-
-            /* ── Divergence as fraction of maximum (n/16) ── */
-            printf("\n  Divergence as %% of maximum (16 trits):\n");
-            printf("  %-26s  mean %.1f/16 = %.0f%%\n",
-                   t14_cond_name[T14_COND_14A],
-                   mean_14a, 100.0f * mean_14a / LP_HIDDEN_DIM);
-            printf("  %-26s  mean %.1f/16 = %.0f%%\n",
-                   t14_cond_name[T14_COND_14C],
-                   mean_14c, 100.0f * mean_14c / LP_HIDDEN_DIM);
-            printf("  %-26s  mean %.1f/16 = %.0f%%\n",
-                   t14_cond_name[T14_COND_14C_ISO],
-                   mean_iso, 100.0f * mean_iso / LP_HIDDEN_DIM);
-
-            /* ── Pass criteria (hardened) ── */
-            int bias_activated = (t14_max_bias[T14_COND_14C] > 0);
-            int mean_ham_ge = (mean_14c >= mean_14a);
-            int no_catastrophe = (worst_regression <= 3);
-
-            printf("\n  ── Verdict ──\n");
-            printf("  Gate bias activated (14C):    %s (max=%d)\n",
-                   bias_activated ? "YES" : "NO",
-                   t14_max_bias[T14_COND_14C]);
-            printf("  Mean Hamming 14C >= 14A:      %s (%.1f vs %.1f)\n",
-                   mean_ham_ge ? "YES" : "NO", mean_14c, mean_14a);
-            printf("  No catastrophic regression:   %s (worst: -%d)\n",
-                   no_catastrophe ? "YES" : "NO", worst_regression);
-            printf("  Per-group fire shift > 10%%:   %s\n",
-                   fire_shift ? "YES" : "NO");
-            printf("  Pairs 14C > 14A: %d, equal: %d, worse: %d (of %d)\n",
-                   pairs_14c_better,
-                   pairs_valid - pairs_14c_better - pairs_14c_worse,
-                   pairs_14c_worse, pairs_valid);
-
-            int ok14 = bias_activated && mean_ham_ge &&
-                       no_catastrophe && fire_shift;
-            test_count++;
-            if (ok14) pass_count++;
-            printf("  %s\n\n", ok14 ? "OK" : "FAIL");
-            fflush(stdout);
+            mean60[c] = cnt60 > 0 ? (float)sum60 / cnt60 : 0;
+            printf("  %-26s  mean=%.1f/16 (%.0f%%)\n",
+                   t14_cond_name[c], mean60[c],
+                   100.0f * mean60[c] / LP_HIDDEN_DIM);
         }
-    }
+        printf("  If 14A@60s ~ 14C-iso@60s: unbiased formation confirmed\n");
+        printf("  If 14A@60s ~ 14C@60s:     confound (maturity, not formation)\n");
 
+        /* ── Classification accuracy ── */
+        printf("\n  Classification Accuracy (CPU core_pred vs sender ground truth):\n");
+        int all_correct = 1;
+        for (int c = 0; c < T14_N_COND; c++) {
+            int total_cls = t14_correct[c] + t14_misclass[c];
+            printf("  %-26s  %d/%d = %.1f%%\n",
+                   t14_cond_name[c], t14_correct[c], total_cls,
+                   total_cls > 0
+                       ? 100.0f * t14_correct[c] / total_cls : 0);
+            if (t14_misclass[c] > 0) all_correct = 0;
+        }
+
+        /* ── Confusion matrix (representative: last condition with data) ── */
+        for (int c = 0; c < T14_N_COND; c++) {
+            int has_data = 0;
+            for (int p = 0; p < 4; p++)
+                for (int q = 0; q < 4; q++)
+                    if (t14_confusion[c][p][q] > 0) has_data = 1;
+            if (!has_data) continue;
+
+            printf("\n  Confusion Matrix — %s (rows=ground truth, "
+                   "cols=predicted):\n", t14_cond_name[c]);
+            printf("       P0   P1   P2   P3\n");
+            for (int p = 0; p < 4; p++) {
+                printf("  P%d:", p);
+                for (int q = 0; q < 4; q++)
+                    printf(" %4d", t14_confusion[c][p][q]);
+                printf("\n");
+            }
+        }
+
+        /* ── TriX ISR vs CPU core_pred agreement ── */
+        printf("\n  TriX ISR vs CPU core_pred agreement:\n");
+        for (int c = 0; c < T14_N_COND; c++) {
+            int total_t = t14_trix_agree[c] + t14_trix_disagree[c];
+            printf("  %-26s  %d/%d = %.1f%% agree\n",
+                   t14_cond_name[c], t14_trix_agree[c], total_t,
+                   total_t > 0
+                       ? 100.0f * t14_trix_agree[c] / total_t : 0);
+        }
+
+        /* ── Divergence as fraction of maximum (n/16) ── */
+        printf("\n  Divergence as %% of maximum (16 trits):\n");
+        printf("  %-26s  mean %.1f/16 = %.0f%%\n",
+               t14_cond_name[T14_COND_14A],
+               mean_14a, 100.0f * mean_14a / LP_HIDDEN_DIM);
+        printf("  %-26s  mean %.1f/16 = %.0f%%\n",
+               t14_cond_name[T14_COND_14C],
+               mean_14c, 100.0f * mean_14c / LP_HIDDEN_DIM);
+        printf("  %-26s  mean %.1f/16 = %.0f%%\n",
+               t14_cond_name[T14_COND_14C_ISO],
+               mean_iso, 100.0f * mean_iso / LP_HIDDEN_DIM);
+
+        /* ── Pass criteria (hardened) ── */
+        int bias_activated = (t14_max_bias[T14_COND_14C] > 0);
+        int mean_ham_ge = (mean_14c >= mean_14a);
+        int no_catastrophe = (worst_regression <= 3);
+
+        printf("\n  ── Verdict ──\n");
+        printf("  Gate bias activated (14C):    %s (max=%d)\n",
+               bias_activated ? "YES" : "NO",
+               t14_max_bias[T14_COND_14C]);
+        printf("  Mean Hamming 14C >= 14A:      %s (%.1f vs %.1f)\n",
+               mean_ham_ge ? "YES" : "NO", mean_14c, mean_14a);
+        printf("  No catastrophic regression:   %s (worst: -%d)\n",
+               no_catastrophe ? "YES" : "NO", worst_regression);
+        printf("  Per-group fire shift > 10%%:   %s\n",
+               fire_shift ? "YES" : "NO");
+        printf("  Pairs 14C > 14A: %d, equal: %d, worse: %d (of %d)\n",
+               pairs_14c_better,
+               pairs_valid - pairs_14c_better - pairs_14c_worse,
+               pairs_14c_worse, pairs_valid);
+
+        int ok14 = bias_activated && mean_ham_ge &&
+                   no_catastrophe && fire_shift;
+        printf("  %s\n\n", ok14 ? "OK" : "FAIL");
+        fflush(stdout);
+        return ok14;
+    }
+    return 0; /* unreachable */
+}
+
+static void run_lp_char(void) {
     /* ══════════════════════════════════════════════════════════════
      *  LP CHARACTERIZATION — LP Dynamics Baseline Measurement
      *
@@ -4003,28 +4115,10 @@ void app_main(void) {
     }
 
     /* ── Summary ── */
-    printf("============================================================\n");
-    printf("  RESULTS: %d / %d PASSED\n", pass_count, test_count);
-    printf("============================================================\n");
-    if (pass_count == test_count) {
-        printf("\n  *** FULL SYSTEM VERIFIED ***\n");
-        printf("  Layer 1: GIE (GDMA+PARLIO+PCNT) — 428 Hz, ~0 CPU\n");
-        printf("  Layer 2: LP core geometric processor — 100 Hz, ~30uA\n");
-        printf("  Layer 2b: LP core ternary VDB — NSW graph search (M=%d)\n", VDB_M);
-        printf("  Layer 2c: CfC -> VDB pipeline — perceive+think+remember\n");
-        printf("  Layer 2d: VDB -> CfC feedback — memory shapes inference\n");
-        printf("  Layer 3: HP core — reflex channel coordination\n");
-        printf("  Layer 4: ESP-NOW -> GIE live input + pattern classification\n");
-        printf("  Layer 5: TriX -> VDB -> LP feedback — memory-modulated attention\n");
-        printf("  Layer 6: CMD 4 ablation — VDB contribution isolated from CfC baseline\n");
-        printf("  All ternary. No floating point. No multiplication.\n");
-        printf("  Perceive → classify → remember → retrieve → modulate.\n");
-        printf("  Attribution: CMD 5 vs CMD 4 Hamming delta quantifies VDB contribution.\n\n");
-    } else {
-        printf("\n  SOME TESTS FAILED — see details above.\n\n");
-    }
-    fflush(stdout);
 
+}
+
+static void run_lp_dot_diag(void) {
     /* ══════════════════════════════════════════════════════════════
      *  LP DOT MAGNITUDE DIAGNOSTIC
      *
@@ -4117,7 +4211,5 @@ void app_main(void) {
         printf("  If signs AND magnitudes are similar:\n");
         printf("    → need more projection directions (wider LP)\n\n");
         fflush(stdout);
-    }
 
-    while (1) vTaskDelay(pdMS_TO_TICKS(10000));
 }

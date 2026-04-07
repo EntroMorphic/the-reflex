@@ -1,6 +1,6 @@
 # The Reflex: Current Status
 
-**Last Updated:** March 23, 2026 — LP characterization firmware complete. LP CHAR runs after TEST 13 and measures Path A (CfC firing rate) vs Path B (VDB blend rate) directly from hardware. Ready to flash and characterize LP dynamics before TEST 14C firmware is written.
+**Last Updated:** April 7, 2026 — 14/14 PASS. Phase 5 kinetic attention implemented and verified. MTFP21 gap history encoding resolves P1-P2 timing degeneracy (80% → 96% classification). LP dot magnitude diagnostic confirms P1-P2 separation is in the magnitudes, not the projections. MTFP dot encoding spec ready for implementation.
 
 ---
 
@@ -10,7 +10,7 @@ The Reflex is a three-layer ternary neural computing system built from commodity
 
 **The reframe (March 23, 2026):** The Reflex is not building a better classifier. It is building a temporal context layer beneath a perfect classifier. Every downstream contribution — kinetic attention, multi-agent coordination, Hebbian learning — earns its meaning from the quality and independence of that temporal model.
 
-**Current state: 13/13 PASS.** LP characterization firmware written and building clean. Flash and run to determine dominant LP update path before TEST 14C firmware.
+**Current state: 14/14 PASS.** Phase 5 kinetic attention (agreement-weighted gate bias) verified on silicon. LP characterization complete. MTFP21 gap history encoding lifts classification accuracy from 80% to 96%. TriX ISR and CPU classification agree at 100%. LP dot magnitude diagnostic identifies the P1-P2 bottleneck as `sign()` quantization, not projection quality. MTFP dot encoding (5 trits/neuron) spec ready for implementation.
 
 **The complete loop:** perceive → classify → remember → retrieve → modulate (potential modulation verified). Phase 5 makes it kinetic: the temporal model actively biases what the perceptual layer fires on next.
 
@@ -22,17 +22,24 @@ All ternary. No floating point. No multiplication. No training.
 - March 22 (morning): TEST 2+ zero-loop stall diagnosed and fixed (pulsing `parl_tx_rst_en`, PCR bit 19). Board B PEER_MAC corrected (`c4:d4` → `c8:24`). **11/11 PASS**.
 - March 22 (night): TEST 12 (memory-modulated attention), TEST 13 (CMD 4 distillation). **13/13 PASS**. VDB episodic memory causally necessary.
 - March 23 (morning): Full LMM project assessment. Temporal context reframe. Three strata of contribution. Two operating modes defined. L-Cache opcode spec. THE_PRIOR_AS_VOICE perspective paper. Phase 5 firmware spec finalized.
-- March 23 (evening): TEST 14C AVX2 simulation (3 conditions × 1000 trials, three-claim structure confirmed). Red-team + LMM cycle on 3 open risks — root cause identified as unknown LP dominant path. LP characterization firmware written (`625b00d`): measures Path A firing rate + Path B blend rate + switch-window trajectory. Ready to flash.
+- March 23 (evening): TEST 14C AVX2 simulation (3 conditions × 1000 trials, three-claim structure confirmed). Red-team + LMM cycle on 3 open risks — root cause identified as unknown LP dominant path. LP characterization firmware written (`625b00d`).
+- April 6: Full repository audit. Monolith split (`c815869`): `gie_engine.c`/`.h` extracted from `geometry_cfc_freerun.c`. ESP-NOW refactored to `.c` + header. Dead code archived. **13/13 PASS** post-refactor. Phase 5 kinetic attention implemented (`429ce38`): agreement-weighted gate bias, three conditions (14A/14C/14C-iso), confound controls. **14/14 PASS.** MTFP21 gap history encoding (`c814e51`): 80% → 96% classification accuracy. Sequence features masked from signatures (`5735119`). Paper draft with confusion matrices (`feb709b`). TriX ISR vs CPU agreement at 100% (`0b09f69`).
+- April 7: LP dot magnitude diagnostic (`7391876`): P1-P2 separation IS in the magnitudes. `sign()` quantization is the bottleneck. MTFP dot encoding spec written (`81175c6`): 5 trits/neuron, LP hidden expands from 16 to 80 trits. LMM cycle on Pillar 3 concerns (`b77bf01`): dimensionality must be proven before learning.
 
 **Key documentation:**
 - `docs/SESSION_MAR22_2026.md`: Full March 22 session — 13/13 PASS, complete TEST 12/13 results.
 - `docs/SESSION_MAR23_2026.md`: Full March 23 session — LMM assessment, three strata, blockers, action table.
+- `docs/SESSION_APR06_07_2026.md`: April 6-7 session — audit remediation, Phase 5, MTFP21, LP diagnostics.
 - `docs/MEMORY_MODULATED_ATTENTION.md`: Paper-quality writeup of TEST 12 — experimental design, silicon results, analysis.
 - `docs/KINETIC_ATTENTION.md`: Phase 5 design spec — agreement-weighted gate bias, TEST 14 three conditions.
+- `docs/PAPER_KINETIC_ATTENTION.md`: Paper draft — kinetic attention results with confusion matrices.
 - `docs/THE_PRIOR_AS_VOICE.md`: Perspective paper — technical, engineering, ontological, and personal dimensions.
 - `docs/PRIOR_SIGNAL_SEPARATION.md`: Theoretical note — structural hallucination resistance, five-component architecture.
 - `docs/LCACHE_REFLEX_OPCODES.md`: L-Cache opcode spec — 12 AVX2 opcodes, 1:1 with firmware, ~2.8 MHz.
 - `docs/HARDWARE_TOPOLOGY.md`: Nucleo ↔ C6 wiring spec for APU-expanded mode (SPI2 at 40 MHz).
+- `docs/MTFP21_TIMING_ENCODING.md`: MTFP21 gap history encoding — 80% → 96% classification.
+- `docs/NEXT_STEPS.md`: MTFP dot encoding for LP neurons — 5 trits/neuron, full assembly spec.
+- `docs/AUDIT_APRIL_2026.md`: Full repository audit — architecture verified, 6 issues identified, 4 remediated.
 
 ---
 
@@ -113,6 +120,11 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 | **Phase 4 Full Verification** | **11/11** | **PARLIO TX fix + Board B live input, 100% vs 84% baseline** | **`07b5b66`** |
 | **Memory-Modulated Attention** | **12/12** | **TEST 12: LP hidden diverges by pattern from VDB episodes; P1 vs P3 Hamming 5** | **`38a0811`** |
 | **VDB Causal Necessity** | **13/13** | **TEST 13: CMD 4 distillation — P1=P2 (Hamming 0) in 2/3 CMD 4 runs; CMD 5 separates every time** | **`12aa970`** |
+| **Audit Remediation** | **13/13** | **Monolith split (gie_engine.c), ESP-NOW refactored, dead code archived** | **`c815869`** |
+| **Kinetic Attention (Phase 5)** | **14/14** | **TEST 14: agreement-weighted gate bias, 3 conditions, confound-controlled** | **`429ce38`** |
+| **MTFP21 Gap History** | **14/14** | **Classification 80% → 96%, P1-P2 timing degeneracy resolved** | **`c814e51`** |
+| **TriX ISR Agreement** | **14/14** | **ISR vs CPU core_pred agreement 100%, 80% was reporting artifact** | **`0b09f69`** |
+| **LP Dot Magnitude Probe** | diagnostic | **P1-P2 separation IS in magnitudes; sign() is the bottleneck** | **`7391876`** |
 
 ---
 
@@ -137,6 +149,9 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 | 7-voxel TriX Cube | Verified | Core + 6 temporal faces, XOR mask displacement data |
 | **Memory-modulated LP priors** | **Verified** | **13/13 PASS: LP hidden diverges by pattern (P1 vs P3: Hamming 5/16), 97% feedback applied** |
 | **VDB causal necessity** | **Verified** | **CMD 4 distillation: P1=P2 in 2/3 runs without blend; CMD 5 separates P1/P2 every time** |
+| **Kinetic attention (Phase 5)** | **Verified** | **14/14 PASS: agreement-weighted gate bias, per-group fire rate shift, confound-controlled** |
+| **MTFP21 gap history** | **Verified** | **5-gap temporal encoding, classification 80% → 96%** |
+| **TriX ISR ↔ CPU agreement** | **Verified** | **100% agreement; 80% finding was GDMA offset resolution artifact** |
 
 ### The GIE Signal Path (Current Architecture)
 
@@ -156,7 +171,7 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 │     200-loop drain (clock domain crossing)                       │
 │     dot = agree - disagree                                       │
 │     Re-encode next neuron's W×X products                         │
-│     CfC blend: DISABLED (Phase 3, all neurons HOLD)              │
+│     CfC blend: Phase 5 — gate_threshold=90, per-group bias       │
 │                              │                                   │
 │   430.8 Hz continuous, CPU-free after init                       │
 │                                                                  │
@@ -287,70 +302,48 @@ CfC (96B frame) → bridge copies 6 words to VDB query BSS → deallocate → VD
 
 ```
 the-reflex/
-├── reflex-os/                    # ESP32-C6: GIE + LP Core + VDB
+├── embedded/                       # ESP32-C6 firmware
 │   ├── main/
-│   │   ├── ulp/main.S            # LP core: hand-written RISC-V assembly
-│   │   │                         #   CfC + VDB search + insert + pipeline + feedback (cmd 1-5)
-│   │   ├── geometry_cfc_freerun.c  # Current entry point (8 tests)
-│   │   ├── reflex_vdb.c          # HP-side VDB API implementation
-│   │   ├── geometry_cfc.c        # M7: Original CfC (single-step)
-│   │   ├── geometry_layer.c      # M6: Multi-neuron layer
-│   │   ├── geometry_dot.c        # M5: 256-trit dot product
-│   │   ├── ternary_alu.c         # M4: Ternary TMUL
-│   │   ├── autonomous_alu.c      # M3: Autonomous ALU
-│   │   ├── alu_fabric.c          # M1: Sub-CPU ALU
-│   │   └── raid_etm_fabric.c     # M2: Autonomous fabric
-│   ├── include/
-│   │   ├── reflex_vdb.h          # VDB API (insert/search/clear/pipeline)
-│   │   ├── reflex.h              # Core primitive (50 lines)
-│   │   └── ...
-│   └── docs/
-│       ├── GIE_ARCHITECTURE.md   # GIE architecture
-│       ├── HARDWARE_ERRATA.md    # 20+ errata
-│       ├── REGISTER_REFERENCE.md # Bare-metal register addresses
-│       └── FLASH_GUIDE.md        # Build/flash procedure
+│   │   ├── ulp/main.S              # LP core: hand-written RISC-V (CMD 1-5)
+│   │   ├── gie_engine.c            # GIE core: ISR, peripherals, TriX, LP interface
+│   │   ├── geometry_cfc_freerun.c  # Test harness: Tests 1-14 + LP CHAR + diagnostics
+│   │   ├── reflex_vdb.c            # HP-side VDB API
+│   │   ├── reflex_espnow.c         # ESP-NOW receiver state + functions
+│   │   └── espnow_sender.c         # Board B sender (separate build target)
+│   ├── include/                     # Active headers (4 files)
+│   │   ├── gie_engine.h             # GIE public interface
+│   │   ├── reflex.h                 # Core primitive (reflex_channel_t)
+│   │   ├── reflex_vdb.h             # VDB API declarations
+│   │   ├── reflex_espnow.h          # ESP-NOW declarations
+│   │   └── archive/                 # 50+ archaeological headers
+│   └── docs/                        # Embedded-specific docs
 │
-├── reflex-robotics/              # 10kHz control loop (Jetson Thor)
-├── reflex_ros_bridge/            # ROS2 integration
-├── reflex-deploy/                # CLI deployment tool
-├── delta-observer/               # Neural network observation research
-├── docs/                         # Project documentation
-├── notes/                        # Design notes, LMM explorations
-├── journal/                      # Lincoln Manifold Method journal
-│   ├── the_reflex_raw.md         # Phase 1: RAW
-│   ├── the_reflex_nodes.md       # Phase 2: NODES
-│   ├── the_reflex_reflect.md     # Phase 3: REFLECT
-│   └── the_reflex_synth.md       # Phase 4: SYNTHESIZE
-└── the-reflex-tvdb.md            # VDB PRD (5 milestones, all complete)
+├── docs/                            # Project documentation (27 files)
+├── sim/                             # AVX2 simulations (test14c.c)
+├── journal/                         # Lincoln Manifold Method working files
+├── experiments/                     # Coordination experiments (Thor/Pi4)
+├── primitive/                       # reflex.h — original primitive
+└── archive/                         # Historical logs and captures
 ```
 
 ---
 
 ## What's Next
 
-**13/13 PASS (March 22, 2026).** LP characterization firmware written and clean. Next hardware action: flash and run to characterize LP dynamics.
+**14/14 PASS (April 6, 2026).** Phase 5 kinetic attention verified on silicon. LP dot magnitude diagnostic confirms next bottleneck. MTFP dot encoding spec ready.
 
-### Immediate Priority: LP CHAR → Calibration → TEST 14C
+### Immediate Priority: MTFP Dot Encoding → LP Dimensionality Resolution
 
 | Step | What | Status |
 |------|------|--------|
-| **LP CHAR run** | Flash firmware, capture UART output. Measures Path A (fires/step) and Path B (blend/step, implied_alpha) | **Ready — firmware at commit `625b00d`** |
-| **Sim recalibration** | Replace `BLEND_ALPHA=0.2` in `sim/test14c.c` with hardware-measured value | After LP CHAR |
-| **TEST 14C sim v3** | Re-run simulation at correct calibration, verify effect size is measurable | After recalibration |
-| **TEST 14C firmware** | Implement with regime-appropriate metric (lp_running_sum if Path A; VDB recall if Path B) | After LP CHAR + sim |
-| **Run TEST 14C** | 50+ repeated switch trials (Path A) or 3–5 trials (Path B) | After firmware |
-
-### Decision After LP CHAR
-
-- `fires/step > 2`: **Path A dominant** — lp_running_sum metric valid, proceed with TEST 14C as designed, need ~50+ trials
-- `fires/step < 1`, `implied_alpha > 0.1`: **Path B dominant** — switch to VDB P2 recall quality metric, fewer trials needed
-- Both weak: extend `LC_P1_STEPS`, lower `ulp_fb_threshold`, or investigate VDB seeding
+| **MTFP dot encoding** | Implement 5-trit per LP neuron (sign + 2 exp + 2 mantissa). LP hidden expands from 16 to 80 trits. Full spec in `docs/NEXT_STEPS.md` | **Spec complete (`81175c6`), implementation pending** |
+| **VDB dimension update** | VDB snapshot expands from 48 to 112 trits (32 GIE + 80 LP). Node size grows from 32 to 56 bytes. Capacity drops from 64 to ~36 nodes | After MTFP encoding |
+| **Re-run TEST 12–14** | Verify P1-P2 separation resolves with MTFP encoding. Hamming should increase significantly | After VDB update |
+| **Dimensionality decision** | If MTFP resolves P1-P2: proceed to papers. If not: wider LP needed before Pillar 3 | After re-run |
 
 ### Blocking Before Any Paper Submission
 
-1. **UART falsification** — Re-route console to GPIO 16/17, power from battery/dumb USB, run full 13-test suite without JTAG. The "peripheral-autonomous" claim requires this data. Currently: JTAG attached for all runs.
-
-2. **Firmware refactor** — Separate core layer (GIE, VDB, LP, CMD dispatch) from test layer (condition flags, parameters, logging) before Phase 5 code lands. Reviewers must find the difference between TEST 14A and 14B in under 10 lines.
+1. **UART falsification** — Re-route console to GPIO 16/17, power from battery/dumb USB, run full test suite without JTAG. The "peripheral-autonomous" claim requires this data. Currently: JTAG attached for all runs.
 
 ### Strategic Phase Order
 
@@ -362,16 +355,18 @@ the-reflex/
 | **Phase 4** | Skip hidden re-encode when blend disabled | **DONE — `8a33369`** |
 | **TEST 12** | Memory-modulated attention confirmed | **DONE — `38a0811`** |
 | **TEST 13** | CMD 4 distillation — VDB causally necessary | **DONE — `12aa970`** |
-| **LP CHAR** | LP dynamics characterization firmware (Path A vs B, implied_alpha) | **DONE — `625b00d`, ready to run** |
-| **Refactor** | Core vs. test layer separation | Pending (before Phase 5) |
-| **Phase 5 / TEST 14** | Kinetic attention: LP prior → GIE gate bias | Pending |
-| **TEST 14C** | Transition experiment — primary CLS prediction test | Pending |
-| **Paper 1** | TEST 12/13/14 hardware paper (Stratum 1) | Pending TEST 14 data |
-| **Paper 2** | CLS architecture paper (Stratum 2) | Pending TEST 14C data |
+| **LP CHAR** | LP dynamics characterization (Path A vs B) | **DONE — `625b00d`** |
+| **Refactor** | Core vs. test layer separation | **DONE — `c815869`** |
+| **Phase 5 / TEST 14** | Kinetic attention: LP prior → GIE gate bias | **DONE — `429ce38`, 14/14 PASS** |
+| **MTFP21 gap encoding** | Temporal input encoding for P1-P2 timing | **DONE — `c814e51`, 80% → 96%** |
+| **LP dot magnitude probe** | Confirm P1-P2 separation is in magnitudes | **DONE — `7391876`** |
+| **MTFP dot encoding** | 5 trits/neuron, resolve sign() bottleneck | Spec complete, implementation pending |
+| **Paper 1** | TEST 12/13/14 hardware paper (Stratum 1) | Draft in progress (`docs/PAPER_KINETIC_ATTENTION.md`) |
+| **Paper 2** | CLS architecture paper (Stratum 2) | After MTFP dot encoding data |
 | **Paper 3** | Prior-signal separation note (Stratum 3) | Near complete — one session |
-| **Pillar 1** | Dynamic scaffolding (VDB sliding window) | After Phase 5 |
-| **Pillar 2** | SAMA (substrate-aware multi-agent) | After Phase 5 |
-| **Pillar 3** | Hebbian GIE weight updates | After all fixed-weight papers written |
+| **Pillar 1** | Dynamic scaffolding (VDB sliding window) | After papers |
+| **Pillar 2** | SAMA (substrate-aware multi-agent) | After papers |
+| **Pillar 3** | Hebbian GIE weight updates | After dimensionality resolved (MTFP dot encoding or wider LP) |
 
 ### Three Strata of Contribution
 

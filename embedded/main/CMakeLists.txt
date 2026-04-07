@@ -1,21 +1,21 @@
 # Main component for Reflex OS
 #
-# Build targets (set REFLEX_TARGET before building):
+# Build targets:
 #   - gie (default): GIE + LP core + VDB + feedback (Board A / receiver)
 #   - sender:        ESP-NOW pattern sender (Board B)
 #
-# Build sender:  idf.py -C reflex-os -DREFLEX_TARGET=sender build
-# Build GIE:     idf.py -C reflex-os build   (or -DREFLEX_TARGET=gie)
+# Build sender:  idf.py -DREFLEX_TARGET=sender build
+# Build GIE:     idf.py build   (or -DREFLEX_TARGET=gie)
 
-# Build targets:
-#   Default:  GIE + LP core + VDB + feedback (Board A / receiver)
-#   Sender:   Swap app_sources line below to build ESP-NOW sender (Board B)
-#
-# To build sender: change app_sources to "espnow_sender.c", remove ulp block
-# To build GIE:    restore full app_sources list (gie_engine, geometry_cfc_freerun, reflex_vdb, reflex_espnow)
+if(NOT DEFINED REFLEX_TARGET)
+    set(REFLEX_TARGET "gie")
+endif()
 
-#set(app_sources "espnow_sender.c")
-set(app_sources "gie_engine.c" "geometry_cfc_freerun.c" "reflex_vdb.c" "reflex_espnow.c")
+if(REFLEX_TARGET STREQUAL "sender")
+    set(app_sources "espnow_sender.c")
+else()
+    set(app_sources "gie_engine.c" "geometry_cfc_freerun.c" "reflex_vdb.c" "reflex_espnow.c")
+endif()
 
 idf_component_register(
     SRCS
@@ -40,8 +40,10 @@ idf_component_register(
     WHOLE_ARCHIVE
 )
 
-# LP Core geometric processor — comment out when building sender
-set(ulp_app_name ulp_${COMPONENT_NAME})
-set(ulp_sources "ulp/main.S")
-set(ulp_exp_dep_srcs ${app_sources})
-ulp_embed_binary(${ulp_app_name} "${ulp_sources}" "${ulp_exp_dep_srcs}")
+# LP Core geometric processor (GIE target only)
+if(NOT REFLEX_TARGET STREQUAL "sender")
+    set(ulp_app_name ulp_${COMPONENT_NAME})
+    set(ulp_sources "ulp/main.S")
+    set(ulp_exp_dep_srcs ${app_sources})
+    ulp_embed_binary(${ulp_app_name} "${ulp_sources}" "${ulp_exp_dep_srcs}")
+endif()
