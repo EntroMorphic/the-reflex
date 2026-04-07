@@ -1,4 +1,18 @@
 /*
+ * ARCHIVED — Historical C Reference Implementation (CMD 1 Only)
+ *
+ * This file is NOT compiled in production. The authoritative LP core
+ * implementation is main.S (hand-written RISC-V assembly, CMD 1-5).
+ * This C version implements only CMD 1 (CfC step) and was used during
+ * early development to verify the assembly against a C reference.
+ * It does NOT implement CMD 2 (VDB search), CMD 3 (VDB insert),
+ * CMD 4 (CfC+VDB pipeline), or CMD 5 (CfC+VDB+Feedback).
+ *
+ * Archived: April 6, 2026
+ * See: ../main.S for the complete, production LP core.
+ */
+
+/*
  * LP Core Geometric Processor — Ternary CfC on RISC-V ULP
  *
  * This runs on the ESP32-C6's LP core at 16MHz, drawing ~30μA.

@@ -39,6 +39,9 @@ backups/
 # Deploy scripts (local-only)
 silicon_grail_deploy.sh
 
+# Compiled simulation binaries
+sim/test14c
+
 # Separate git repos (local-only)
 pulse-arithmetic-lab/
 delta-observer/
