@@ -3193,16 +3193,24 @@ void app_main(void) {
 
             /* Per-condition results */
             static int8_t t14_lp_mean[T14_N_COND][4][LP_HIDDEN_DIM];
+            static int8_t t14_lp_mean_60s[T14_N_COND][4][LP_HIDDEN_DIM];
             int t14_lp_n[T14_N_COND][4];
+            int t14_lp_n_60s[T14_N_COND][4];
             int t14_max_bias[T14_N_COND];
             int t14_total_confirms[T14_N_COND];
+            int t14_correct[T14_N_COND];
+            int t14_misclass[T14_N_COND];
             int32_t t14_fires[T14_N_COND][TRIX_NUM_PATTERNS];
             int32_t t14_bias_active_loops[T14_N_COND];
             int32_t t14_total_loops[T14_N_COND];
             memset(t14_lp_mean, 0, sizeof(t14_lp_mean));
+            memset(t14_lp_mean_60s, 0, sizeof(t14_lp_mean_60s));
             memset(t14_lp_n, 0, sizeof(t14_lp_n));
+            memset(t14_lp_n_60s, 0, sizeof(t14_lp_n_60s));
             memset(t14_max_bias, 0, sizeof(t14_max_bias));
             memset(t14_total_confirms, 0, sizeof(t14_total_confirms));
+            memset(t14_correct, 0, sizeof(t14_correct));
+            memset(t14_misclass, 0, sizeof(t14_misclass));
             memset(t14_fires, 0, sizeof(t14_fires));
             memset(t14_bias_active_loops, 0, sizeof(t14_bias_active_loops));
             memset(t14_total_loops, 0, sizeof(t14_total_loops));
@@ -3225,13 +3233,19 @@ void app_main(void) {
 
                 /* LP accumulators for this condition */
                 static int16_t t14_lp_sum[4][LP_HIDDEN_DIM];
+                static int16_t t14_lp_sum_snap60[4][LP_HIDDEN_DIM];
                 int t14_n[4] = {0};
+                int t14_n_snap60[4] = {0};
+                int snapped_60s = 0;
                 memset(t14_lp_sum, 0, sizeof(t14_lp_sum));
+                memset(t14_lp_sum_snap60, 0, sizeof(t14_lp_sum_snap60));
 
                 /* Gate bias float state (for decay) */
                 float bias_f[TRIX_NUM_PATTERNS] = {0};
                 int max_bias_seen = 0;
                 int total_confirms = 0;
+                int correct_count = 0;
+                int misclass_count = 0;
                 int32_t bias_active_count = 0;
                 int32_t loop_snap_start = 0;
 
@@ -3279,6 +3293,24 @@ void app_main(void) {
                         int pred = core_pred;
                         total_confirms++;
 
+                        /* Classification accuracy vs ground truth */
+                        uint8_t gt = drain_buf[i].pkt.pattern_id;
+                        if (gt < 4) {
+                            if (pred == (int)gt) correct_count++;
+                            else misclass_count++;
+                        }
+
+                        /* Mid-run snapshot at t=60s (confound control) */
+                        int64_t elapsed_us = esp_timer_get_time()
+                                           - t14_start_us;
+                        if (!snapped_60s &&
+                            elapsed_us >= T14_ISO_DELAY_US) {
+                            memcpy(t14_lp_sum_snap60, t14_lp_sum,
+                                   sizeof(t14_lp_sum));
+                            memcpy(t14_n_snap60, t14_n, sizeof(t14_n));
+                            snapped_60s = 1;
+                        }
+
                         /* Feed LP + run CMD 5 */
                         feed_lp_core();
                         vdb_result_t t14_fb_res;
@@ -3293,7 +3325,7 @@ void app_main(void) {
                         t14_n[pred]++;
 
                         /* ── Agreement-weighted gate bias update ── */
-                        int64_t elapsed_us = esp_timer_get_time() - t14_start_us;
+                        /* elapsed_us already computed above (mid-run snapshot) */
                         int use_bias = 0;
                         if (cond == T14_COND_14C) {
                             use_bias = 1;
@@ -3377,14 +3409,21 @@ void app_main(void) {
                 t14_bias_active_loops[cond] = bias_active_count;
                 t14_total_loops[cond] = loop_count - loop_snap_start;
 
-                /* Compute LP means */
+                /* Compute LP means (full run + 60s snapshot) */
                 for (int p = 0; p < 4; p++) {
-                    for (int j = 0; j < LP_HIDDEN_DIM; j++)
+                    for (int j = 0; j < LP_HIDDEN_DIM; j++) {
                         t14_lp_mean[cond][p][j] = (t14_n[p] > 0)
                             ? tsign(t14_lp_sum[p][j]) : T_ZERO;
+                        t14_lp_mean_60s[cond][p][j] =
+                            (t14_n_snap60[p] > 0)
+                            ? tsign(t14_lp_sum_snap60[p][j]) : T_ZERO;
+                    }
                     t14_lp_n[cond][p] = t14_n[p];
+                    t14_lp_n_60s[cond][p] = t14_n_snap60[p];
                 }
                 t14_max_bias[cond] = max_bias_seen;
+                t14_correct[cond] = correct_count;
+                t14_misclass[cond] = misclass_count;
                 t14_total_confirms[cond] = total_confirms;
 
                 /* Print condition results */
@@ -3521,6 +3560,62 @@ void app_main(void) {
                        duty, (int)t14_bias_active_loops[c],
                        t14_total_confirms[c]);
             }
+
+            /* ── Confound control: t=60s snapshot ──
+             * If 14C-iso's advantage comes from accumulator maturity (not
+             * unbiased formation), then 14A and 14C-iso should have similar
+             * divergence at t=60s (both unbiased during that window), while
+             * 14C should differ (biased during that window). */
+            printf("\n  Confound Control — LP Divergence at t=60s:\n");
+            int t14_ham60[T14_N_COND][4][4];
+            float mean60[T14_N_COND] = {0};
+            for (int c = 0; c < T14_N_COND; c++) {
+                int sum60 = 0, cnt60 = 0;
+                for (int p = 0; p < 4; p++) {
+                    for (int q = p + 1; q < 4; q++) {
+                        if (t14_lp_n_60s[c][p] > 0 &&
+                            t14_lp_n_60s[c][q] > 0) {
+                            t14_ham60[c][p][q] = trit_hamming(
+                                t14_lp_mean_60s[c][p],
+                                t14_lp_mean_60s[c][q], LP_HIDDEN_DIM);
+                            sum60 += t14_ham60[c][p][q];
+                            cnt60++;
+                        } else {
+                            t14_ham60[c][p][q] = -1;
+                        }
+                    }
+                }
+                mean60[c] = cnt60 > 0 ? (float)sum60 / cnt60 : 0;
+                printf("  %-26s  mean=%.1f/16 (%.0f%%)\n",
+                       t14_cond_name[c], mean60[c],
+                       100.0f * mean60[c] / LP_HIDDEN_DIM);
+            }
+            printf("  If 14A@60s ~ 14C-iso@60s: unbiased formation confirmed\n");
+            printf("  If 14A@60s ~ 14C@60s:     confound (maturity, not formation)\n");
+
+            /* ── Classification accuracy ── */
+            printf("\n  Classification Accuracy (vs sender ground truth):\n");
+            int all_correct = 1;
+            for (int c = 0; c < T14_N_COND; c++) {
+                int total_cls = t14_correct[c] + t14_misclass[c];
+                printf("  %-26s  %d/%d = %.1f%%\n",
+                       t14_cond_name[c], t14_correct[c], total_cls,
+                       total_cls > 0
+                           ? 100.0f * t14_correct[c] / total_cls : 0);
+                if (t14_misclass[c] > 0) all_correct = 0;
+            }
+
+            /* ── Divergence as fraction of maximum (n/16) ── */
+            printf("\n  Divergence as %% of maximum (16 trits):\n");
+            printf("  %-26s  mean %.1f/16 = %.0f%%\n",
+                   t14_cond_name[T14_COND_14A],
+                   mean_14a, 100.0f * mean_14a / LP_HIDDEN_DIM);
+            printf("  %-26s  mean %.1f/16 = %.0f%%\n",
+                   t14_cond_name[T14_COND_14C],
+                   mean_14c, 100.0f * mean_14c / LP_HIDDEN_DIM);
+            printf("  %-26s  mean %.1f/16 = %.0f%%\n",
+                   t14_cond_name[T14_COND_14C_ISO],
+                   mean_iso, 100.0f * mean_iso / LP_HIDDEN_DIM);
 
             /* ── Pass criteria (hardened) ── */
             int bias_activated = (t14_max_bias[T14_COND_14C] > 0);
