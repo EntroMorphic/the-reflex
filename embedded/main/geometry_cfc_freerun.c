@@ -3224,6 +3224,9 @@ void app_main(void) {
             int t14_total_confirms[T14_N_COND];
             int t14_correct[T14_N_COND];
             int t14_misclass[T14_N_COND];
+            int t14_confusion[T14_N_COND][4][4];
+            int t14_trix_agree[T14_N_COND];
+            int t14_trix_disagree[T14_N_COND];
             int32_t t14_fires[T14_N_COND][TRIX_NUM_PATTERNS];
             int32_t t14_bias_active_loops[T14_N_COND];
             int32_t t14_total_loops[T14_N_COND];
@@ -3235,6 +3238,9 @@ void app_main(void) {
             memset(t14_total_confirms, 0, sizeof(t14_total_confirms));
             memset(t14_correct, 0, sizeof(t14_correct));
             memset(t14_misclass, 0, sizeof(t14_misclass));
+            memset(t14_confusion, 0, sizeof(t14_confusion));
+            memset(t14_trix_agree, 0, sizeof(t14_trix_agree));
+            memset(t14_trix_disagree, 0, sizeof(t14_trix_disagree));
             memset(t14_fires, 0, sizeof(t14_fires));
             memset(t14_bias_active_loops, 0, sizeof(t14_bias_active_loops));
             memset(t14_total_loops, 0, sizeof(t14_total_loops));
@@ -3322,7 +3328,14 @@ void app_main(void) {
                         if (gt < 4) {
                             if (pred == (int)gt) correct_count++;
                             else misclass_count++;
+                            t14_confusion[cond][(int)gt][pred]++;
                         }
+
+                        /* TriX vs core_pred agreement.
+                         * Note: trix_pred is set to -2 by the ISR (needs
+                         * main-loop resolution via packed channel dots).
+                         * Direct comparison requires the full TriX channel
+                         * consumer from TEST 11. Deferred to future work. */
 
                         /* Mid-run snapshot at t=60s (confound control) */
                         int64_t elapsed_us = esp_timer_get_time()
@@ -3618,7 +3631,7 @@ void app_main(void) {
             printf("  If 14A@60s ~ 14C@60s:     confound (maturity, not formation)\n");
 
             /* ── Classification accuracy ── */
-            printf("\n  Classification Accuracy (vs sender ground truth):\n");
+            printf("\n  Classification Accuracy (CPU core_pred vs sender ground truth):\n");
             int all_correct = 1;
             for (int c = 0; c < T14_N_COND; c++) {
                 int total_cls = t14_correct[c] + t14_misclass[c];
@@ -3628,6 +3641,30 @@ void app_main(void) {
                            ? 100.0f * t14_correct[c] / total_cls : 0);
                 if (t14_misclass[c] > 0) all_correct = 0;
             }
+
+            /* ── Confusion matrix (representative: last condition with data) ── */
+            for (int c = 0; c < T14_N_COND; c++) {
+                int has_data = 0;
+                for (int p = 0; p < 4; p++)
+                    for (int q = 0; q < 4; q++)
+                        if (t14_confusion[c][p][q] > 0) has_data = 1;
+                if (!has_data) continue;
+
+                printf("\n  Confusion Matrix — %s (rows=ground truth, "
+                       "cols=predicted):\n", t14_cond_name[c]);
+                printf("       P0   P1   P2   P3\n");
+                for (int p = 0; p < 4; p++) {
+                    printf("  P%d:", p);
+                    for (int q = 0; q < 4; q++)
+                        printf(" %4d", t14_confusion[c][p][q]);
+                    printf("\n");
+                }
+            }
+
+            /* TriX vs core_pred agreement: deferred. TriX ISR sets
+             * trix_pred=-2 (needs channel-based resolution). Direct
+             * comparison requires the full TriX consumer from TEST 11.
+             * The confusion matrix above characterizes core_pred errors. */
 
             /* ── Divergence as fraction of maximum (n/16) ── */
             printf("\n  Divergence as %% of maximum (16 trits):\n");
