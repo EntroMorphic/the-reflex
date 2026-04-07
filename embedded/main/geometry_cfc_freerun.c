@@ -1675,7 +1675,8 @@ void app_main(void) {
         start_freerun();
 
         /* Feed live input every 50ms for 1s using drain (no dropped packets) */
-        espnow_last_rx_us = 0;  /* reset timing */
+        espnow_last_rx_us = 0;
+        gie_reset_gap_history();
         espnow_rx_entry_t drain_buf_10b[16];
         int live_updates = 0;
         for (int i = 0; i < 20; i++) {
@@ -1728,6 +1729,7 @@ void app_main(void) {
             build_circular_chain();
             start_freerun();
             espnow_last_rx_us = 0;
+            gie_reset_gap_history();
 
             uint8_t dominant_pattern = 255;
             int pattern_counts[4] = {0};
@@ -1804,6 +1806,7 @@ void app_main(void) {
         build_circular_chain();
         start_freerun();
         espnow_last_rx_us = 0;
+        gie_reset_gap_history();
 
         /* Reset LP hidden for clean observation */
         memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
@@ -1915,6 +1918,7 @@ void app_main(void) {
         build_circular_chain();
         start_freerun();
         espnow_last_rx_us = 0;
+        gie_reset_gap_history();
         espnow_ring_flush();  /* Discard any stale packets */
 
         /* ── Phase 0: TriX Signature Routing ──

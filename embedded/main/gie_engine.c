@@ -1162,8 +1162,9 @@ int trit_energy(const int8_t *v, int n) {
  *               Active pattern gets (+1, +1), others get (-1, -1).
  *    [24..87]   Payload bytes: 8 bytes × 8 bits = 64 trits.
  *               Each bit → +1 if set, -1 if clear.
- *    [88..103]  Inter-packet timing: 16 trits, thermometer encoding
- *               of gap between packets (0ms..500ms range).
+ *    [88..102]  MTFP21 gap history: 5 gaps × 3 trits (2 exp + 1 mantissa).
+ *               Encodes temporal pattern, not instantaneous value.
+ *    [103]      Gap variance flag: +1 bursty, -1 steady, 0 moderate.
  *    [104..119] Sequence features: 16 trits encoding sequence % 16
  *               and sequence / 16 patterns.
  *    [120..127] Reserved: zeros (future expansion).
@@ -1175,6 +1176,71 @@ int trit_energy(const int8_t *v, int n) {
 
 /* Track last receive time for inter-packet timing */
 int64_t espnow_last_rx_us = 0;
+
+/* ── MTFP21 gap history (5 most recent inter-packet gaps) ── */
+static int16_t gap_history[5] = {0};
+static int     gap_history_idx = 0;
+
+void gie_reset_gap_history(void) {
+    memset(gap_history, 0, sizeof(gap_history));
+    gap_history_idx = 0;
+}
+
+/* MTFP21 scale tables (file-scope, shared by encoder and variance) */
+static const int16_t mtfp_scale_lo[] = {0,  25,  75, 150, 250, 400, 600, 1000};
+static const int16_t mtfp_scale_hi[] = {24, 74, 149, 249, 399, 599, 999, 9999};
+static const int8_t  mtfp_exp0[]     = {-1, -1, -1,   0,   0,   0,   1,    1};
+static const int8_t  mtfp_exp1[]     = {-1,  0,  1,  -1,   0,   1,  -1,    0};
+
+/* MTFP21 encoder: gap_ms → 3 trits [exp0, exp1, mantissa].
+ * Scale boundaries tuned to sender gap clusters with 25ms margins. */
+static void encode_mtfp21_gap(int gap_ms, int8_t *out) {
+
+    int g = (gap_ms < 0) ? 0 : (gap_ms > 9999) ? 9999 : gap_ms;
+    int s = 7;
+    for (int i = 0; i < 8; i++) {
+        if (g >= mtfp_scale_lo[i] && g <= mtfp_scale_hi[i]) { s = i; break; }
+    }
+
+    out[0] = mtfp_exp0[s];
+    out[1] = mtfp_exp1[s];
+
+    int range = mtfp_scale_hi[s] - mtfp_scale_lo[s];
+    if (range <= 0) {
+        out[2] = 0;
+    } else {
+        int pos = g - mtfp_scale_lo[s];
+        out[2] = (pos * 3 < range) ? -1 : (pos * 3 > range * 2) ? 1 : 0;
+    }
+}
+
+/* Encode 5-gap MTFP21 history + variance flag into trits [88..103] */
+static void encode_gap_history(int gap_ms, int8_t *new_input) {
+    gap_history[gap_history_idx] = (int16_t)gap_ms;
+    gap_history_idx = (gap_history_idx + 1) % 5;
+
+    /* Encode 5 gaps oldest-first */
+    for (int g = 0; g < 5; g++) {
+        int hi = (gap_history_idx + g) % 5;
+        encode_mtfp21_gap(gap_history[hi], &new_input[88 + g * 3]);
+    }
+
+    /* Trit [103]: gap variance flag.
+     * +1 if gaps span 3+ scales (bursty), -1 if <=1 scale (steady). */
+    int min_s = 7, max_s = 0;
+    for (int g = 0; g < 5; g++) {
+        int hi = (gap_history_idx + g) % 5;
+        int gv = gap_history[hi];
+        int sv = 7;
+        for (int i = 0; i < 8; i++) {
+            if (gv >= mtfp_scale_lo[i] && gv <= mtfp_scale_hi[i]) { sv = i; break; }
+        }
+        if (sv < min_s) min_s = sv;
+        if (sv > max_s) max_s = sv;
+    }
+    new_input[103] = (max_s - min_s >= 3) ? T_POS
+                   : (max_s - min_s <= 1) ? T_NEG : T_ZERO;
+}
 
 /**
  * Encode ESP-NOW state into cfc.input[128].
@@ -1219,23 +1285,20 @@ int espnow_encode_input(const espnow_state_t *st) {
         }
     }
 
-    /* ── [88..103] Inter-packet timing (thermometer) ──
-     * 16 thresholds from 0ms to 500ms, step ≈ 33ms.
-     * Short gaps = more +1 trits (fast bursts).
-     * Long gaps = more -1 trits (slow patterns). */
+    /* ── [88..103] MTFP21 gap history (5 × 3 trits + variance flag) ──
+     * Replaces 16-trit thermometer. Encodes last 5 inter-packet gaps
+     * as MTFP21 (2 exponent + 1 mantissa per gap). Trit [103] is a
+     * gap variance flag (+1 bursty, -1 steady). See MTFP21_TIMING_ENCODING.md. */
     int64_t now_us = esp_timer_get_time();
     int64_t gap_ms = 0;
     if (espnow_last_rx_us > 0) {
         gap_ms = (now_us - espnow_last_rx_us) / 1000;
         if (gap_ms < 0) gap_ms = 0;
-        if (gap_ms > 500) gap_ms = 500;
+        if (gap_ms > 9999) gap_ms = 9999;
     }
     espnow_last_rx_us = now_us;
 
-    for (int i = 0; i < 16; i++) {
-        int threshold_ms = i * 33;  /* 0, 33, 66, ..., 495 */
-        new_input[88 + i] = (gap_ms <= threshold_ms) ? T_POS : T_NEG;
-    }
+    encode_gap_history((int)gap_ms, new_input);
 
     /* ── [104..119] Sequence features ──
      * Lower 4 bits of sequence → 8 trits (one-hot pairs).
@@ -1314,15 +1377,12 @@ int espnow_encode_rx_entry(const espnow_rx_entry_t *entry,
     if (espnow_last_rx_us > 0) {
         gap_ms = (entry->rx_timestamp_us - espnow_last_rx_us) / 1000;
         if (gap_ms < 0) gap_ms = 0;
-        if (gap_ms > 500) gap_ms = 500;
+        if (gap_ms > 9999) gap_ms = 9999;
     }
     espnow_last_rx_us = entry->rx_timestamp_us;
     if (out_gap_ms) *out_gap_ms = gap_ms;
 
-    for (int i = 0; i < 16; i++) {
-        int threshold_ms = i * 33;
-        new_input[88 + i] = (gap_ms <= threshold_ms) ? T_POS : T_NEG;
-    }
+    encode_gap_history((int)gap_ms, new_input);
 
     /* [104..119] Sequence features */
     uint32_t seq_lo = pkt->sequence & 0x0F;

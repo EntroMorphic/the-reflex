@@ -213,6 +213,12 @@ int trit_energy(const int8_t *v, int n);
 uint8_t encode_trit_pair(int t0, int t1);
 void encode_neuron_buffer(uint8_t *buf, const int8_t *trits, int n_trits);
 
+/* ══════════════════════════════════════════════════════════════════
+ *  MTFP21 GAP HISTORY
+ * ══════════════════════════════════════════════════════════════════ */
+
+void gie_reset_gap_history(void);
+
 #ifdef __cplusplus
 }
 #endif
