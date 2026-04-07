@@ -34,7 +34,9 @@ It does. Here is why, stated carefully.
 
 ## What Hallucination Is, Structurally
 
-Hallucination in language models is a prior overwhelming a signal. The model's learned
+LLM hallucination encompasses at least three distinct failure modes: (a) factual confabulation — stating false facts confidently, (b) context neglect — ignoring provided information in favor of prior expectations, and (c) reasoning errors — invalid logical steps. This note addresses (b): the case where a system's accumulated prior overrides direct evidence. Factual confabulation and reasoning errors involve different failure mechanisms and are not claimed to be addressed by the architecture described here.
+
+Context-neglect hallucination is a prior overwhelming a signal. The model's learned
 distribution — what it expects, given everything it has processed — dominates what the context
 is actually providing. The context says one thing. The prior says another. The prior wins.
 The output is fluent, confident, and factually wrong.
@@ -80,17 +82,13 @@ entirely input-driven. The LP prior does not enter the f_dot computation. Gate b
 which neurons fire (affecting gie_hidden) but not the f_dot values and thus not the TriX
 scores. TriX cannot be corrupted by the LP prior.
 
-This is not a soft separation. It is an architectural wall. The prior lives in LP SRAM. The
-classifier lives in PCNT/PARLIO/GDMA peripheral hardware. The wall between them is the fixed
-zero in the W_f weight matrix. They share a common LP SRAM communication channel, but the
-classifier's read path is one-way: it reads GIE hidden to produce snapshots for the VDB.
-It does not read the LP prior to produce TriX scores.
+Two levels of separation must be distinguished:
 
-Because of this wall, when TriX and the LP prior disagree, the disagreement is real
-information. TriX is not echoing the LP prior back at it. TriX is reporting what the
-peripheral hardware measured about the physical signal — independently, at 705 Hz, without
-prior influence. The disagreement cannot be a product of circular reasoning. It means
-something in the world changed.
+**The classification wall (strong).** The wall between prior and *classifier* is architectural. The prior lives in LP SRAM. The TriX classifier's scores are computed from `W_f @ input`, where `W_f hidden = 0` — the prior cannot reach the classification score through any weight path. This is not a soft separation. It is a fixed zero in the weight matrix.
+
+**The perception channel (designed).** The prior *does* influence what the GIE computes — that is the entire purpose of kinetic attention. Gate bias, derived from the LP prior, lowers firing thresholds for expected neuron groups, changing which neurons fire and thus changing the GIE hidden state. The GIE hidden state feeds the LP core. So the prior shapes perception by design. What it cannot shape is the *classification of that perception*. The TriX scores that determine "what pattern is this?" are structurally immune. The GIE dynamics that determine "what state does the LP core see?" are modulated.
+
+The wall protects classification. It does not protect perception. This distinction is critical: the agreement signal (component 4) compares the structurally-protected classifier output against the prior. Because the classifier cannot be corrupted, the disagreement signal is real information — it cannot be a product of circular reasoning. When TriX and the LP prior disagree, something in the world changed.
 
 The LP prior can trust that signal. And when it receives that signal — prior ≠ TriX — it
 can step back without self-contradiction.
@@ -135,7 +133,7 @@ And there is no structural mechanism to detect that "wrong" before the output is
 
 ## The Architectural Principle
 
-The Reflex instantiates, perhaps accidentally, a design principle with broader applicability:
+The Reflex instantiates a design principle with broader applicability. The CLS-like structure was not designed from theory — it was recognized after the hardware constraints forced a particular architecture. The VDB was added for episodic retrieval, the `W_f hidden = 0` constraint was set for TriX signature routing, and the agreement mechanism was added after an LMM cycle identified the uncontrolled-prior failure mode. Each component was a deliberate engineering decision. The CLS parallel became visible afterward. The constraints are the interesting part — they forced separation that theory would have recommended but engineering might not have prioritized:
 
 > **Hallucination resistance requires structural separation between the system that holds
 > priors and the system that reads evidence — such that the evidence-reader cannot be
@@ -176,6 +174,27 @@ open question. Whether it is the right question is not.
 
 ---
 
+## Comparison to Existing Hallucination Mitigation
+
+The five-component framework can evaluate existing approaches by identifying which components they implement and which they lack:
+
+| Approach | Prior-holder | Evidence-reader | Structural wall | Disagreement detection | Evidence deference |
+|----------|:---:|:---:|:---:|:---:|:---:|
+| RAG | Weights | Retrieved docs | None — attention can downweight retrieval | None explicit | None structural |
+| Chain-of-thought | Weights | Generated reasoning | None — same weights generate and evaluate | Implicit (self-consistency) | None structural |
+| Self-consistency (Wang et al.) | Weights | Multiple samples | None — same model | Voting across samples | Majority vote |
+| Constitutional AI | Weights | Critique model | Partial — critique shares base weights | Explicit (critique output) | Revision step |
+| Classifier-based detection | Weights | External classifier | Yes — separate model | Explicit (classifier score) | Threshold gating |
+| **The Reflex** | **LP CfC** | **GIE hardware** | **Yes — W_f hidden = 0** | **Agreement score** | **Bias attenuation** |
+
+Classifier-based detection (e.g., a separate model that flags hallucinated outputs) comes closest to full structural separation, but operates post-hoc — it detects hallucination after generation rather than preventing it during inference. The Reflex's mechanism operates during inference: the agreement signal modulates the prior's influence *before* the output is produced.
+
+RAG provides an external evidence source but lacks the architectural wall: the model's attention mechanism can learn to downweight retrieved documents when they conflict with the prior. The retrieval does not force evidence deference.
+
+No existing LLM approach implements all five components. Whether a complete implementation is feasible at LLM scale is unknown. The Reflex provides a concrete existence proof at a different scale — 4 patterns on a microcontroller — demonstrating that the five components are jointly achievable and produce measurable hallucination resistance (the prior defers within one classification cycle when contradicted).
+
+---
+
 ## The Connection to Complementary Learning Systems
 
 This is also the deeper significance of the CLS parallel (documented in `REFLECTION_MAR22.md`
@@ -200,10 +219,9 @@ the two, not just a statistical balance between them.
 
 ---
 
-## The Research Program
+## Open Questions: Prior-Signal Separation at LLM Scale
 
-The five-component architecture identifies what would need to be true for a language model to
-resist hallucination structurally:
+The five-component architecture identifies what would need to be true for a language model to resist context-neglect hallucination structurally. These are open questions, not a research program — the gap between a 4-pattern wireless classifier and a billion-parameter language model is enormous, and the structural analogy is suggestive rather than prescriptive:
 
 **Component 1 — Prior-holder:** In a language model, this is the trained weights plus any
 persistent state (KV cache, retrieved documents). The prior is what the system expects, built

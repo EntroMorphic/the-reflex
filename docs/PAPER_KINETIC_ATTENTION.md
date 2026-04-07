@@ -10,7 +10,7 @@ EntroMorphic Research
 
 ## Abstract
 
-We present a three-layer ternary neural computing system on a $0.50 microcontroller that classifies wireless signals at 100% accuracy using peripheral hardware, accumulates a temporal model of what it has perceived, and uses that model to bias what the perceptual layer computes next. The system draws approximately 30 microamps in autonomous mode. No floating point. No multiplication. No training loop.
+We present a three-layer ternary neural computing system on a $0.50 microcontroller that classifies wireless signals at 100% accuracy in peripheral hardware (TriX ISR at 430 Hz) and 96% accuracy in the LP feedback path (CPU core_pred with MTFP21 timing encoding), accumulates a temporal model of what it has perceived, and uses that model to bias what the perceptual layer computes next. The system draws approximately 30 microamps in autonomous mode. No floating point. No multiplication. No training loop.
 
 The architecture consists of a Geometry Intersection Engine (GIE) performing ternary dot products at 430 Hz via DMA-routed peripheral loopback, a low-power RISC-V core running a ternary Closed-form Continuous-time neural network (CfC) with an episodic vector database (VDB), and a high-power core that mediates between them. Classification accuracy is structurally decoupled from the temporal model by a zero-weight partition in the gate matrix (W_f hidden = 0).
 
@@ -82,7 +82,7 @@ The three blend modes create non-gradient dynamics: HOLD provides inertia, UPDAT
 
 The system contains two classifiers that serve different roles:
 
-**TriX (ISR, hardware, 430 Hz).** Four ternary signature vectors are installed as W_f gate weights, with 8 neurons per pattern group. The ISR extracts per-group dot products and publishes the argmax as the TriX prediction. Verified at 100% accuracy in TEST 11 (32/32 classifications correct across all hardware runs). This is the system's classification output.
+**TriX (ISR, hardware, 430 Hz).** Four ternary signature vectors are installed as W_f gate weights, with 8 neurons per pattern group. The ISR extracts per-group dot products and publishes the argmax as the TriX prediction. Verified at 100% accuracy in TEST 11 (32/32 classifications correct across all hardware runs). ISR classification was independently validated against CPU reference classification: 100% agreement across all confirmed classifications in TEST 14 (commit `0b09f69`). This is the system's classification output.
 
 **CPU core_pred (HP core, ~4 Hz).** The HP core computes `argmax(dot(input, sig[p]))` using the same signatures as a scalar dot product. This classifier is used in TEST 12-14 to dispatch LP feedback at the per-packet classification rate. Its accuracy is approximately 80% — the P0-P1 signature overlap (73% cross-dot ratio) leaves a discrimination margin of ~28 points, which per-packet variation in timing and RSSI trits can exceed. The 20% disagreement rate is acceptable for LP feedback dispatch because the sign-of-sum LP accumulator washes out isolated misclassifications over hundreds of confirmations.
 
@@ -246,7 +246,7 @@ LP hidden state: 16 neurons × 5 trits = 80 trits. The encoding is HP-side only 
 
 **Red-team control (April 7):** An earlier implementation used the 80-trit MTFP dot product for the agreement computation that drives gate bias. This created a runaway positive feedback loop — the higher-resolution agreement signal entrained P0/P1/P2 to identical sign vectors (14C Hamming P0-P1=0, P0-P2=0). The agreement was reverted to sign-space (16-trit) for the mechanism. MTFP is measurement-only. This cleanly separates encoding improvement (MTFP) from mechanism change (agreement signal).
 
-#### TEST 12 with MTFP (representative run, post red-team)
+#### TEST 12 with MTFP (single run, N=1, post red-team remediation)
 
 | Pair | Sign-space (/16) | MTFP-space (/80) |
 |------|:---:|:---:|
@@ -259,7 +259,7 @@ LP hidden state: 16 neurons × 5 trits = 80 trits. The encoding is HP-side only 
 
 Split-half null test: analytical bound ~1/80 at n=306. P1-P2 MTFP = 12. Signal is 12× above noise floor.
 
-#### TEST 14 MTFP Divergence (representative run)
+#### TEST 14 MTFP Divergence (single run, N=1, same seed as sign-space runs)
 
 | Pair | 14A sign | 14A MTFP | 14C sign | 14C MTFP | 14C-iso sign | 14C-iso MTFP |
 |------|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -308,7 +308,7 @@ The agreement mechanism gates the prior's influence by comparing it to the curre
 
 The bias duty cycle confirms this: under 14C, bias is active on 94-96% of confirmations. This means agreement is consistently high during stable-pattern periods — the LP prior reliably aligns with the TriX classification. The 4-6% of confirmations without bias are the transition moments where the prior and the classification disagree.
 
-### 5.4 Structural Guarantees
+### 5.5 Structural Guarantees
 
 Three properties hold by construction, not by empirical observation:
 
@@ -344,9 +344,9 @@ The architectural decoupling between the prior pathway (LP state -> gate bias ->
 
 ## 7. Limitations
 
-1. **N=3, uncontrolled.** TEST 14 was run three times. The 14C vs 14A improvement is consistent across all three runs (+1.0 to +2.5 mean Hamming). The 14C-iso vs 14C comparison is not consistent (2 of 3 runs favor 14C-iso). The sender's natural pattern cycling introduces uncontrolled variance in pattern timing, sample counts, and transition alignment. Formal statistical testing requires either more repetitions or a controlled sender protocol.
+1. **N=3, same seed.** TEST 14 was run three times with the same weight seed (`0xCAFE1234`). The weights are identical across runs; variance comes only from the sender's pattern timing phase at each condition start. This demonstrates robustness to input timing variance, not architectural variance. The 14C vs 14A improvement is consistent across all three runs (+1.0 to +2.5 mean Hamming). The 14C-iso vs 14C comparison is not consistent (2 of 3 runs favor 14C-iso). Formal replication with different seeds is needed to establish robustness to the random projection itself.
 
-2. **Fixed weights.** The CfC projection is random and never updates. The P1-P2 degeneracy is a permanent feature of the current weight matrix. Different random seeds produce different degeneracies. A production system would either learn weights (Pillar 3) or use multiple random projections.
+2. **Fixed weights.** The CfC projection is random and never updates. The P1-P2 sign-space degeneracy is a permanent feature of seed `0xCAFE1234`. Different seeds produce different degeneracies. MTFP dot encoding resolves the measurement bottleneck for this seed; whether it generalizes across seeds is untested. A production system would either learn weights (Pillar 3) or use multiple random projections.
 
 3. **Four patterns.** The system has been tested with four wireless transmission patterns. Scaling to more patterns is constrained by VDB capacity (64 nodes), LP hidden dimension (16 trits), and the number of TriX neuron groups (currently 4, one per pattern).
 
