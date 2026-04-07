@@ -1983,11 +1983,35 @@ void app_main(void) {
                 sig[p][i] = tsign(sig_sum[p][i]);
                 if (sig[p][i] != T_ZERO) nz++;
             }
+            /* Zero out sequence features [104..127] in the signature.
+             *
+             * The 128-trit input encodes:
+             *   [0..15]    RSSI — shared across patterns (same sender)
+             *              but harmless (contributes equally to all dots)
+             *   [16..23]   Pattern ID one-hot — primary discriminator
+             *   [24..87]   Payload bits — pattern-specific content
+             *   [88..103]  Inter-packet timing — pattern-discriminative
+             *              (P0=100ms, P1=burst+pause, P2=500ms)
+             *   [104..119] Sequence features — global monotonic counter,
+             *              NOT pattern-specific. Bakes observation-window
+             *              sequence range into signature, producing noise
+             *              at test time when sequences are out of range.
+             *   [120..127] Reserved — always zero
+             *
+             * Only [104..127] are masked. RSSI is harmless (shift-
+             * invariant under argmax). Timing IS discriminative (different
+             * patterns have different inter-packet gaps). */
+            for (int i = 104; i < CFC_INPUT_DIM; i++)
+                sig[p][i] = T_ZERO;     /* sequence + reserved */
+            /* Recount non-zero after masking */
+            nz = 0;
+            for (int i = 0; i < CFC_INPUT_DIM; i++)
+                if (sig[p][i] != T_ZERO) nz++;
             printf("  sig[%d]: [", p);
             /* Print first 32 trits for visibility */
             for (int i = 0; i < 32 && i < CFC_INPUT_DIM; i++)
                 printf("%c", trit_char(sig[p][i]));
-            printf("...] nz=%d/%d (from %d samples)\n",
+            printf("...] nz=%d/%d (from %d samples, seq trits masked)\n",
                    nz, CFC_INPUT_DIM, sig_count[p]);
         }
 
