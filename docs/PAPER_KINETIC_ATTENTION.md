@@ -393,7 +393,7 @@ The architectural decoupling between the prior pathway (LP state -> gate bias ->
 
 3. **Four patterns.** The system has been tested with four wireless transmission patterns. Scaling to more patterns is constrained by VDB capacity (64 nodes), LP hidden dimension (16 trits), and the number of TriX neuron groups (currently 4, one per pattern).
 
-4. **JTAG attached.** All test runs use USB-JTAG for serial output. The ISR executes on peripheral hardware between CPU involvement, but this has not been verified with the JTAG controller physically disconnected. UART-only verification (console on GPIO 16/17, battery power) is planned but not yet performed.
+4. **JTAG attached.** All test runs use USB-JTAG for serial output and power. The GIE runs on peripheral hardware (GDMA, PARLIO, PCNT) that is architecturally independent of the JTAG controller — the ISR and DMA chain do not use the USB peripheral or its associated GPIOs. The ~30 µA power claim is derived from the LP core's datasheet specification and the peripheral-only nature of the GIE signal path, not from direct current measurement with JTAG disconnected. UART-only verification (console on GPIO 16/17, battery power, direct current measurement) will confirm this claim in a follow-up run. We consider the risk of JTAG interference low — the same 14/14 PASS result has been observed across 10+ independent runs spanning 6 weeks — but acknowledge that the JTAG-free data does not yet exist.
 
 5. **Controlled pattern switch in progress.** TEST 14C-iso uses the sender's natural 20-second pattern cycle, not a controlled single-switch protocol. A dedicated transition mode (P1 90s → P2 30s) has been implemented (TEST 14C) and is currently under silicon verification. The transition experiment will provide the CLS-prediction data for Stratum 2.
 
@@ -408,6 +408,8 @@ A wireless signal classifier on a $0.50 microcontroller, drawing under 30 microa
 Across three runs of the same experimental configuration, gate bias consistently increased LP divergence by +1.0 to +2.5 Hamming points (8-27% of theoretical maximum) over the unbiased baseline, with zero catastrophic regressions. The mechanism produces a measurable change in peripheral hardware behavior: per-group gate firing rates shift by 9-27% under bias, confirming that the LP prior is physically changing what the GIE computes.
 
 The delayed-onset condition (14C-iso) outperformed continuous bias in two of three runs, suggesting that priors may form better without amplification feedback — but this result requires further replication with controlled sender protocols.
+
+MTFP dot encoding — replacing `sign(dot)` with a 5-trit magnitude-preserving representation — resolves the P1-P2 sign-space degeneracy that was previously the system's primary measurement limitation. P1-P2 Hamming increases from 0/16 (degenerate) to 5-10/80 (separated), with a split-half null distance of ~1/80. The encoding changes no mechanism — it is a measurement improvement that reveals structure the sign-space projection collapses.
 
 All ternary. No floating point. No multiplication. No training.
 
