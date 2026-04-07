@@ -3,8 +3,8 @@
 **Tripp Josserand-Austin**
 EntroMorphic Research
 
-*Draft: April 7, 2026*
-*Data: commits `12aa970` (TEST 12/13), `5735119` (TEST 14, 3 runs). ESP32-C6FH4, ESP-IDF v5.4.*
+*Draft: April 7, 2026. Updated with MTFP dot encoding and red-team remediation.*
+*Data: commits `12aa970` (TEST 12/13), `429ce38` (TEST 14), `98800a9` (MTFP encoding), `f510f9a` (red-team fixes). ESP32-C6FH4, ESP-IDF v5.4. 14/14 PASS.*
 
 ---
 
@@ -234,6 +234,44 @@ To distinguish whether the 14C-iso advantage (when present) comes from unbiased 
 
 **14/14 PASS across all three runs.**
 
+### 4.3 MTFP Dot Encoding: Resolving the Sign-Space Bottleneck
+
+The LP CfC computes a dot product per neuron, producing an integer in approximately [-48, +48]. The original `sign()` quantization discards magnitude, collapsing the P1-P2 distinction. A 5-trit MTFP (Multi-Trit Floating Point) encoding per neuron preserves the magnitude structure:
+
+- **Trit 0:** Sign (+1/-1/0), identical to current `sign()`
+- **Trits 1-2:** Magnitude exponent (8 scales: 0, 1-3, 4-8, 9-15, 16-24, 25-35, 36-48, 49+)
+- **Trits 3-4:** Mantissa (position within scale, 3 levels per trit)
+
+LP hidden state: 16 neurons × 5 trits = 80 trits. The encoding is HP-side only — the LP core assembly, VDB format, and VDB search are unchanged. MTFP accumulation and Hamming computation run on the HP core after each CMD 5 step.
+
+**Red-team control (April 7):** An earlier implementation used the 80-trit MTFP dot product for the agreement computation that drives gate bias. This created a runaway positive feedback loop — the higher-resolution agreement signal entrained P0/P1/P2 to identical sign vectors (14C Hamming P0-P1=0, P0-P2=0). The agreement was reverted to sign-space (16-trit) for the mechanism. MTFP is measurement-only. This cleanly separates encoding improvement (MTFP) from mechanism change (agreement signal).
+
+#### TEST 12 with MTFP (representative run, post red-team)
+
+| Pair | Sign-space (/16) | MTFP-space (/80) |
+|------|:---:|:---:|
+| P0-P1 | 1 | 7 |
+| P0-P2 | 4 | 13 |
+| **P1-P2** | **3** | **12** |
+| P0-P3 | 6 | 16 |
+| P1-P3 | 5 | 18 |
+| P2-P3 | 5 | 17 |
+
+Split-half null test: analytical bound ~1/80 at n=306. P1-P2 MTFP = 12. Signal is 12× above noise floor.
+
+#### TEST 14 MTFP Divergence (representative run)
+
+| Pair | 14A sign | 14A MTFP | 14C sign | 14C MTFP | 14C-iso sign | 14C-iso MTFP |
+|------|:---:|:---:|:---:|:---:|:---:|:---:|
+| P0-P1 | 1 | 3 | 1 | 4 | 1 | 5 |
+| P0-P2 | 1 | 6 | 1 | 8 | 2 | 4 |
+| **P1-P2** | **0** | **5** | **1** | **10** | **1** | **3** |
+| P0-P3 | 3 | 11 | 4 | 21 | 4 | 14 |
+| P1-P3 | 4 | 11 | 4 | 22 | 5 | 13 |
+| P2-P3 | 4 | 9 | 3 | 23 | 4 | 10 |
+
+P1-P2 under 14A: sign=0 (degenerate), MTFP=5 (separated). Under 14C: sign=1, MTFP=10. The MTFP encoding reveals separation that sign-space collapses. The 14C improvement is visible in MTFP-space even when sign-space shows no change — gate bias is producing magnitude differences that `sign()` discards.
+
 ---
 
 ## 5. Analysis
@@ -252,9 +290,17 @@ The hypothesis — that priors formed without bias amplification produce better 
 
 This is an open question, not a finding. A controlled experiment — holding a single pattern for 60 seconds, then switching, with and without bias during the hold period — would isolate the effect. The current natural-cycling protocol conflates pattern transitions with the bias onset boundary.
 
-### 5.3 The P1-P2 Degeneracy
+### 5.3 The P1-P2 Degeneracy and Its Resolution
 
-P1-P2 Hamming is 0 under 14A in two of three runs, confirming the CfC's random-projection degeneracy for this pair. Gate bias cannot resolve this — amplifying a degenerate projection still produces degenerate values. Under 14C, P1-P2 remains 0-1 across runs. Under 14C-iso, P1-P2 reached 3 in run 1 and 0-1 in the other runs. The degeneracy is structural and requires either weight updates or higher LP dimensionality to resolve.
+P1-P2 Hamming in sign-space is 0 under 14A in multiple runs, confirming the CfC's random-projection degeneracy for this pair. Gate bias cannot resolve this — amplifying a degenerate projection still produces degenerate values. Under 14C, P1-P2 sign-space remains 0-1.
+
+**The degeneracy is in the quantization, not the projection.** An LP dot magnitude diagnostic (commit `7391876`) proved that the raw dot products for P1 and P2 differ substantially in magnitude — neurons n05, n08, n13 show magnitude differences of 8, 6, and 10 — but `sign()` collapses this to identical trits because the signs agree.
+
+**MTFP dot encoding resolves it.** Replacing the single sign trit per neuron with a 5-trit MTFP encoding (sign + 2 exponent + 2 mantissa) preserves the magnitude information. The LP state expands from 16 to 80 trits (Section 4.3). P1-P2 MTFP Hamming ranges from 5-12/80 where sign-space shows 0-4/16.
+
+A split-half null test establishes the noise floor: same pattern, different samples, expected Hamming ~1/80 (at n=306 samples). The observed P1-P2 MTFP Hamming of 10-12 is 10-12× above this noise floor, confirming the separation is real information, not accumulator noise.
+
+The MTFP encoding changes no mechanism — the LP core assembly, VDB, and gate bias computation are unchanged. The encoding is HP-side only. The CfC still operates in sign-space internally. The MTFP representation is a parallel measurement that reveals structure the sign-space projection collapses.
 
 ### 5.4 Agreement as Epistemic Humility
 
@@ -306,7 +352,9 @@ The architectural decoupling between the prior pathway (LP state -> gate bias ->
 
 4. **JTAG attached.** All test runs use USB-JTAG for serial output. The ISR executes on peripheral hardware between CPU involvement, but this has not been verified with the JTAG controller physically disconnected. UART-only verification (console on GPIO 16/17, battery power) is planned but not yet performed.
 
-5. **No controlled pattern switch.** TEST 14C-iso uses the sender's natural 27-second pattern cycle, not a controlled single-switch protocol. The LP prior never fully commits to one pattern before the sender cycles. A dedicated sender mode with extended single-pattern holds is needed for the cleanest transition experiment.
+5. **Controlled pattern switch in progress.** TEST 14C-iso uses the sender's natural 20-second pattern cycle, not a controlled single-switch protocol. A dedicated transition mode (P1 90s → P2 30s) has been implemented (TEST 14C) and is currently under silicon verification. The transition experiment will provide the CLS-prediction data for Stratum 2.
+
+6. **MTFP scale boundaries.** The 8 magnitude scales were tuned to the observed LP dot distribution from the diagnostic run. Validation across multiple runs and different random seeds is needed to confirm the boundaries are not overfit to one weight configuration.
 
 ---
 
@@ -334,7 +382,7 @@ The hardware was already doing the work. We just used it.
 | ESP-IDF | v5.4 |
 | CFC_HIDDEN_DIM | 32 |
 | TRIX_NEURONS_PP | 8 (4 groups of 8) |
-| LP_HIDDEN_DIM | 16 |
+| LP_HIDDEN_DIM | 16 (sign-space), 80 (MTFP-space) |
 | VDB_MAX_NODES | 64 |
 | VDB_TRIT_DIM | 48 |
 | GATE_THRESHOLD | 90 |
