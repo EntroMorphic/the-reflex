@@ -31,6 +31,10 @@ extern const uint8_t ulp_main_bin_end[]   asm("_binary_ulp_main_bin_end");
 #define NUM_DUMMIES     5
 #define SEP_SIZE        64
 #define CAPTURES_PER_LOOP  (NUM_DUMMIES + NUM_NEURONS)
+#define NUM_TEMPLATES   4
+
+/* TriX signatures: file-scope for access by diagnostics at end of main */
+static int8_t sig[NUM_TEMPLATES][CFC_INPUT_DIM];
 
 /* ══════════════════════════════════════════════════════════════════
  *  MAIN — TEST SUITE
@@ -1879,7 +1883,7 @@ void app_main(void) {
     {
         #define T11_WINDOW_MS      1000   /* Sample window duration (1s) */
         #define T11_DRAIN_MS       10     /* Drain interval (fast!) */
-        #define NUM_TEMPLATES      4
+        /* NUM_TEMPLATES defined at file scope */
         #define MAX_TEST_SAMPLES   32     /* Test samples to collect */
 
         /* ── TriX Cube: 7-voxel geometry (core + 6 faces) ──
@@ -1932,8 +1936,7 @@ void app_main(void) {
          * payload (24..87), and timing (88..103). The signature captures
          * ALL of this. Content-addressable routing, not learning. */
 
-        /* Signature storage: 4 patterns × 128 trits (static to avoid stack overflow) */
-        static int8_t  sig[NUM_TEMPLATES][CFC_INPUT_DIM];
+        /* Signature storage: file-scope for access by diagnostics */
         static int16_t sig_sum[NUM_TEMPLATES][CFC_INPUT_DIM];
         int sig_count[NUM_TEMPLATES];
         memset(sig_sum, 0, sizeof(sig_sum));
@@ -4021,6 +4024,100 @@ void app_main(void) {
         printf("\n  SOME TESTS FAILED — see details above.\n\n");
     }
     fflush(stdout);
+
+    /* ══════════════════════════════════════════════════════════════
+     *  LP DOT MAGNITUDE DIAGNOSTIC
+     *
+     *  Answers: do P1 and P2 produce different LP dot MAGNITUDES
+     *  even when sign(dot) is the same? If yes, the LP degeneracy
+     *  is in sign() quantization, and MTFP per-neuron encoding
+     *  (5 trits/neuron) would resolve it. If no, the degeneracy is
+     *  in the projection itself, and more dimensions are needed.
+     *
+     *  Uses cpu_lp_reference() — pure HP-side computation,
+     *  no LP core involvement.
+     * ══════════════════════════════════════════════════════════════ */
+    {
+        printf("\n── LP DOT MAGNITUDE DIAGNOSTIC ──\n");
+        printf("  (CPU reference, not LP core)\n\n");
+
+        /* Use the GIE hidden means from TEST 14 condition 14A.
+         * Feed each pattern's mean GIE state + zero LP state through
+         * the LP weights and compare dot magnitudes. */
+        int8_t zero_lp[LP_HIDDEN_DIM];
+        memset(zero_lp, 0, LP_HIDDEN_DIM);
+
+        /* Build synthetic GIE states from the TEST 11 signatures.
+         * sig[p] is the mean input for pattern p. The GIE hidden
+         * state from that input is not directly available, but we
+         * can use a deterministic GIE hidden: seed 42, run one
+         * CfC step from each sig[p] as input. */
+        int dots_f[4][LP_HIDDEN_DIM];
+        int dots_g[4][LP_HIDDEN_DIM];
+
+        for (int p = 0; p < 4; p++) {
+            /* Use sig[p] directly as a 32-trit "GIE hidden proxy"
+             * (first 32 trits of the 128-trit signature). This is
+             * not the real GIE hidden, but it's pattern-specific
+             * and deterministic — sufficient to test whether the
+             * LP projection separates patterns in magnitude. */
+            int8_t gie_proxy[LP_GIE_HIDDEN];
+            for (int j = 0; j < LP_GIE_HIDDEN; j++)
+                gie_proxy[j] = sig[p][j];
+
+            cpu_lp_reference(gie_proxy, zero_lp, dots_f[p], dots_g[p]);
+        }
+
+        /* Print raw f-pathway dots for each pattern */
+        printf("  LP f-pathway dots (per neuron, 4 patterns):\n");
+        printf("       ");
+        for (int n = 0; n < LP_HIDDEN_DIM; n++) printf(" n%02d", n);
+        printf("\n");
+        for (int p = 0; p < 4; p++) {
+            printf("  P%d: ", p);
+            for (int n = 0; n < LP_HIDDEN_DIM; n++)
+                printf(" %+3d", dots_f[p][n]);
+            printf("\n");
+        }
+
+        /* Signs */
+        printf("\n  LP f-pathway SIGNS:\n");
+        printf("       ");
+        for (int n = 0; n < LP_HIDDEN_DIM; n++) printf("  n%02d", n);
+        printf("\n");
+        for (int p = 0; p < 4; p++) {
+            printf("  P%d: ", p);
+            for (int n = 0; n < LP_HIDDEN_DIM; n++)
+                printf("   %c ", trit_char(tsign(dots_f[p][n])));
+            printf("\n");
+        }
+
+        /* P1 vs P2: sign agreement + magnitude difference */
+        printf("\n  P1 vs P2 comparison (f-pathway):\n");
+        int sign_agree = 0, sign_differ = 0;
+        int mag_diff_sum = 0;
+        for (int n = 0; n < LP_HIDDEN_DIM; n++) {
+            int s1 = tsign(dots_f[1][n]);
+            int s2 = tsign(dots_f[2][n]);
+            int m1 = dots_f[1][n] > 0 ? dots_f[1][n] : -dots_f[1][n];
+            int m2 = dots_f[2][n] > 0 ? dots_f[2][n] : -dots_f[2][n];
+            int md = m1 > m2 ? m1 - m2 : m2 - m1;
+            printf("    n%02d: P1=%+3d P2=%+3d  sign=%s  |mag_diff|=%d\n",
+                   n, dots_f[1][n], dots_f[2][n],
+                   (s1 == s2) ? "SAME" : "DIFF", md);
+            if (s1 == s2) sign_agree++;
+            else sign_differ++;
+            mag_diff_sum += md;
+        }
+        printf("  Signs: %d same, %d different\n", sign_agree, sign_differ);
+        printf("  Mean |magnitude difference|: %.1f\n",
+               (float)mag_diff_sum / LP_HIDDEN_DIM);
+        printf("  If signs are mostly SAME but magnitudes differ:\n");
+        printf("    → 5-trit MTFP per neuron would resolve the degeneracy\n");
+        printf("  If signs AND magnitudes are similar:\n");
+        printf("    → need more projection directions (wider LP)\n\n");
+        fflush(stdout);
+    }
 
     while (1) vTaskDelay(pdMS_TO_TICKS(10000));
 }
