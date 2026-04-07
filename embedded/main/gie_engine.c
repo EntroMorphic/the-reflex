@@ -127,6 +127,10 @@ volatile int32_t gate_threshold = 0;
 volatile int32_t gate_fires_total = 0;  /* diagnostic: count gate fires */
 volatile int32_t gate_steps_total = 0;  /* diagnostic: count total neurons checked */
 
+/* Phase 5: per-group gate bias + per-group fire counters */
+volatile int8_t gie_gate_bias[TRIX_NUM_PATTERNS] = {0};
+volatile int32_t gie_gate_fires_per_group[TRIX_NUM_PATTERNS] = {0};
+
 /* TriX ISR classification — computed at 430 Hz in hardware.
  * When trix_enabled=1, the ISR extracts per-pattern dot products from
  * the f-pathway neurons (which have TriX signatures installed as weights)
@@ -436,7 +440,7 @@ static void IRAM_ATTR isr_loop_boundary(void) {
         }
     }
 
-    /* ── 4. Apply CfC ternary blend (with TriX gate threshold) ── */
+    /* ── 4. Apply CfC ternary blend (with TriX gate threshold + Phase 5 bias) ── */
     int8_t h_new[CFC_HIDDEN_DIM];
     int32_t thresh = gate_threshold;  /* snapshot volatile once */
     int fires = 0;
@@ -444,8 +448,12 @@ static void IRAM_ATTR isr_loop_boundary(void) {
         int f_dot = dots[n];
         int8_t f;
         if (thresh > 0) {
-            /* TriX selective gating: fire only if |f_dot| exceeds threshold */
-            f = (f_dot > thresh || f_dot < -thresh) ? tsign(f_dot) : T_ZERO;
+            /* Phase 5: per-group gate bias. Positive bias → lower effective
+             * threshold → fires more easily. Bias is subtracted. */
+            int group = n / TRIX_NEURONS_PP;
+            int32_t eff = thresh - (int32_t)gie_gate_bias[group];
+            if (eff < MIN_GATE_THRESHOLD) eff = MIN_GATE_THRESHOLD;
+            f = (f_dot > eff || f_dot < -eff) ? tsign(f_dot) : T_ZERO;
         } else {
             f = tsign(f_dot);
         }
@@ -455,6 +463,7 @@ static void IRAM_ATTR isr_loop_boundary(void) {
         } else {
             h_new[n] = tmul(f, g);
             fires++;
+            gie_gate_fires_per_group[n / TRIX_NEURONS_PP]++;
         }
     }
     gate_fires_total += fires;

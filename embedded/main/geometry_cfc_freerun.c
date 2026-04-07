@@ -3141,6 +3141,414 @@ void app_main(void) {
             printf("  %s\n\n", ok13 ? "OK" : "FAIL");
             fflush(stdout);
         }
+
+        /* ══════════════════════════════════════════════════════════════
+         *  TEST 14: Kinetic Attention — Agreement-Weighted Gate Bias
+         *
+         *  THE QUESTION: Does LP hidden state biasing GIE gate thresholds
+         *  produce measurably different LP divergence than the unbiased
+         *  baseline?
+         *
+         *  MECHANISM (from March 22 LMM synthesis):
+         *  - agreement = trit_dot(lp_now, tsign(lp_running_sum[p_hat]))
+         *  - gate_bias[p_hat] = BASE_GATE_BIAS * max(0, agreement)
+         *  - ISR: effective_threshold = gate_threshold - gate_bias[group]
+         *  - Floor at MIN_GATE_THRESHOLD
+         *  - Decay all biases by 0.9 on each confirmation
+         *  - Cold-start: bias = 0 until lp_sample_count >= T14_MIN_SAMPLES
+         *
+         *  THREE CONDITIONS:
+         *  - 14A: baseline (gate_bias = 0 always)
+         *  - 14C: full agreement-weighted bias from start
+         *  - 14C-iso: bias disabled for first 60s (LP priors build unbiased),
+         *    then enabled for remaining 60s (isolates whether bias helps an
+         *    established prior vs. building the prior differently)
+         *
+         *  PASS CRITERIA (hardened after April 6 red-team):
+         *  - Gate bias activates in 14C (max > 0)
+         *  - Mean Hamming across all valid pairs: 14C >= 14A
+         *  - No catastrophic regression: no pair where 14C < 14A by > 3
+         *  - Per-group fire rates show bias effect (any group differs > 10%)
+         *  - Bias duty cycle reported (fraction of ISR loops with non-zero bias)
+         * ══════════════════════════════════════════════════════════════ */
+        printf("-- TEST 14: Kinetic Attention (Agreement-Weighted Gate Bias) --\n");
+        fflush(stdout);
+        {
+            #define T14_PHASE_US       120000000LL  /* 120s per condition */
+            #define T14_ISO_DELAY_US    60000000LL  /* 14C-iso: 60s unbiased buildup */
+            #define T14_INSERT_EVERY   8
+            #define T14_FB_THRESHOLD   8
+            #define T14_MIN_SAMPLES    15
+            #define T14_BIAS_DECAY     0.9f
+            #define T14_N_COND         3
+            #define T14_COND_14A       0
+            #define T14_COND_14C       1
+            #define T14_COND_14C_ISO   2
+
+            static const char *t14_cond_name[T14_N_COND] = {
+                "14A (no bias)",
+                "14C (full bias)",
+                "14C-iso (bias after 60s)"
+            };
+
+            /* Per-condition results */
+            static int8_t t14_lp_mean[T14_N_COND][4][LP_HIDDEN_DIM];
+            int t14_lp_n[T14_N_COND][4];
+            int t14_max_bias[T14_N_COND];
+            int t14_total_confirms[T14_N_COND];
+            int32_t t14_fires[T14_N_COND][TRIX_NUM_PATTERNS];
+            int32_t t14_bias_active_loops[T14_N_COND];
+            int32_t t14_total_loops[T14_N_COND];
+            memset(t14_lp_mean, 0, sizeof(t14_lp_mean));
+            memset(t14_lp_n, 0, sizeof(t14_lp_n));
+            memset(t14_max_bias, 0, sizeof(t14_max_bias));
+            memset(t14_total_confirms, 0, sizeof(t14_total_confirms));
+            memset(t14_fires, 0, sizeof(t14_fires));
+            memset(t14_bias_active_loops, 0, sizeof(t14_bias_active_loops));
+            memset(t14_total_loops, 0, sizeof(t14_total_loops));
+
+            for (int cond = 0; cond < T14_N_COND; cond++) {
+                printf("\n  ── Condition: %s ──\n", t14_cond_name[cond]);
+                fflush(stdout);
+
+                /* Reset everything for this condition */
+                gate_threshold    = 90;
+                gate_fires_total  = 0;
+                gate_steps_total  = 0;
+                memset((void *)gie_gate_bias, 0, sizeof(gie_gate_bias));
+                memset((void *)gie_gate_fires_per_group, 0,
+                       sizeof(gie_gate_fires_per_group));
+                vdb_clear();
+                memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
+                ulp_fb_threshold    = T14_FB_THRESHOLD;
+                ulp_fb_total_blends = 0;
+
+                /* LP accumulators for this condition */
+                static int16_t t14_lp_sum[4][LP_HIDDEN_DIM];
+                int t14_n[4] = {0};
+                memset(t14_lp_sum, 0, sizeof(t14_lp_sum));
+
+                /* Gate bias float state (for decay) */
+                float bias_f[TRIX_NUM_PATTERNS] = {0};
+                int max_bias_seen = 0;
+                int total_confirms = 0;
+                int32_t bias_active_count = 0;
+                int32_t loop_snap_start = 0;
+
+                /* Restart GIE */
+                premultiply_all();
+                encode_all_neurons();
+                build_circular_chain();
+                start_freerun();
+                espnow_ring_flush();
+                loop_snap_start = loop_count;
+
+                int64_t t14_start_us = esp_timer_get_time();
+
+                while ((esp_timer_get_time() - t14_start_us) < T14_PHASE_US) {
+                    vTaskDelay(pdMS_TO_TICKS(T11_DRAIN_MS));
+                    int nd = espnow_drain(drain_buf, 32);
+                    for (int i = 0; i < nd; i++) {
+                        if (!espnow_encode_rx_entry(&drain_buf[i], NULL))
+                            continue;
+
+                        /* Signal ISR to re-encode input */
+                        gie_input_pending = 1;
+                        int spins = 0;
+                        while (gie_input_pending && spins < 5000) {
+                            esp_rom_delay_us(5);
+                            spins++;
+                        }
+
+                        /* CPU classification */
+                        int core_best = -9999, core_pred = 0;
+                        for (int p = 0; p < NUM_TEMPLATES; p++) {
+                            int d = 0;
+                            for (int j = 0; j < CFC_INPUT_DIM; j++) {
+                                if (sig[p][j] != T_ZERO &&
+                                    cfc.input[j] != T_ZERO)
+                                    d += tmul(sig[p][j], cfc.input[j]);
+                            }
+                            if (d > core_best) {
+                                core_best = d;
+                                core_pred = p;
+                            }
+                        }
+                        if (core_best < NOVELTY_THRESHOLD) continue;
+
+                        int pred = core_pred;
+                        total_confirms++;
+
+                        /* Feed LP + run CMD 5 */
+                        feed_lp_core();
+                        vdb_result_t t14_fb_res;
+                        vdb_cfc_feedback_step(&t14_fb_res);
+
+                        /* Read LP hidden state, accumulate */
+                        int8_t lp_now[LP_HIDDEN_DIM];
+                        memcpy(lp_now, ulp_addr(&ulp_lp_hidden),
+                               LP_HIDDEN_DIM);
+                        for (int j = 0; j < LP_HIDDEN_DIM; j++)
+                            t14_lp_sum[pred][j] += lp_now[j];
+                        t14_n[pred]++;
+
+                        /* ── Agreement-weighted gate bias update ── */
+                        int64_t elapsed_us = esp_timer_get_time() - t14_start_us;
+                        int use_bias = 0;
+                        if (cond == T14_COND_14C) {
+                            use_bias = 1;
+                        } else if (cond == T14_COND_14C_ISO) {
+                            /* Bias only after 60s buildup phase */
+                            use_bias = (elapsed_us >= T14_ISO_DELAY_US) ? 1 : 0;
+                        }
+                        /* 14A: use_bias stays 0 */
+
+                        if (use_bias) {
+                            /* Decay all groups */
+                            for (int p = 0; p < TRIX_NUM_PATTERNS; p++)
+                                bias_f[p] *= T14_BIAS_DECAY;
+
+                            /* Update for current prediction if enough
+                             * samples (cold-start guard) */
+                            if (t14_n[pred] >= T14_MIN_SAMPLES) {
+                                int dot = 0;
+                                for (int j = 0; j < LP_HIDDEN_DIM; j++) {
+                                    int8_t m = tsign(t14_lp_sum[pred][j]);
+                                    dot += tmul(lp_now[j], m);
+                                }
+                                float ag = (float)dot / LP_HIDDEN_DIM;
+                                float b = BASE_GATE_BIAS *
+                                          (ag > 0.0f ? ag : 0.0f);
+                                if (b > bias_f[pred]) bias_f[pred] = b;
+                            }
+
+                            /* Write to engine */
+                            for (int p = 0; p < TRIX_NUM_PATTERNS; p++) {
+                                gie_gate_bias[p] = (int8_t)bias_f[p];
+                                if ((int)bias_f[p] > max_bias_seen)
+                                    max_bias_seen = (int)bias_f[p];
+                            }
+                        } else {
+                            /* Ensure bias is zero for this condition/phase */
+                            memset((void *)gie_gate_bias, 0,
+                                   sizeof(gie_gate_bias));
+                            memset(bias_f, 0, sizeof(bias_f));
+                        }
+
+                        /* Track bias duty cycle: count loops where any
+                         * group has non-zero bias since last check */
+                        int any_bias = 0;
+                        for (int p = 0; p < TRIX_NUM_PATTERNS; p++)
+                            if (gie_gate_bias[p] > 0) any_bias = 1;
+                        if (any_bias) bias_active_count++;
+
+                        /* VDB snapshot insert */
+                        if (total_confirms % T14_INSERT_EVERY == 0 &&
+                            vdb_count() < VDB_MAX_NODES) {
+                            int8_t snap[VDB_TRIT_DIM];
+                            memcpy(snap, (void *)cfc.hidden, LP_GIE_HIDDEN);
+                            memcpy(snap + LP_GIE_HIDDEN, lp_now,
+                                   LP_HIDDEN_DIM);
+                            vdb_insert(snap);
+                        }
+
+                        /* Periodic logging */
+                        if (total_confirms % 100 == 0) {
+                            printf("    step %d (%.0fs): bias=[%d %d %d %d] "
+                                   "p=%d vdb=%d\n",
+                                   total_confirms,
+                                   (double)elapsed_us / 1e6,
+                                   (int)gie_gate_bias[0],
+                                   (int)gie_gate_bias[1],
+                                   (int)gie_gate_bias[2],
+                                   (int)gie_gate_bias[3],
+                                   pred, vdb_count());
+                            fflush(stdout);
+                        }
+                    }
+                }
+
+                stop_freerun();
+                memset((void *)gie_gate_bias, 0, sizeof(gie_gate_bias));
+
+                /* Capture per-group fire counts and loop count */
+                for (int p = 0; p < TRIX_NUM_PATTERNS; p++)
+                    t14_fires[cond][p] = gie_gate_fires_per_group[p];
+                t14_bias_active_loops[cond] = bias_active_count;
+                t14_total_loops[cond] = loop_count - loop_snap_start;
+
+                /* Compute LP means */
+                for (int p = 0; p < 4; p++) {
+                    for (int j = 0; j < LP_HIDDEN_DIM; j++)
+                        t14_lp_mean[cond][p][j] = (t14_n[p] > 0)
+                            ? tsign(t14_lp_sum[p][j]) : T_ZERO;
+                    t14_lp_n[cond][p] = t14_n[p];
+                }
+                t14_max_bias[cond] = max_bias_seen;
+                t14_total_confirms[cond] = total_confirms;
+
+                /* Print condition results */
+                printf("\n  LP Hidden State (%s):\n", t14_cond_name[cond]);
+                for (int p = 0; p < 4; p++) {
+                    if (t14_lp_n[cond][p] > 0) {
+                        int energy = 0;
+                        for (int j = 0; j < LP_HIDDEN_DIM; j++)
+                            if (t14_lp_mean[cond][p][j] != T_ZERO) energy++;
+                        printf("    P%d: %d samples, energy=%d/16 [",
+                               p, t14_lp_n[cond][p], energy);
+                        for (int j = 0; j < LP_HIDDEN_DIM; j++)
+                            printf("%c", trit_char(t14_lp_mean[cond][p][j]));
+                        printf("]\n");
+                    } else {
+                        printf("    P%d: 0 samples\n", p);
+                    }
+                }
+
+                int bias_duty_pct = total_confirms > 0
+                    ? (int)(100LL * bias_active_count / total_confirms) : 0;
+                printf("  Confirms: %d, max_bias: %d, gate_firing: %d%%, "
+                       "bias_duty: %d%% (%d/%d confirms)\n",
+                       total_confirms, max_bias_seen,
+                       gate_steps_total > 0
+                           ? (int)(100LL * gate_fires_total / gate_steps_total)
+                           : 0,
+                       bias_duty_pct, (int)bias_active_count, total_confirms);
+                printf("  Per-group fires: [%ld %ld %ld %ld]\n",
+                       (long)t14_fires[cond][0], (long)t14_fires[cond][1],
+                       (long)t14_fires[cond][2], (long)t14_fires[cond][3]);
+                fflush(stdout);
+            }
+
+            /* ── Cross-condition comparison ── */
+            printf("\n  ══ TEST 14 COMPARISON ══\n");
+
+            /* LP Hamming matrices per condition */
+            int t14_ham[T14_N_COND][4][4];
+            for (int c = 0; c < T14_N_COND; c++) {
+                printf("\n  LP Divergence Matrix — %s:\n", t14_cond_name[c]);
+                printf("       P0  P1  P2  P3\n");
+                for (int p = 0; p < 4; p++) {
+                    printf("  P%d:", p);
+                    for (int q = 0; q < 4; q++) {
+                        if (t14_lp_n[c][p] > 0 && t14_lp_n[c][q] > 0) {
+                            t14_ham[c][p][q] = trit_hamming(
+                                t14_lp_mean[c][p], t14_lp_mean[c][q],
+                                LP_HIDDEN_DIM);
+                            printf("  %2d", t14_ham[c][p][q]);
+                        } else {
+                            t14_ham[c][p][q] = -1;
+                            printf("   -");
+                        }
+                    }
+                    printf("\n");
+                }
+            }
+
+            /* Per-pair comparison: 14C vs 14A, report each pair honestly */
+            printf("\n  Per-Pair Comparison (14C vs 14A):\n");
+            printf("  Pair  | 14A | 14C | delta | 14C-iso | delta\n");
+            printf("  ------|-----|-----|-------|---------|------\n");
+            int sum_ham_14a = 0, sum_ham_14c = 0, sum_ham_iso = 0;
+            int pairs_valid = 0;
+            int pairs_14c_better = 0, pairs_14c_worse = 0;
+            int worst_regression = 0;
+            for (int p = 0; p < 4; p++) {
+                for (int q = p + 1; q < 4; q++) {
+                    int ha = t14_ham[T14_COND_14A][p][q];
+                    int hc = t14_ham[T14_COND_14C][p][q];
+                    int hi = t14_ham[T14_COND_14C_ISO][p][q];
+                    if (ha >= 0 && hc >= 0) {
+                        pairs_valid++;
+                        sum_ham_14a += ha;
+                        sum_ham_14c += hc;
+                        if (hi >= 0) sum_ham_iso += hi;
+                        if (hc > ha) pairs_14c_better++;
+                        if (hc < ha) pairs_14c_worse++;
+                        int reg = ha - hc;
+                        if (reg > worst_regression) worst_regression = reg;
+                        printf("  P%d-P%d |  %2d |  %2d | %+3d   |",
+                               p, q, ha, hc, hc - ha);
+                        if (hi >= 0)
+                            printf("    %2d   | %+3d\n", hi, hi - ha);
+                        else
+                            printf("     -   |   -\n");
+                    }
+                }
+            }
+
+            float mean_14a = pairs_valid > 0
+                ? (float)sum_ham_14a / pairs_valid : 0;
+            float mean_14c = pairs_valid > 0
+                ? (float)sum_ham_14c / pairs_valid : 0;
+            float mean_iso = pairs_valid > 0
+                ? (float)sum_ham_iso / pairs_valid : 0;
+            printf("  Mean  | %.1f | %.1f | %+.1f  |   %.1f   | %+.1f\n",
+                   mean_14a, mean_14c, mean_14c - mean_14a,
+                   mean_iso, mean_iso - mean_14a);
+
+            /* Per-group fire rate comparison */
+            printf("\n  Per-Group Gate Fires (total across 120s):\n");
+            printf("  %-26s | G0       G1       G2       G3\n", "Condition");
+            printf("  --------------------------|---------------------------------------\n");
+            for (int c = 0; c < T14_N_COND; c++) {
+                printf("  %-26s | %-8ld %-8ld %-8ld %-8ld\n",
+                       t14_cond_name[c],
+                       (long)t14_fires[c][0], (long)t14_fires[c][1],
+                       (long)t14_fires[c][2], (long)t14_fires[c][3]);
+            }
+
+            /* Check per-group fire rate shift > 10% for any group */
+            int fire_shift = 0;
+            for (int g = 0; g < TRIX_NUM_PATTERNS; g++) {
+                int32_t fa = t14_fires[T14_COND_14A][g];
+                int32_t fc = t14_fires[T14_COND_14C][g];
+                if (fa > 0) {
+                    int pct = (int)(100LL * (fc - fa) / fa);
+                    if (pct > 10 || pct < -10) fire_shift = 1;
+                } else if (fc > 0) {
+                    fire_shift = 1;  /* group went from 0 to non-zero */
+                }
+            }
+
+            /* Bias duty cycle */
+            printf("\n  Bias Duty Cycle:\n");
+            for (int c = 0; c < T14_N_COND; c++) {
+                int duty = t14_total_confirms[c] > 0
+                    ? (int)(100LL * t14_bias_active_loops[c] /
+                            t14_total_confirms[c]) : 0;
+                printf("  %-26s  %d%% (%d/%d confirms with non-zero bias)\n",
+                       t14_cond_name[c],
+                       duty, (int)t14_bias_active_loops[c],
+                       t14_total_confirms[c]);
+            }
+
+            /* ── Pass criteria (hardened) ── */
+            int bias_activated = (t14_max_bias[T14_COND_14C] > 0);
+            int mean_ham_ge = (mean_14c >= mean_14a);
+            int no_catastrophe = (worst_regression <= 3);
+
+            printf("\n  ── Verdict ──\n");
+            printf("  Gate bias activated (14C):    %s (max=%d)\n",
+                   bias_activated ? "YES" : "NO",
+                   t14_max_bias[T14_COND_14C]);
+            printf("  Mean Hamming 14C >= 14A:      %s (%.1f vs %.1f)\n",
+                   mean_ham_ge ? "YES" : "NO", mean_14c, mean_14a);
+            printf("  No catastrophic regression:   %s (worst: -%d)\n",
+                   no_catastrophe ? "YES" : "NO", worst_regression);
+            printf("  Per-group fire shift > 10%%:   %s\n",
+                   fire_shift ? "YES" : "NO");
+            printf("  Pairs 14C > 14A: %d, equal: %d, worse: %d (of %d)\n",
+                   pairs_14c_better,
+                   pairs_valid - pairs_14c_better - pairs_14c_worse,
+                   pairs_14c_worse, pairs_valid);
+
+            int ok14 = bias_activated && mean_ham_ge &&
+                       no_catastrophe && fire_shift;
+            test_count++;
+            if (ok14) pass_count++;
+            printf("  %s\n\n", ok14 ? "OK" : "FAIL");
+            fflush(stdout);
+        }
     }
 
     /* ══════════════════════════════════════════════════════════════
