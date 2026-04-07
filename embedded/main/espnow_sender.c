@@ -179,10 +179,13 @@ void app_main(void) {
 
     uint32_t seq = 0;
     int pattern = 0;
-    int cycles_per_pattern = 20;  /* Send each pattern for ~20 cycles before switching */
-    int cycle = 0;
+    int64_t pattern_duration_us = 5000000LL;  /* 5 seconds per pattern (equal airtime) */
+    int64_t pattern_start_us = esp_timer_get_time();
 
-    /* Send loop: cycle through all 4 patterns */
+    /* Send loop: cycle through all 4 patterns with equal airtime.
+     * Each pattern gets exactly pattern_duration_us regardless of its
+     * per-cycle timing. This prevents P1 (burst+pause = 650ms/cycle)
+     * from dominating P3 (steady = 100ms/cycle) in sample counts. */
     while (1) {
         switch (pattern) {
             case 0: send_pattern_0(&seq); break;
@@ -191,9 +194,8 @@ void app_main(void) {
             case 3: send_pattern_3(&seq); break;
         }
 
-        cycle++;
-        if (cycle >= cycles_per_pattern) {
-            cycle = 0;
+        if ((esp_timer_get_time() - pattern_start_us) >= pattern_duration_us) {
+            pattern_start_us = esp_timer_get_time();
             int old_pattern = pattern;
             pattern = (pattern + 1) % 4;
             printf("[SEND] Pattern %d -> %d | seq=%lu ok=%lu fail=%lu\n",
