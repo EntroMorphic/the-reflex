@@ -40,17 +40,85 @@ extern const uint8_t ulp_main_bin_end[]   asm("_binary_ulp_main_bin_end");
 /* ── Shared constants (used across Tests 11-14) ── */
 #define NOVELTY_THRESHOLD  60
 #define T11_DRAIN_MS       10
+#define LP_MTFP_DIM        (LP_HIDDEN_DIM * 5)  /* 80: 16 neurons × 5 trits */
 
 /* ── File-scope shared state ── */
 static int8_t sig[NUM_TEMPLATES][CFC_INPUT_DIM];
 static espnow_rx_entry_t drain_buf[32];
 
-/* TEST 12 → TEST 13 handoff */
+/* TEST 12 → TEST 13 handoff (sign-space) */
 static int8_t  t12_mean1[LP_HIDDEN_DIM];
 static int8_t  t12_mean2[LP_HIDDEN_DIM];
 static int     t12_p1p3_result = -1;
 static int     t12_p1p2_result = -1;
 static int     t12_n1 = 0, t12_n2 = 0;
+
+/* TEST 12 → TEST 13 handoff (MTFP-space) */
+static int8_t  t12_mean1_mtfp[LP_MTFP_DIM];
+static int8_t  t12_mean2_mtfp[LP_MTFP_DIM];
+
+/* ══════════════════════════════════════════════════════════════════
+ *  MTFP DOT ENCODER — 5 trits per LP neuron
+ *
+ *  Encodes a raw dot product (integer, typically [-48, +48]) into
+ *  5 trits: [sign, exp0, exp1, mant0, mant1].
+ *
+ *  Sign: +1 / -1 / 0 (same as current sign())
+ *  Exp:  magnitude scale (8 levels from 2 trits)
+ *  Mant: position within scale (3 levels from 2 trits, 1 trit unused)
+ *
+ *  Tuned to observed LP dot distribution: P1 n05=+5, P2 n05=+13
+ *  land in different exponent scales (4-8 vs 9-15), resolving the
+ *  P1-P2 degeneracy that sign() collapses.
+ * ══════════════════════════════════════════════════════════════════ */
+
+/* Scale boundaries: |dot| ranges for each exponent level */
+static const int mtfp_dot_lo[] = {0,  1,  4,  9, 16, 25, 36, 49};
+static const int mtfp_dot_hi[] = {0,  3,  8, 15, 24, 35, 48, 99};
+static const int8_t mtfp_dot_exp0[] = {-1, -1, -1,  0,  0,  0,  1,  1};
+static const int8_t mtfp_dot_exp1[] = {-1,  0,  1, -1,  0,  1, -1,  0};
+#define MTFP_DOT_SCALES 8
+
+static void encode_lp_dot_mtfp(int dot, int8_t *out) {
+    /* Trit 0: sign */
+    out[0] = (dot > 0) ? 1 : (dot < 0) ? -1 : 0;
+
+    int mag = (dot > 0) ? dot : -dot;
+
+    /* Find scale */
+    int s = 0;
+    for (int i = 0; i < MTFP_DOT_SCALES; i++) {
+        if (mag >= mtfp_dot_lo[i] && mag <= mtfp_dot_hi[i]) { s = i; break; }
+        if (mag < mtfp_dot_lo[i]) { s = (i > 0) ? i - 1 : 0; break; }
+        s = MTFP_DOT_SCALES - 1;
+    }
+
+    /* Trits 1-2: exponent */
+    out[1] = mtfp_dot_exp0[s];
+    out[2] = mtfp_dot_exp1[s];
+
+    /* Trits 3-4: mantissa (position within scale range) */
+    int range = mtfp_dot_hi[s] - mtfp_dot_lo[s];
+    if (range <= 0) {
+        out[3] = 0;
+        out[4] = 0;
+    } else {
+        int pos = mag - mtfp_dot_lo[s];
+        /* 2 trits → 9 states, but we use 3 levels per trit (lower/mid/upper) */
+        out[3] = (pos * 3 < range) ? -1 : (pos * 3 > range * 2) ? 1 : 0;
+        /* Second mantissa trit: finer position within the third */
+        int sub_range = (range + 2) / 3;
+        int sub_pos = pos % (sub_range > 0 ? sub_range : 1);
+        out[4] = (sub_pos * 3 < sub_range) ? -1
+               : (sub_pos * 3 > sub_range * 2) ? 1 : 0;
+    }
+}
+
+/* Encode all 16 LP neuron dots into 80-trit MTFP vector */
+static void encode_lp_mtfp(const int32_t *dots_f, int8_t *mtfp_out) {
+    for (int n = 0; n < LP_HIDDEN_DIM; n++)
+        encode_lp_dot_mtfp((int)dots_f[n], &mtfp_out[n * 5]);
+}
 
 /* ── Forward declarations ── */
 static int run_test_1(void);
@@ -2842,9 +2910,14 @@ static int run_test_12(void) {
         /* LP state accumulators per pattern (int16 to avoid overflow) */
         static int16_t t12_lp_sum[4][LP_HIDDEN_DIM];
         static int8_t  t12_lp_mean[4][LP_HIDDEN_DIM];
+        /* MTFP-space accumulators (80 trits per pattern) */
+        static int16_t t12_lp_sum_mtfp[4][LP_MTFP_DIM];
+        static int8_t  t12_lp_mean_mtfp[4][LP_MTFP_DIM];
         int            t12_lp_n[4] = {0};
         memset(t12_lp_sum,  0, sizeof(t12_lp_sum));
         memset(t12_lp_mean, 0, sizeof(t12_lp_mean));
+        memset(t12_lp_sum_mtfp,  0, sizeof(t12_lp_sum_mtfp));
+        memset(t12_lp_mean_mtfp, 0, sizeof(t12_lp_mean_mtfp));
 
         /* Re-enable CfC blend. W_f hidden=0 keeps TriX scores
          * input-only, so classification accuracy is preserved. */
@@ -2924,6 +2997,16 @@ static int run_test_12(void) {
                 memcpy(lp_now, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
                 for (int j = 0; j < LP_HIDDEN_DIM; j++)
                     t12_lp_sum[pred][j] += lp_now[j];
+
+                /* MTFP encoding: read raw LP dots, encode as 80 trits */
+                int32_t lp_dots_snap[LP_HIDDEN_DIM];
+                memcpy(lp_dots_snap, ulp_addr(&ulp_lp_dots_f),
+                       LP_HIDDEN_DIM * sizeof(int32_t));
+                int8_t lp_mtfp[LP_MTFP_DIM];
+                encode_lp_mtfp(lp_dots_snap, lp_mtfp);
+                for (int j = 0; j < LP_MTFP_DIM; j++)
+                    t12_lp_sum_mtfp[pred][j] += lp_mtfp[j];
+
                 t12_lp_n[pred]++;
 
                 /* Periodic VDB snapshot: [gie_hidden (32) | lp_hidden (16)].
@@ -2950,7 +3033,15 @@ static int run_test_12(void) {
                 t12_lp_mean[p][j] = v;
                 if (v != T_ZERO) energy++;
             }
-            printf("    P%d: %d samples, energy=%d/16", p, t12_lp_n[p], energy);
+            /* MTFP mean */
+            int energy_mtfp = 0;
+            for (int j = 0; j < LP_MTFP_DIM; j++) {
+                int8_t v = (t12_lp_n[p] > 0) ? tsign(t12_lp_sum_mtfp[p][j]) : T_ZERO;
+                t12_lp_mean_mtfp[p][j] = v;
+                if (v != T_ZERO) energy_mtfp++;
+            }
+            printf("    P%d: %d samples, sign=%d/16, mtfp=%d/80",
+                   p, t12_lp_n[p], energy, energy_mtfp);
             if (t12_lp_n[p] > 0) {
                 printf(" [");
                 for (int j = 0; j < LP_HIDDEN_DIM; j++)
@@ -2960,8 +3051,8 @@ static int run_test_12(void) {
             printf("\n");
         }
 
-        /* Hamming divergence matrix across all pattern pairs */
-        printf("\n  ── LP Divergence Matrix (Hamming) ──\n");
+        /* Hamming divergence matrix: sign-space (n/16) */
+        printf("\n  ── LP Divergence Matrix — sign-space (Hamming, /16) ──\n");
         printf("       P0  P1  P2  P3\n");
         int any_diverge = 0;
         for (int p = 0; p < 4; p++) {
@@ -2979,17 +3070,51 @@ static int run_test_12(void) {
             printf("\n");
         }
 
+        /* Hamming divergence matrix: MTFP-space (n/80) */
+        printf("\n  ── LP Divergence Matrix — MTFP-space (Hamming, /80) ──\n");
+        printf("       P0  P1  P2  P3\n");
+        int any_diverge_mtfp = 0;
+        for (int p = 0; p < 4; p++) {
+            printf("  P%d:", p);
+            for (int q = 0; q < 4; q++) {
+                if (t12_lp_n[p] > 0 && t12_lp_n[q] > 0) {
+                    int h = trit_hamming(t12_lp_mean_mtfp[p],
+                                         t12_lp_mean_mtfp[q], LP_MTFP_DIM);
+                    printf("  %2d", h);
+                    if (p != q && h > 0) any_diverge_mtfp = 1;
+                } else {
+                    printf("   -");
+                }
+            }
+            printf("\n");
+        }
+        (void)any_diverge_mtfp;
+
         /* P1 vs P3: the ambiguous pair that rate-only baseline
          * cannot distinguish. Memory-modulated LP should separate them. */
         int p1p3 = (t12_lp_n[1] > 0 && t12_lp_n[3] > 0)
             ? trit_hamming(t12_lp_mean[1], t12_lp_mean[3], LP_HIDDEN_DIM)
             : -1;
+        int p1p3_mtfp = (t12_lp_n[1] > 0 && t12_lp_n[3] > 0)
+            ? trit_hamming(t12_lp_mean_mtfp[1], t12_lp_mean_mtfp[3], LP_MTFP_DIM)
+            : -1;
         t12_p1p3_result = p1p3;  /* expose to TEST 13 */
+        printf("  P1 vs P3: sign=%d/16, mtfp=%d/80\n", p1p3, p1p3_mtfp);
+
         /* Expose P1 vs P2 results for TEST 13 attribution comparison */
         t12_n1 = t12_lp_n[1];
         t12_n2 = t12_lp_n[2];
         memcpy(t12_mean1, t12_lp_mean[1], LP_HIDDEN_DIM);
         memcpy(t12_mean2, t12_lp_mean[2], LP_HIDDEN_DIM);
+        memcpy(t12_mean1_mtfp, t12_lp_mean_mtfp[1], LP_MTFP_DIM);
+        memcpy(t12_mean2_mtfp, t12_lp_mean_mtfp[2], LP_MTFP_DIM);
+        int p1p2_mtfp = (t12_lp_n[1] > 0 && t12_lp_n[2] > 0)
+            ? trit_hamming(t12_lp_mean_mtfp[1], t12_lp_mean_mtfp[2], LP_MTFP_DIM)
+            : -1;
+        printf("  P1 vs P2: sign=%d/16, mtfp=%d/80\n",
+               (t12_lp_n[1] > 0 && t12_lp_n[2] > 0)
+                   ? trit_hamming(t12_lp_mean[1], t12_lp_mean[2], LP_HIDDEN_DIM) : -1,
+               p1p2_mtfp);
         t12_p1p2_result = (t12_lp_n[1] > 0 && t12_lp_n[2] > 0)
             ? trit_hamming(t12_lp_mean[1], t12_lp_mean[2], LP_HIDDEN_DIM) : -1;
 
@@ -3340,6 +3465,7 @@ static int run_test_14(void) {
         /* Per-condition results */
         static int8_t t14_lp_mean[T14_N_COND][4][LP_HIDDEN_DIM];
         static int8_t t14_lp_mean_60s[T14_N_COND][4][LP_HIDDEN_DIM];
+        static int8_t t14_lp_mean_mtfp[T14_N_COND][4][LP_MTFP_DIM];
         int t14_lp_n[T14_N_COND][4];
         int t14_lp_n_60s[T14_N_COND][4];
         int t14_max_bias[T14_N_COND];
@@ -3386,11 +3512,16 @@ static int run_test_14(void) {
             /* LP accumulators for this condition */
             static int16_t t14_lp_sum[4][LP_HIDDEN_DIM];
             static int16_t t14_lp_sum_snap60[4][LP_HIDDEN_DIM];
+            /* MTFP-space accumulators */
+            static int16_t t14_lp_sum_mtfp[4][LP_MTFP_DIM];
+            static int16_t t14_lp_sum_snap60_mtfp[4][LP_MTFP_DIM];
             int t14_n[4] = {0};
             int t14_n_snap60[4] = {0};
             int snapped_60s = 0;
             memset(t14_lp_sum, 0, sizeof(t14_lp_sum));
             memset(t14_lp_sum_snap60, 0, sizeof(t14_lp_sum_snap60));
+            memset(t14_lp_sum_mtfp, 0, sizeof(t14_lp_sum_mtfp));
+            memset(t14_lp_sum_snap60_mtfp, 0, sizeof(t14_lp_sum_snap60_mtfp));
 
             /* Gate bias float state (for decay) */
             float bias_f[TRIX_NUM_PATTERNS] = {0};
@@ -3520,6 +3651,16 @@ static int run_test_14(void) {
                            LP_HIDDEN_DIM);
                     for (int j = 0; j < LP_HIDDEN_DIM; j++)
                         t14_lp_sum[pred][j] += lp_now[j];
+
+                    /* MTFP encoding: read raw LP dots, encode as 80 trits */
+                    int32_t t14_dots_snap[LP_HIDDEN_DIM];
+                    memcpy(t14_dots_snap, ulp_addr(&ulp_lp_dots_f),
+                           LP_HIDDEN_DIM * sizeof(int32_t));
+                    int8_t lp_mtfp[LP_MTFP_DIM];
+                    encode_lp_mtfp(t14_dots_snap, lp_mtfp);
+                    for (int j = 0; j < LP_MTFP_DIM; j++)
+                        t14_lp_sum_mtfp[pred][j] += lp_mtfp[j];
+
                     t14_n[pred]++;
 
                     /* ── Agreement-weighted gate bias update ── */
@@ -3539,14 +3680,16 @@ static int run_test_14(void) {
                             bias_f[p] *= T14_BIAS_DECAY;
 
                         /* Update for current prediction if enough
-                         * samples (cold-start guard) */
+                         * samples (cold-start guard).
+                         * MTFP agreement: 80-trit dot instead of 16-trit.
+                         * Higher resolution → stronger signal for bias. */
                         if (t14_n[pred] >= T14_MIN_SAMPLES) {
                             int dot = 0;
-                            for (int j = 0; j < LP_HIDDEN_DIM; j++) {
-                                int8_t m = tsign(t14_lp_sum[pred][j]);
-                                dot += tmul(lp_now[j], m);
+                            for (int j = 0; j < LP_MTFP_DIM; j++) {
+                                int8_t m = tsign(t14_lp_sum_mtfp[pred][j]);
+                                dot += tmul(lp_mtfp[j], m);
                             }
-                            float ag = (float)dot / LP_HIDDEN_DIM;
+                            float ag = (float)dot / LP_MTFP_DIM;
                             float b = BASE_GATE_BIAS *
                                       (ag > 0.0f ? ag : 0.0f);
                             if (b > bias_f[pred]) bias_f[pred] = b;
@@ -3616,6 +3759,11 @@ static int run_test_14(void) {
                         (t14_n_snap60[p] > 0)
                         ? tsign(t14_lp_sum_snap60[p][j]) : T_ZERO;
                 }
+                /* MTFP means */
+                for (int j = 0; j < LP_MTFP_DIM; j++) {
+                    t14_lp_mean_mtfp[cond][p][j] = (t14_n[p] > 0)
+                        ? tsign(t14_lp_sum_mtfp[p][j]) : T_ZERO;
+                }
                 t14_lp_n[cond][p] = t14_n[p];
                 t14_lp_n_60s[cond][p] = t14_n_snap60[p];
             }
@@ -3659,10 +3807,10 @@ static int run_test_14(void) {
         /* ── Cross-condition comparison ── */
         printf("\n  ══ TEST 14 COMPARISON ══\n");
 
-        /* LP Hamming matrices per condition */
+        /* LP Hamming matrices per condition — sign-space */
         int t14_ham[T14_N_COND][4][4];
         for (int c = 0; c < T14_N_COND; c++) {
-            printf("\n  LP Divergence Matrix — %s:\n", t14_cond_name[c]);
+            printf("\n  LP Divergence — sign-space (%s, /16):\n", t14_cond_name[c]);
             printf("       P0  P1  P2  P3\n");
             for (int p = 0; p < 4; p++) {
                 printf("  P%d:", p);
@@ -3674,6 +3822,28 @@ static int run_test_14(void) {
                         printf("  %2d", t14_ham[c][p][q]);
                     } else {
                         t14_ham[c][p][q] = -1;
+                        printf("   -");
+                    }
+                }
+                printf("\n");
+            }
+        }
+
+        /* LP Hamming matrices per condition — MTFP-space */
+        int t14_ham_mtfp[T14_N_COND][4][4];
+        for (int c = 0; c < T14_N_COND; c++) {
+            printf("\n  LP Divergence — MTFP-space (%s, /80):\n", t14_cond_name[c]);
+            printf("       P0  P1  P2  P3\n");
+            for (int p = 0; p < 4; p++) {
+                printf("  P%d:", p);
+                for (int q = 0; q < 4; q++) {
+                    if (t14_lp_n[c][p] > 0 && t14_lp_n[c][q] > 0) {
+                        t14_ham_mtfp[c][p][q] = trit_hamming(
+                            t14_lp_mean_mtfp[c][p], t14_lp_mean_mtfp[c][q],
+                            LP_MTFP_DIM);
+                        printf("  %2d", t14_ham_mtfp[c][p][q]);
+                    } else {
+                        t14_ham_mtfp[c][p][q] = -1;
                         printf("   -");
                     }
                 }
