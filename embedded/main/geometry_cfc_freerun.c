@@ -3279,11 +3279,12 @@ void app_main(void) {
                 int32_t bias_active_count = 0;
                 int32_t loop_snap_start = 0;
 
-                /* Restart GIE */
+                /* Restart GIE with TriX enabled (for ISR classification) */
                 premultiply_all();
                 encode_all_neurons();
                 build_circular_chain();
                 start_freerun();
+                trix_enabled = 1;
                 espnow_ring_flush();
                 loop_snap_start = loop_count;
 
@@ -3331,11 +3332,49 @@ void app_main(void) {
                             t14_confusion[cond][(int)gt][pred]++;
                         }
 
-                        /* TriX vs core_pred agreement.
-                         * Note: trix_pred is set to -2 by the ISR (needs
-                         * main-loop resolution via packed channel dots).
-                         * Direct comparison requires the full TriX channel
-                         * consumer from TEST 11. Deferred to future work. */
+                        /* TriX ISR vs core_pred agreement.
+                         * Wait for a fresh trix_channel signal (the ISR
+                         * signals on each clean loop after re-encode). */
+                        {
+                            uint32_t seq_before = trix_channel.sequence;
+                            uint32_t new_seq = reflex_wait_timeout(
+                                &trix_channel, seq_before, 8000000);
+                            uint32_t packed = (new_seq != 0)
+                                ? reflex_read(&trix_channel) : 0;
+                            if (new_seq != 0 && packed != 0) {
+                                int32_t isr_d[4];
+                                for (int g = 0; g < 4; g++)
+                                    isr_d[g] = (int8_t)(
+                                        (packed >> (g*8)) & 0xFF);
+                                int isr_best_val = -9999;
+                                for (int g = 0; g < 4; g++)
+                                    if (isr_d[g] > isr_best_val)
+                                        isr_best_val = isr_d[g];
+                                /* Match ISR max to CPU pattern */
+                                int isr_p = -1, best_dist = 9999;
+                                int cpu_d[4] = {0};
+                                for (int pp = 0; pp < NUM_TEMPLATES; pp++)
+                                    for (int j = 0; j < CFC_INPUT_DIM; j++)
+                                        if (sig[pp][j] != T_ZERO &&
+                                            cfc.input[j] != T_ZERO)
+                                            cpu_d[pp] += tmul(
+                                                sig[pp][j], cfc.input[j]);
+                                for (int pp = 0; pp < 4; pp++) {
+                                    int dist = isr_best_val - cpu_d[pp];
+                                    if (dist < 0) dist = -dist;
+                                    if (dist < best_dist) {
+                                        best_dist = dist;
+                                        isr_p = pp;
+                                    }
+                                }
+                                if (isr_p >= 0 && isr_p < 4) {
+                                    if (isr_p == pred)
+                                        t14_trix_agree[cond]++;
+                                    else
+                                        t14_trix_disagree[cond]++;
+                                }
+                            }
+                        }
 
                         /* Mid-run snapshot at t=60s (confound control) */
                         int64_t elapsed_us = esp_timer_get_time()
@@ -3661,10 +3700,15 @@ void app_main(void) {
                 }
             }
 
-            /* TriX vs core_pred agreement: deferred. TriX ISR sets
-             * trix_pred=-2 (needs channel-based resolution). Direct
-             * comparison requires the full TriX consumer from TEST 11.
-             * The confusion matrix above characterizes core_pred errors. */
+            /* ── TriX ISR vs CPU core_pred agreement ── */
+            printf("\n  TriX ISR vs CPU core_pred agreement:\n");
+            for (int c = 0; c < T14_N_COND; c++) {
+                int total_t = t14_trix_agree[c] + t14_trix_disagree[c];
+                printf("  %-26s  %d/%d = %.1f%% agree\n",
+                       t14_cond_name[c], t14_trix_agree[c], total_t,
+                       total_t > 0
+                           ? 100.0f * t14_trix_agree[c] / total_t : 0);
+            }
 
             /* ── Divergence as fraction of maximum (n/16) ── */
             printf("\n  Divergence as %% of maximum (16 trits):\n");
