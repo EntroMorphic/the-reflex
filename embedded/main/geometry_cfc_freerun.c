@@ -27,6 +27,7 @@
 
 
 /* ── LP Core binary (embedded by build system) ── */
+extern const uint8_t ulp_main_bin_start[] asm("_binary_ulp_main_bin_start");
 extern const uint8_t ulp_main_bin_end[]   asm("_binary_ulp_main_bin_end");
 
 
@@ -1999,7 +2000,7 @@ static int run_test_11(void) {
      * ══════════════════════════════════════════════════════════════ */
     printf("-- TEST 11: Pattern Classification (Stream CfC) --\n");
     fflush(stdout);
-    {
+    {   /* scope block for Test 11 locals */
         #define T11_WINDOW_MS      1000   /* Sample window duration (1s) */
         /* NUM_TEMPLATES defined at file scope */
         #define MAX_TEST_SAMPLES   32     /* Test samples to collect */
@@ -2789,7 +2790,10 @@ static int run_test_11(void) {
             printf("  %s\n\n", ok ? "OK" : "FAIL");
             fflush(stdout);
             return ok;
+        }
+        return 0; /* unreachable */
     }
+    return 0; /* unreachable */
 }
 
 static int run_test_12(void) {
@@ -4113,9 +4117,6 @@ static void run_lp_char(void) {
                "threshold; BLEND_ALPHA = %.3f\n\n", implied_alpha_p1);
         fflush(stdout);
     }
-
-    /* ── Summary ── */
-
 }
 
 static void run_lp_dot_diag(void) {
@@ -4211,5 +4212,5 @@ static void run_lp_dot_diag(void) {
         printf("  If signs AND magnitudes are similar:\n");
         printf("    → need more projection directions (wider LP)\n\n");
         fflush(stdout);
-
+    }
 }
