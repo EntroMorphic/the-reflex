@@ -130,6 +130,49 @@ The gate bias is subtracted from the threshold (positive bias lowers the effecti
 
 This is the epistemic humility of the system. The prior amplifies when validated. It defers when contradicted. The TriX classifier — fast (430 Hz), accurate (100%), structurally decoupled from the bias — serves as the ground truth that gates the prior's influence.
 
+### 2.5 How It Fits: 16KB Memory Budget
+
+A reasonable question is how a CfC neural network and a graph-indexed vector database both fit on a core with 16KB of SRAM and no floating-point unit. The answer is that neither resembles its conventional implementation. A standard CfC solves floating-point ODEs with learned time constants. A standard vector database stores float32 embeddings with cosine similarity. The Reflex uses neither. Both are native ternary implementations that share the same computational structure as their namesakes — recurrent gating, approximate nearest-neighbor search — but share none of the substrate.
+
+**Ternary packing.** Each trit ({-1, 0, +1}) is stored as a `(pos_mask, neg_mask)` bit pair across two 32-bit words. One word pair holds 16 trits. A 48-trit vector is 3 word pairs = 24 bytes. This is the fundamental unit: CfC weight rows, VDB node vectors, and LP hidden state all use the same 24-byte packed representation.
+
+**CfC weight storage.** The LP CfC has 16 neurons × 2 pathways (gate and candidate) × 48-trit input = 64 weight rows. Each row is 3 word pairs (pos + neg) = 24 bytes. Total: 64 × 24 = 1,536 bytes. The hidden state is 16 bytes (16 trits unpacked as int8). Dot product buffers (32 int32 values) add 128 bytes. With sync variables and the decision register: **968 bytes** for the complete CfC state.
+
+**CfC computation.** The ternary dot product is:
+
+```
+dot = popcount(a_pos & b_pos) + popcount(a_neg & b_neg)
+    - popcount(a_pos & b_neg) - popcount(a_neg & b_pos)
+```
+
+Four AND operations, four popcount lookups (256-byte table, 4 byte-wise lookups per word), and arithmetic. The full CfC step computes 32 of these (16 gate + 16 candidate), each over 3 word pairs. The INTERSECT macro is fully unrolled in the hot path: 12 ANDs, 12 popcount sequences, 6 adds = ~180 instructions per neuron. Total: ~5,760 instructions per CfC step at 16 MHz = ~360 µs.
+
+**VDB node storage.** Each of the 64 nodes stores a 48-trit vector (24 bytes packed) plus graph metadata: 7 neighbor IDs (7 bytes) and a neighbor count (1 byte) = **32 bytes per node**. Total VDB storage: 64 × 32 = **2,048 bytes**.
+
+**VDB search.** NSW graph search uses a 64-bit visited bitset stored as two 32-bit words on the stack — no hash table, no allocation. The candidate and result lists are stack-allocated arrays within the 608-byte search frame. Search starts from two entry points (node 0 and node N/2), follows graph edges, computes dot products with the looped INTERSECT macro (~240 instructions per node visit), and terminates when no unvisited neighbor scores better than the worst result. At N=64 with M=7, typical search visits 40-60 nodes — sub-linear but modest savings. The graph's value is in providing a retrieval structure that can scale beyond N=64 without changing the search algorithm.
+
+**VDB insert.** Brute-force: compute dot products against all existing nodes (O(N)), select top-M=7 by score, write forward edges, then for each new neighbor, check whether the new node should replace the weakest existing neighbor (reverse edge with eviction). The insert frame is 224 bytes. Graph construction runs on the LP core in assembly.
+
+**Complete LP SRAM budget:**
+
+| Section | Bytes | Notes |
+|---------|------:|-------|
+| Vector table | 128 | Fixed by SDK |
+| Code (.text) | ~7,600 | CfC + VDB search + insert + pipeline + feedback |
+| Popcount LUT (.rodata) | 288 | 256-byte table + alignment |
+| CfC state (.bss) | 968 | Weights, hidden, dots, sync |
+| VDB nodes (.bss) | 2,048 | 64 × 32B (M=7 neighbors) |
+| VDB metadata (.bss) | 80 | Query, results, counters |
+| Feedback state (.bss) | 24 | Blend scratch, loop counters |
+| SDK shared_mem | 16 | Top of SRAM |
+| **Free (stack)** | **~4,400** | Peak usage: 608B (VDB search) |
+
+The entire system — neural network, vector database, graph index, five command modes, feedback loop — occupies 11,920 bytes of a 16,320-byte SRAM, leaving 27% free for stack. The constraint is not memory but LP core wake frequency: at 10 ms per wake cycle, the LP core processes one CfC+VDB+feedback step per cycle, yielding 100 Hz effective throughput.
+
+**Why it fits:** The ternary constraint is not a compromise. It is the reason the system fits. Floating-point CfC weights for 16 neurons × 48 inputs × 2 pathways = 6,144 float32 values = 24,576 bytes — larger than the entire SRAM. Ternary packing reduces this to 1,536 bytes, a 16× compression with no information loss for the ternary domain. The dot product uses AND+popcount rather than multiply-accumulate, which is exact (no rounding) and uses no multiplier hardware. The VDB's 48-trit vectors occupy 24 bytes each instead of 192 bytes for an equivalent float32 embedding.
+
+The system was not compressed to fit. It was built from operations the hardware provides natively. The constraint created the architecture.
+
 ---
 
 ## 3. Experimental Design
