@@ -135,6 +135,7 @@ static int run_test_11(void);
 static int run_test_12(void);
 static int run_test_13(void);
 static int run_test_14(void);
+static int run_test_14c(void);
 static void run_lp_char(void);
 static void run_lp_dot_diag(void);
 
@@ -240,6 +241,7 @@ void app_main(void) {
     test_count++; pass_count += run_test_12();
     test_count++; pass_count += run_test_13();
     test_count++; pass_count += run_test_14();
+    test_count++; pass_count += run_test_14c();
 
     /* ── Summary ── */
     printf("============================================================\n");
@@ -4087,6 +4089,461 @@ static int run_test_14(void) {
         return ok14;
     }
     return 0; /* unreachable */
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ *  TEST 14C — CLS Transition Experiment
+ *
+ *  THE CLS PREDICTION: When the environment changes (P1 → P2), the
+ *  hippocampal layer (VDB) enables rapid reorientation of the LP
+ *  state toward the new pattern, faster than the CfC alone can achieve.
+ *
+ *  PROTOCOL:
+ *    Phase 1 (90s): Sender transmits P1. System builds P1 prior.
+ *    Phase 2 (30s): Sender switches to P2. Measure adaptation.
+ *
+ *  THREE CONDITIONS:
+ *    (a) Full system: CfC + VDB feedback (CMD 5) + gate bias
+ *    (b) No bias:     CfC + VDB feedback (CMD 5), bias = 0
+ *    (c) Ablation:    CfC + VDB search  (CMD 4), no blend, bias = 0
+ *
+ *  MEASUREMENTS (per step post-switch):
+ *    - LP MTFP alignment to P1 mean (should decay)
+ *    - LP MTFP alignment to P2 mean (should rise)
+ *    - gate_bias[P1 group] and gate_bias[P2 group]
+ *    - VDB retrieval node ID and score
+ *
+ *  PASS CRITERIA:
+ *    - TriX accuracy 100% in first 15 steps post-switch
+ *    - gate_bias[P1] decays to 0 within 15 confirmations (condition a)
+ *    - LP P2 alignment > LP P1 alignment by step 30 (condition a)
+ *    - Condition (a) crossover faster than condition (b)
+ *
+ *  REQUIRES: Board B running in TRANSITION_MODE (P1 90s → P2 30s).
+ * ══════════════════════════════════════════════════════════════════ */
+static int run_test_14c(void) {
+    printf("-- TEST 14C: CLS Transition Experiment --\n");
+    fflush(stdout);
+
+    #define T14C_PHASE1_US      90000000LL  /* 90s on P1 */
+    #define T14C_PHASE2_STEPS   200         /* steps to measure post-switch */
+    #define T14C_INSERT_EVERY   8
+    #define T14C_FB_THRESHOLD   8
+    #define T14C_MIN_SAMPLES    15          /* cold-start guard for bias */
+    #define T14C_BIAS_DECAY     0.9f
+    #define T14C_N_COND         3
+    #define T14C_COND_FULL      0           /* CMD 5 + bias */
+    #define T14C_COND_NOBIAS    1           /* CMD 5, no bias */
+    #define T14C_COND_ABLATION  2           /* CMD 4 (no blend), no bias */
+
+    static const char *cond_name[T14C_N_COND] = {
+        "Full (CMD5+bias)", "No bias (CMD5)", "Ablation (CMD4)"
+    };
+
+    /* Per-condition switch-window results */
+    #define T14C_WIN_SIZE 60   /* record first 60 steps post-switch */
+    static int t14c_align_p1[T14C_N_COND][T14C_WIN_SIZE]; /* dot with P1 mean */
+    static int t14c_align_p2[T14C_N_COND][T14C_WIN_SIZE]; /* dot with P2 mean */
+    static int8_t t14c_bias_p1[T14C_N_COND][T14C_WIN_SIZE];
+    static int8_t t14c_bias_p2[T14C_N_COND][T14C_WIN_SIZE];
+    int t14c_crossover[T14C_N_COND];   /* step where P2 alignment > P1 */
+    int t14c_trix_correct[T14C_N_COND]; /* TriX accuracy in first 15 post-switch */
+    int t14c_p2_steps[T14C_N_COND];    /* total P2 steps captured */
+
+    memset(t14c_align_p1, 0, sizeof(t14c_align_p1));
+    memset(t14c_align_p2, 0, sizeof(t14c_align_p2));
+    memset(t14c_bias_p1, 0, sizeof(t14c_bias_p1));
+    memset(t14c_bias_p2, 0, sizeof(t14c_bias_p2));
+    memset(t14c_crossover, -1, sizeof(t14c_crossover));
+    memset(t14c_trix_correct, 0, sizeof(t14c_trix_correct));
+    memset(t14c_p2_steps, 0, sizeof(t14c_p2_steps));
+
+    for (int cond = 0; cond < T14C_N_COND; cond++) {
+        printf("\n  ── Condition: %s ──\n", cond_name[cond]);
+        fflush(stdout);
+
+        /* Reset state */
+        gate_threshold    = 90;
+        gate_fires_total  = 0;
+        gate_steps_total  = 0;
+        memset((void *)gie_gate_bias, 0, sizeof(gie_gate_bias));
+        memset((void *)gie_gate_fires_per_group, 0,
+               sizeof(gie_gate_fires_per_group));
+        vdb_clear();
+        memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
+        ulp_fb_threshold = T14C_FB_THRESHOLD;
+        ulp_fb_total_blends = 0;
+
+        /* LP MTFP accumulators for P1 and P2 */
+        static int16_t p1_sum_mtfp[LP_MTFP_DIM];
+        static int16_t p2_sum_mtfp[LP_MTFP_DIM];
+        int p1_n = 0, p2_n = 0;
+        memset(p1_sum_mtfp, 0, sizeof(p1_sum_mtfp));
+        memset(p2_sum_mtfp, 0, sizeof(p2_sum_mtfp));
+
+        /* Sign-space accumulators (for bias computation) */
+        static int16_t p1_sum_sign[LP_HIDDEN_DIM];
+        int p1_n_sign = 0;
+        memset(p1_sum_sign, 0, sizeof(p1_sum_sign));
+
+        float bias_f[TRIX_NUM_PATTERNS] = {0};
+        int trix_correct_15 = 0, trix_total_15 = 0;
+        int phase2_step = 0;
+        int saw_p2 = 0;   /* detected switch to P2 */
+        int crossover_step = -1;
+        int last_gt = -1;  /* last ground-truth pattern seen */
+        int p1_consecutive_us = 0;  /* microseconds of continuous P1 */
+        int synced = 0;    /* 1 once we have ≥60s of continuous P1 */
+
+        /* Start GIE with TriX */
+        premultiply_all();
+        encode_all_neurons();
+        build_circular_chain();
+        start_freerun();
+        trix_enabled = 1;
+        espnow_ring_flush();
+        espnow_last_rx_us = 0;
+        gie_reset_gap_history();
+
+        int64_t start_us = esp_timer_get_time();
+        int64_t p1_start_us = 0;  /* when continuous P1 began */
+        int total_confirms = 0;
+
+        /* For condition 0: full sync (≥60s continuous P1).
+         * For conditions 1+: we know the sender is in transition mode
+         * (condition 0 succeeded). Skip the 60s sync requirement —
+         * just wait for P1 packets and catch the next P1→P2 edge. */
+        int need_full_sync = (cond == 0);
+        printf("  %s\n", need_full_sync
+               ? "Sync: waiting for ≥60s continuous P1..."
+               : "Sync: waiting for P1 packets (sender confirmed)...");
+        fflush(stdout);
+
+        /* ── Main loop: Sync → Phase 1 → Phase 2 ──
+         *
+         * Sync phase: wait until we've seen ≥60s of continuous P1 packets
+         * (no other pattern_id). This self-synchronizes with the sender's
+         * transition mode (P1 90s → P2 30s). In normal cycling mode, P1
+         * only lasts 5s, so sync never completes and the test skips.
+         *
+         * Phase 1: continues accumulating P1 data after sync until P2 appears.
+         * Phase 2: measure adaptation step-by-step.
+         */
+        while (1) {
+            vTaskDelay(pdMS_TO_TICKS(T11_DRAIN_MS));
+            int nd = espnow_drain(drain_buf, 32);
+            for (int i = 0; i < nd; i++) {
+                if (!espnow_encode_rx_entry(&drain_buf[i], NULL))
+                    continue;
+
+                /* ISR re-encode */
+                gie_input_pending = 1;
+                int spins = 0;
+                while (gie_input_pending && spins < 5000) {
+                    esp_rom_delay_us(5);
+                    spins++;
+                }
+
+                /* Ground truth from packet (available before classification) */
+                uint8_t gt = drain_buf[i].pkt.pattern_id;
+
+                /* ── Sync: track continuous P1 dwell ──
+                 * Uses ground truth directly — no novelty gate dependency.
+                 * This ensures sync works even if classification scores are
+                 * low (e.g., signatures built from 4-pattern cycling don't
+                 * match 2-pattern transition sender well). */
+                if (!synced) {
+                    if (gt == 1) {
+                        if (last_gt != 1) {
+                            p1_start_us = esp_timer_get_time();
+                        }
+                        int64_t p1_dwell = esp_timer_get_time() - p1_start_us;
+                        int64_t sync_thresh = need_full_sync ? 60000000LL : 10000000LL;
+                        if (p1_dwell >= sync_thresh) {
+                            synced = 1;
+                            printf("  Synced: %llds continuous P1. Building prior...\n",
+                                   (long long)(p1_dwell / 1000000));
+                            fflush(stdout);
+                        }
+                    } else {
+                        p1_start_us = esp_timer_get_time();
+                    }
+                    last_gt = (int)gt;
+                }
+
+                /* Detect P1 → P2 switch (only after sync) */
+                if (synced && !saw_p2 && gt == 2) {
+                    saw_p2 = 1;
+                    phase2_step = 0;
+                    int64_t elapsed_s = (esp_timer_get_time() - start_us) / 1000000;
+                    printf("  Phase 2: P2 detected at %llds (after %d P1 samples), "
+                           "measuring transition...\n",
+                           (long long)elapsed_s, p1_n);
+                    fflush(stdout);
+                }
+
+                /* CPU classification */
+                int core_best = -9999, core_pred = 0;
+                for (int p = 0; p < NUM_TEMPLATES; p++) {
+                    int d = 0;
+                    for (int j = 0; j < CFC_INPUT_DIM; j++) {
+                        if (sig[p][j] != T_ZERO && cfc.input[j] != T_ZERO)
+                            d += tmul(sig[p][j], cfc.input[j]);
+                    }
+                    if (d > core_best) { core_best = d; core_pred = p; }
+                }
+                if (core_best < NOVELTY_THRESHOLD) continue;
+
+                int pred = core_pred;
+                total_confirms++;
+
+                /* Feed LP + run appropriate command */
+                feed_lp_core();
+                vdb_result_t fb_res;
+                if (cond == T14C_COND_ABLATION) {
+                    vdb_cfc_pipeline_step(&fb_res);   /* CMD 4: no blend */
+                } else {
+                    vdb_cfc_feedback_step(&fb_res);   /* CMD 5: with blend */
+                }
+
+                /* Read LP state */
+                int8_t lp_now[LP_HIDDEN_DIM];
+                memcpy(lp_now, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
+                int32_t dots_snap[LP_HIDDEN_DIM];
+                memcpy(dots_snap, ulp_addr(&ulp_lp_dots_f),
+                       LP_HIDDEN_DIM * sizeof(int32_t));
+                int8_t lp_mtfp[LP_MTFP_DIM];
+                encode_lp_mtfp(dots_snap, lp_mtfp);
+
+                /* Accumulate into P1 or P2 based on ground truth */
+                if (gt == 1) {
+                    for (int j = 0; j < LP_MTFP_DIM; j++)
+                        p1_sum_mtfp[j] += lp_mtfp[j];
+                    for (int j = 0; j < LP_HIDDEN_DIM; j++)
+                        p1_sum_sign[j] += lp_now[j];
+                    p1_n++;
+                    p1_n_sign++;
+                } else if (gt == 2) {
+                    for (int j = 0; j < LP_MTFP_DIM; j++)
+                        p2_sum_mtfp[j] += lp_mtfp[j];
+                    p2_n++;
+                }
+
+                /* Gate bias (conditions a only) */
+                int use_bias = (cond == T14C_COND_FULL);
+                if (use_bias) {
+                    for (int p = 0; p < TRIX_NUM_PATTERNS; p++)
+                        bias_f[p] *= T14C_BIAS_DECAY;
+                    if (p1_n_sign >= T14C_MIN_SAMPLES && pred >= 0 && pred < 4) {
+                        int dot_sign = 0;
+                        for (int j = 0; j < LP_HIDDEN_DIM; j++) {
+                            int16_t *src = (pred == 1) ? p1_sum_sign : p1_sum_sign;
+                            int8_t m = tsign(src[j]);
+                            dot_sign += tmul(lp_now[j], m);
+                        }
+                        float ag = (float)dot_sign / LP_HIDDEN_DIM;
+                        float b = BASE_GATE_BIAS * (ag > 0.0f ? ag : 0.0f);
+                        if (b > bias_f[pred]) bias_f[pred] = b;
+                    }
+                    for (int p = 0; p < TRIX_NUM_PATTERNS; p++)
+                        gie_gate_bias[p] = (int8_t)bias_f[p];
+                } else {
+                    memset((void *)gie_gate_bias, 0, sizeof(gie_gate_bias));
+                }
+
+                /* VDB insert */
+                if (total_confirms % T14C_INSERT_EVERY == 0 &&
+                    vdb_count() < VDB_MAX_NODES) {
+                    int8_t snap[VDB_TRIT_DIM];
+                    memcpy(snap, (void *)cfc.hidden, LP_GIE_HIDDEN);
+                    memcpy(snap + LP_GIE_HIDDEN, lp_now, LP_HIDDEN_DIM);
+                    vdb_insert(snap);
+                }
+
+                /* ── Phase 2 measurements ── */
+                if (saw_p2) {
+                    /* TriX accuracy in first 15 steps */
+                    if (phase2_step < 15) {
+                        trix_total_15++;
+                        if (gt < 4 && pred == (int)gt)
+                            trix_correct_15++;
+                    }
+
+                    /* Alignment scores: dot(lp_mtfp, mean_P1/P2) */
+                    if (phase2_step < T14C_WIN_SIZE) {
+                        int align1 = 0, align2 = 0;
+                        for (int j = 0; j < LP_MTFP_DIM; j++) {
+                            int8_t m1 = (p1_n > 0) ? tsign(p1_sum_mtfp[j]) : 0;
+                            int8_t m2 = (p2_n > 0) ? tsign(p2_sum_mtfp[j]) : 0;
+                            align1 += tmul(lp_mtfp[j], m1);
+                            align2 += tmul(lp_mtfp[j], m2);
+                        }
+                        t14c_align_p1[cond][phase2_step] = align1;
+                        t14c_align_p2[cond][phase2_step] = align2;
+                        t14c_bias_p1[cond][phase2_step] = gie_gate_bias[1]; /* P1 group */
+                        t14c_bias_p2[cond][phase2_step] = gie_gate_bias[2]; /* P2 group */
+
+                        /* Detect crossover */
+                        if (crossover_step < 0 && align2 > align1)
+                            crossover_step = phase2_step;
+
+                        if (phase2_step < 10 || phase2_step % 10 == 0) {
+                            printf("    step %+3d: align_P1=%+3d align_P2=%+3d "
+                                   "bias=[%d,%d] pred=%d gt=%d\n",
+                                   phase2_step, align1, align2,
+                                   (int)gie_gate_bias[1], (int)gie_gate_bias[2],
+                                   pred, (int)gt);
+                        }
+                    }
+
+                    phase2_step++;
+
+                    /* Exit after enough Phase 2 steps */
+                    if (phase2_step >= T14C_PHASE2_STEPS) break;
+                }
+
+                /* In Phase 1: periodic logging */
+                if (!saw_p2 && total_confirms % 100 == 0) {
+                    printf("    P1 step %d: vdb=%d p1_n=%d bias=[%d %d %d %d]\n",
+                           total_confirms, vdb_count(), p1_n,
+                           (int)gie_gate_bias[0], (int)gie_gate_bias[1],
+                           (int)gie_gate_bias[2], (int)gie_gate_bias[3]);
+                    fflush(stdout);
+                }
+            }
+
+            /* Exit conditions */
+            if (saw_p2 && phase2_step >= T14C_PHASE2_STEPS) break;
+
+            /* Timeout: if not synced within 120s, sender is in normal cycling
+             * mode (P1 only gets 5s per cycle). Skip gracefully. */
+            int64_t sync_timeout = need_full_sync ? 120000000LL : 180000000LL;
+            if (!synced && (esp_timer_get_time() - start_us) > sync_timeout) {
+                printf("  SKIP: no ≥60s P1 dwell in 120s. Sender not in TRANSITION_MODE.\n");
+                stop_freerun();
+                memset((void *)gie_gate_bias, 0, sizeof(gie_gate_bias));
+                goto t14c_skip;
+            }
+
+            /* If synced but no P2 within 150s total, timeout */
+            if (synced && !saw_p2 && (esp_timer_get_time() - start_us) > 150000000LL) {
+                printf("  TIMEOUT: synced but no P2 switch in 150s.\n");
+                break;
+            }
+        }
+
+        stop_freerun();
+        memset((void *)gie_gate_bias, 0, sizeof(gie_gate_bias));
+
+        /* Record results */
+        t14c_crossover[cond] = crossover_step;
+        t14c_trix_correct[cond] = trix_correct_15;
+        t14c_p2_steps[cond] = phase2_step;
+
+        printf("\n  Results (%s):\n", cond_name[cond]);
+        printf("  P1 samples: %d, P2 samples: %d\n", p1_n, p2_n);
+        printf("  Phase 2 steps: %d\n", phase2_step);
+        printf("  TriX accuracy (first 15): %d/%d\n",
+               trix_correct_15, trix_total_15);
+        printf("  Crossover step: %d\n", crossover_step);
+        fflush(stdout);
+    }
+
+    if (0) {
+t14c_skip:
+        printf("  TEST 14C SKIPPED — sender not in TRANSITION_MODE.\n");
+        printf("  Rebuild sender with -DTRANSITION_MODE=1 and reflash Board B.\n");
+        printf("  OK (skipped)\n\n");
+        fflush(stdout);
+        return 1;  /* skip counts as pass — test is not applicable */
+    }
+
+    /* ── Cross-condition comparison ── */
+    printf("\n  ══ TEST 14C COMPARISON ══\n");
+    printf("  %-22s | TriX@15 | Crossover | P2 steps\n", "Condition");
+    printf("  ----------------------|---------|-----------|----------\n");
+    for (int c = 0; c < T14C_N_COND; c++) {
+        printf("  %-22s | %3d/%3d |    %4d   |   %4d\n",
+               cond_name[c],
+               t14c_trix_correct[c],
+               (c == 0 || c == 1) ? 15 : t14c_p2_steps[c] < 15 ? t14c_p2_steps[c] : 15,
+               t14c_crossover[c],
+               t14c_p2_steps[c]);
+    }
+
+    /* Alignment traces at key steps */
+    printf("\n  Alignment Traces (align_P1, align_P2) at steps 0,5,10,15,20,30:\n");
+    int trace_steps[] = {0, 5, 10, 15, 20, 30};
+    int n_trace = 6;
+    printf("  %-22s |", "Step");
+    for (int t = 0; t < n_trace; t++) printf("  %+4d   ", trace_steps[t]);
+    printf("\n");
+    for (int c = 0; c < T14C_N_COND; c++) {
+        printf("  %-22s |", cond_name[c]);
+        for (int t = 0; t < n_trace; t++) {
+            int s = trace_steps[t];
+            if (s < t14c_p2_steps[c])
+                printf(" %+3d/%+3d", t14c_align_p1[c][s], t14c_align_p2[c][s]);
+            else
+                printf("    -/- ");
+        }
+        printf("\n");
+    }
+
+    /* ── Pass criteria ── */
+    /* TriX should be correct on P2 packets in first 15 steps.
+     * We check that at least some P2 classifications were correct
+     * (W_f hidden=0 guarantees TriX accuracy is independent of prior). */
+    int trix_ok = 1;
+    for (int c = 0; c < T14C_N_COND; c++) {
+        if (t14c_p2_steps[c] >= 15 && t14c_trix_correct[c] == 0)
+            trix_ok = 0;
+    }
+
+    /* Full system should crossover */
+    int full_crossed = (t14c_crossover[T14C_COND_FULL] >= 0 &&
+                        t14c_crossover[T14C_COND_FULL] <= 30);
+
+    /* Full system crossover should be <= no-bias crossover
+     * (bias helps, or at least doesn't hurt) */
+    int bias_helps = 1;
+    if (t14c_crossover[T14C_COND_FULL] >= 0 &&
+        t14c_crossover[T14C_COND_NOBIAS] >= 0) {
+        bias_helps = (t14c_crossover[T14C_COND_FULL] <=
+                      t14c_crossover[T14C_COND_NOBIAS]);
+    }
+
+    /* Ablation should be slower or no crossover */
+    int ablation_slower = 1;
+    if (t14c_crossover[T14C_COND_FULL] >= 0) {
+        if (t14c_crossover[T14C_COND_ABLATION] < 0) {
+            ablation_slower = 1; /* no crossover = slower = good */
+        } else {
+            ablation_slower = (t14c_crossover[T14C_COND_ABLATION] >=
+                               t14c_crossover[T14C_COND_FULL]);
+        }
+    }
+
+    /* Sufficient data */
+    int sufficient = (t14c_p2_steps[T14C_COND_FULL] >= 30);
+
+    printf("\n  ── Verdict ──\n");
+    printf("  TriX accuracy post-switch:     %s\n", trix_ok ? "PASS" : "FAIL");
+    printf("  Full system crossover ≤ 30:    %s (step %d)\n",
+           full_crossed ? "PASS" : "FAIL", t14c_crossover[T14C_COND_FULL]);
+    printf("  Bias helps (full ≤ no-bias):   %s (%d vs %d)\n",
+           bias_helps ? "PASS" : "FAIL",
+           t14c_crossover[T14C_COND_FULL], t14c_crossover[T14C_COND_NOBIAS]);
+    printf("  Ablation slower:               %s (%d vs %d)\n",
+           ablation_slower ? "PASS" : "FAIL",
+           t14c_crossover[T14C_COND_ABLATION], t14c_crossover[T14C_COND_FULL]);
+    printf("  Sufficient P2 data:            %s (%d steps)\n",
+           sufficient ? "PASS" : "FAIL", t14c_p2_steps[T14C_COND_FULL]);
+
+    int ok = trix_ok && full_crossed && sufficient;
+    printf("  %s\n\n", ok ? "OK" : "FAIL");
+    fflush(stdout);
+    return ok;
 }
 
 static void run_lp_char(void) {

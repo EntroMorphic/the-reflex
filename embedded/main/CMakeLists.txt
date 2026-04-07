@@ -13,6 +13,10 @@ endif()
 
 if(REFLEX_TARGET STREQUAL "sender")
     set(app_sources "espnow_sender.c")
+    # Pass TRANSITION_MODE to C preprocessor if set via -DTRANSITION_MODE=1
+    if(DEFINED TRANSITION_MODE AND TRANSITION_MODE)
+        add_compile_definitions(TRANSITION_MODE=1)
+    endif()
 else()
     set(app_sources "gie_engine.c" "geometry_cfc_freerun.c" "reflex_vdb.c" "reflex_espnow.c")
 endif()
