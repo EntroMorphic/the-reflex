@@ -389,7 +389,9 @@ For seeds A and C, the LP projection happens to be discriminative in the directi
 
 The predicted fix is per-neuron discriminability-weighted bias: 32 values instead of 4, where each GIE neuron's bias is weighted by how much its LP projection contributes to pattern separation. The discriminability of GIE neuron `n` can be computed from the fixed LP weight matrices and the accumulated MTFP means: count how many LP neurons are both influenced by `n` (`W_f[k][n] ≠ 0`) and pattern-discriminative (their MTFP representation differs across pattern pairs). Neurons whose LP columns connect to discriminative outputs receive full bias; neurons whose columns connect to non-discriminative outputs receive zero bias. This concentrates amplification on directions that help and zeroes it on directions that hurt.
 
-The ISR change is minimal — one array index substitution (`bias_pn[n]` instead of `bias[n/8]`). The HP computation is ~32 lookups after each classification event. Implementation is deferred to future work; the current per-group mechanism is reported as-is.
+The ISR change is minimal — one array index substitution (`bias_pn[n]` instead of `bias[n/8]`). The HP computation is ~32 lookups after each classification event.
+
+**Experimental test (negative result).** We implemented this mechanism and tested it on all three seeds. The disc metric scored all 32 neurons as nonzero (32/32) in every seed — the MTFP means differ on at least one trit for every LP neuron, so every GIE neuron looks discriminative. The metric lacked selectivity. The per-neuron bias spread thinly across all neurons instead of concentrating on the discriminative few, performing worse than per-group in 2 of 3 seeds (Seed A: +1.0 → -0.2, Seed B: -1.1 → -2.2). Reverted to per-group. A more selective metric — using magnitude thresholds on MTFP differences rather than binary presence/absence, or using LP dot magnitude variance rather than MTFP mean differences — may succeed where this formulation failed.
 
 ### 5.6 Structural Guarantees
 
