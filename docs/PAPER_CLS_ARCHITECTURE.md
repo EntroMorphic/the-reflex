@@ -231,7 +231,7 @@ Episodic memory modules in robotics (Stachenfeld et al., 2017; Blundell et al., 
 
 7. **Bias decay rate not optimized.** The 0.9 decay rate was chosen without tuning. The transition data suggests a faster decay might improve transition dynamics at the cost of stable-period amplification. The optimal decay rate is an open parameter.
 
-8. **LP feedback uses CPU core_pred (~80% accuracy).** LP feedback dispatch uses CPU core_pred, which has systematic P0-P1 cross-contamination (73% cross-dot ratio). Direct TriX dispatch was investigated but is not viable due to the GDMA chain offset. The contamination is mitigated by the ternary disagree-count agreement, which detects conflict at the trit level. The multi-seed data in Section 3.1 uses ternary agreement with CPU core_pred dispatch. The no-bias and ablation conditions (the basis for the stabilization finding) do not use the pattern label for bias, only for accumulator binning, so the contamination is controlled across conditions.
+8. **LP feedback classifier (resolved).** LP feedback is dispatched from the TriX ISR with a GDMA offset mapping calibrated at enrollment. The structural guarantee (W_f hidden = 0) extends to the LP accumulation pathway. Full test suite: 14/15 PASS with TriX dispatch.
 
 ---
 

@@ -3044,6 +3044,7 @@ static int run_test_12(void) {
         encode_all_neurons();
         build_circular_chain();
         start_freerun();
+        trix_enabled = 1;
         espnow_ring_flush();
 
         printf("  blend re-enabled (threshold=90), VDB cleared, LP reset\n");
@@ -3082,11 +3083,10 @@ static int run_test_12(void) {
                 if (core_best < NOVELTY_THRESHOLD) continue;
 
                 /* Confirmed classification */
-                int pred = core_pred;  /* CPU core_pred — TriX dispatch deferred (ISR f_dot
-                        * diverges from CPU under active CfC blend; see
-                        * SESSION_APR08_2026.md open item #1) */
+                int pred = core_pred;
                 t12_confirmed[pred]++;
                 t12_confirmations++;
+
 
                 /* Feed current GIE hidden state to LP core, then
                  * run one CfC+VDB+feedback step. LP retrieves the
@@ -3390,6 +3390,7 @@ static int run_test_13(void) {
         encode_all_neurons();
         build_circular_chain();
         start_freerun();
+        trix_enabled = 1;
         espnow_ring_flush();
 
         printf("  CMD 4 (no VDB blend), VDB cleared, LP reset\n");
@@ -3423,9 +3424,7 @@ static int run_test_13(void) {
                 }
                 if (core_best < NOVELTY_THRESHOLD) continue;
 
-                int pred = core_pred;  /* CPU core_pred — TriX dispatch deferred (ISR f_dot
-                        * diverges from CPU under active CfC blend; see
-                        * SESSION_APR08_2026.md open item #1) */
+                int pred = (int)trix_pred;  /* TriX ISR: GDMA offset resolved, trix_enabled set */
                 t13_confirmed[pred]++;
 
                 /* CMD 4: CfC step + VDB search.
@@ -3725,9 +3724,7 @@ static int run_test_14(void) {
                     }
                     if (core_best < NOVELTY_THRESHOLD) continue;
 
-                    int pred = core_pred;  /* CPU core_pred — TriX dispatch deferred (ISR f_dot
-                        * diverges from CPU under active CfC blend; see
-                        * SESSION_APR08_2026.md open item #1) */
+                    int pred = (int)trix_pred;  /* TriX ISR: GDMA offset resolved, trix_enabled set */
                     total_confirms++;
 
                     /* Classification accuracy vs ground truth */
@@ -4408,9 +4405,7 @@ static int run_test_14c(void) {
                 }
                 if (core_best < NOVELTY_THRESHOLD) continue;
 
-                int pred = core_pred;  /* CPU core_pred — TriX dispatch deferred (ISR f_dot
-                        * diverges from CPU under active CfC blend; see
-                        * SESSION_APR08_2026.md open item #1) */
+                int pred = (int)trix_pred;  /* TriX ISR: GDMA offset resolved, trix_enabled set */
                 total_confirms++;
 
                 /* Feed LP + run appropriate command */

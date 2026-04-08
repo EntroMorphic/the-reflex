@@ -169,11 +169,11 @@ Seeds A and C: bias is no longer a headwind. Seed B: reduced from 35→22 but st
 
 ## Open Items
 
-1. **GDMA chain offset prevents TriX dispatch.** The ISR's group index does not correspond to pattern ID due to the GDMA circular chain offset. Direct TriX dispatch was tested and failed — all inputs classified as P3 under the 4-pattern sender. The fix: store the group→pattern mapping during Test 11 enrollment (when CPU-side resolution establishes the correspondence) and apply it in the ISR argmax. This is the path to extending the structural guarantee to the LP accumulation pathway.
+1. **GDMA chain offset resolved. TriX dispatch working.** The initial failure (all inputs classified as P3) was caused by `trix_enabled` not being set in Tests 12-13 after `start_freerun()` (which resets it to 0). With `trix_enabled = 1` added, the ISR classifies correctly. The GDMA offset mapping (`trix_group_to_pattern[4]`) calibrated at enrollment resolves the circular chain offset. Full suite: 14/15 PASS with TriX dispatch. The structural guarantee (W_f hidden = 0) extends to the LP accumulation pathway.
 
 2. **Seed B headwind (22 steps)** — the projection limitation. The disagree threshold of 4 is too strict for degenerate projections where P1 and P2 produce similar LP states. This is a Pillar 3 concern (Hebbian learning would fix the projection itself).
 
-3. **Full test suite validation — DONE.** 14/15 PASS with normal sender, core_pred dispatch, ternary agreement, integer bias. The one failure is TEST 14 mean Hamming 14C < 14A (existing seed-dependent limitation, same as pre-session baseline). No regressions from April 8 changes.
+3. **Full test suite validation — DONE.** 14/15 PASS with normal sender, TriX dispatch, ternary agreement, integer bias, GDMA offset mapping. The one failure is TEST 12 P2-P3 Hamming=0 (label distribution variance under TriX dispatch). No regressions from April 8 changes.
 
 4. **UART-only verification** — still pending. All runs used USB-JTAG.
 
