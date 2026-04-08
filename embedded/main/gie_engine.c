@@ -132,12 +132,11 @@ volatile int8_t gie_gate_bias[TRIX_NUM_PATTERNS] = {0};
 volatile int8_t gie_gate_bias_pn[CFC_HIDDEN_DIM] = {0};
 volatile int32_t gie_gate_fires_per_group[TRIX_NUM_PATTERNS] = {0};
 
-/* TriX ISR classification — computed at 430 Hz in hardware.
- * When trix_enabled=1, the ISR extracts per-pattern dot products from
- * the f-pathway neurons (which have TriX signatures installed as weights)
- * and publishes the classification result for the main loop to read.
- * NEURONS_PER_PATTERN = CFC_HIDDEN_DIM / TRIX_NUM_PATTERNS = 32/4 = 8. */
-/* TRIX_NUM_PATTERNS and TRIX_NEURONS_PP defined in gie_engine.h */
+/* TriX GDMA offset mapping — group index → pattern ID.
+ * Initialized to identity (g→g). HP core overwrites after enrollment. */
+volatile int8_t trix_group_to_pattern[TRIX_NUM_PATTERNS] = {0, 1, 2, 3};
+
+/* TriX ISR classification — computed at 430 Hz in hardware. */
 volatile int32_t trix_enabled = 0;
 volatile int32_t trix_pred = -1;         /* current pattern prediction */
 volatile int32_t trix_confidence = 0;    /* dot product of winning pattern */
@@ -402,12 +401,12 @@ static void IRAM_ATTR isr_loop_boundary(void) {
         }
         if (clean) {
             /* Exact: uniform neurons → group_val is the dot product.
-             * Update trix_pred from argmax of exact values. */
+             * Apply GDMA offset mapping: group index → pattern ID. */
             int best_g = 0, best_v = group_val[0];
             for (int g = 1; g < TRIX_NUM_PATTERNS; g++) {
                 if (group_val[g] > best_v) { best_v = group_val[g]; best_g = g; }
             }
-            trix_pred = best_g;
+            trix_pred = trix_group_to_pattern[best_g];
             trix_confidence = best_v;
             trix_timestamp_us = esp_timer_get_time();
             trix_count++;
@@ -440,7 +439,7 @@ static void IRAM_ATTR isr_loop_boundary(void) {
             for (int g = 1; g < TRIX_NUM_PATTERNS; g++) {
                 if (group_sum[g] > best_v) { best_v = group_sum[g]; best_g = g; }
             }
-            trix_pred = best_g;
+            trix_pred = trix_group_to_pattern[best_g];
             trix_confidence = best_v;
             trix_timestamp_us = esp_timer_get_time();
             trix_count++;

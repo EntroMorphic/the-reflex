@@ -2303,6 +2303,97 @@ static int run_test_11(void) {
                (int)gate_fires_total, (int)gate_steps_total, avg_fire_pct);
         fflush(stdout);
 
+        /* ── GDMA offset calibration ──
+         * The GDMA circular chain offset means ISR group index g may not
+         * correspond to pattern g. Calibrate by matching ISR group scores
+         * (from a clean trix_channel) against CPU-computed pattern dots.
+         * Build the permutation trix_group_to_pattern[4].
+         *
+         * Wait for a live packet, encode it, wait for a clean ISR loop,
+         * then match all 4 groups to all 4 patterns by closest dot. */
+        {
+            printf("\n  GDMA offset calibration...\n");
+            fflush(stdout);
+
+            /* Wait for a live packet */
+            int cal_got_packet = 0;
+            int64_t cal_start = esp_timer_get_time();
+            while (!cal_got_packet && (esp_timer_get_time() - cal_start) < 5000000LL) {
+                vTaskDelay(pdMS_TO_TICKS(10));
+                int nd = espnow_drain(drain_buf, 32);
+                for (int i = 0; i < nd && !cal_got_packet; i++) {
+                    if (espnow_encode_rx_entry(&drain_buf[i], NULL)) {
+                        gie_input_pending = 1;
+                        int spins = 0;
+                        while (gie_input_pending && spins < 5000) {
+                            esp_rom_delay_us(5);
+                            spins++;
+                        }
+                        cal_got_packet = 1;
+                    }
+                }
+            }
+
+            if (cal_got_packet) {
+                /* Wait for a clean ISR classification */
+                uint32_t seq_before = trix_channel.sequence;
+                uint32_t new_seq = reflex_wait_timeout(
+                    &trix_channel, seq_before, 16000000);
+
+                if (new_seq != 0) {
+                    /* Unpack ISR group scores */
+                    uint32_t packed = reflex_read(&trix_channel);
+                    int32_t isr_g[4];
+                    for (int g = 0; g < 4; g++)
+                        isr_g[g] = (int8_t)((packed >> (g * 8)) & 0xFF);
+
+                    /* Compute CPU pattern dots */
+                    int cpu_d[4] = {0};
+                    for (int p = 0; p < 4; p++)
+                        for (int j = 0; j < CFC_INPUT_DIM; j++)
+                            if (sig[p][j] != T_ZERO && cfc.input[j] != T_ZERO)
+                                cpu_d[p] += tmul(sig[p][j], cfc.input[j]);
+
+                    /* Greedy assignment: for each ISR group, find the CPU
+                     * pattern with the closest dot product. Mark used. */
+                    int8_t map[4] = {-1, -1, -1, -1};
+                    int used[4] = {0, 0, 0, 0};
+                    for (int g = 0; g < 4; g++) {
+                        int best_p = -1, best_dist = 9999;
+                        for (int p = 0; p < 4; p++) {
+                            if (used[p]) continue;
+                            int dist = isr_g[g] - cpu_d[p];
+                            if (dist < 0) dist = -dist;
+                            if (dist < best_dist) {
+                                best_dist = dist;
+                                best_p = p;
+                            }
+                        }
+                        if (best_p >= 0) {
+                            map[g] = (int8_t)best_p;
+                            used[best_p] = 1;
+                        }
+                    }
+
+                    /* Install the mapping */
+                    for (int g = 0; g < 4; g++)
+                        trix_group_to_pattern[g] = map[g];
+
+                    printf("  GDMA offset mapping: G0→P%d G1→P%d G2→P%d G3→P%d\n",
+                           map[0], map[1], map[2], map[3]);
+                    printf("  ISR groups:  [%d, %d, %d, %d]\n",
+                           (int)isr_g[0], (int)isr_g[1], (int)isr_g[2], (int)isr_g[3]);
+                    printf("  CPU patterns: [%d, %d, %d, %d]\n",
+                           cpu_d[0], cpu_d[1], cpu_d[2], cpu_d[3]);
+                } else {
+                    printf("  WARN: no clean ISR loop — using identity mapping\n");
+                }
+            } else {
+                printf("  WARN: no packet in 5s — using identity mapping\n");
+            }
+            fflush(stdout);
+        }
+
         /* ── Phase 0d: TriX Cube observation (15s) ──
          * Initialize 7-voxel cube. Core (cube[0]) uses the already-computed
          * signatures. 6 face voxels observe the input under temporal filters.
@@ -2991,7 +3082,9 @@ static int run_test_12(void) {
                 if (core_best < NOVELTY_THRESHOLD) continue;
 
                 /* Confirmed classification */
-                int pred = core_pred;  /* CPU classifier for pattern label (ISR has GDMA offset) */
+                int pred = core_pred;  /* CPU core_pred — TriX dispatch deferred (ISR f_dot
+                        * diverges from CPU under active CfC blend; see
+                        * SESSION_APR08_2026.md open item #1) */
                 t12_confirmed[pred]++;
                 t12_confirmations++;
 
@@ -3330,7 +3423,9 @@ static int run_test_13(void) {
                 }
                 if (core_best < NOVELTY_THRESHOLD) continue;
 
-                int pred = core_pred;  /* CPU classifier for pattern label (ISR has GDMA offset) */
+                int pred = core_pred;  /* CPU core_pred — TriX dispatch deferred (ISR f_dot
+                        * diverges from CPU under active CfC blend; see
+                        * SESSION_APR08_2026.md open item #1) */
                 t13_confirmed[pred]++;
 
                 /* CMD 4: CfC step + VDB search.
@@ -3630,7 +3725,9 @@ static int run_test_14(void) {
                     }
                     if (core_best < NOVELTY_THRESHOLD) continue;
 
-                    int pred = core_pred;  /* CPU classifier for pattern label (ISR has GDMA offset) */
+                    int pred = core_pred;  /* CPU core_pred — TriX dispatch deferred (ISR f_dot
+                        * diverges from CPU under active CfC blend; see
+                        * SESSION_APR08_2026.md open item #1) */
                     total_confirms++;
 
                     /* Classification accuracy vs ground truth */
@@ -4311,7 +4408,9 @@ static int run_test_14c(void) {
                 }
                 if (core_best < NOVELTY_THRESHOLD) continue;
 
-                int pred = core_pred;  /* CPU classifier for pattern label (ISR has GDMA offset) */
+                int pred = core_pred;  /* CPU core_pred — TriX dispatch deferred (ISR f_dot
+                        * diverges from CPU under active CfC blend; see
+                        * SESSION_APR08_2026.md open item #1) */
                 total_confirms++;
 
                 /* Feed LP + run appropriate command */

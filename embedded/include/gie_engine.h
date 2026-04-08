@@ -88,6 +88,14 @@ extern volatile int8_t gie_gate_bias[TRIX_NUM_PATTERNS];
 extern volatile int8_t gie_gate_bias_pn[CFC_HIDDEN_DIM];  /* per-neuron bias */
 extern volatile int32_t gie_gate_fires_per_group[TRIX_NUM_PATTERNS];
 
+/* TriX GDMA offset mapping — resolves ISR group index to pattern ID.
+ * The GDMA circular chain offset means ISR group g may not correspond
+ * to pattern g. This table maps group → pattern. Populated by the HP
+ * core after enrollment (Test 11) by matching ISR group scores against
+ * CPU-computed pattern dots. The ISR applies it in the trix_pred argmax.
+ * -1 = unmapped (use group index as-is). */
+extern volatile int8_t trix_group_to_pattern[TRIX_NUM_PATTERNS];
+
 /* TriX ISR classification state */
 extern volatile int32_t trix_enabled;
 extern volatile int32_t trix_pred;
