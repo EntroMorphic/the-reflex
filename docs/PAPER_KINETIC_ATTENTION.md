@@ -317,6 +317,36 @@ P1-P2 under 14A: sign=0 (degenerate), MTFP=5 (separated). Under 14C: sign=1, MTF
 
 ---
 
+### 4.4 Multi-Seed Validation
+
+All preceding results use weight seed `0xCAFE1234`. To distinguish architecture properties from single-matrix coincidences, we repeated Tests 12-14 with two additional seeds (`0xDEAD5678`, `0xBEEF9ABC`). Same hardware, same sender, same physical arrangement. Only the LP CfC weight matrices differ.
+
+#### MTFP Robustness (Across Seeds)
+
+| Metric | Seed A | Seed B | Seed C |
+|--------|:---:|:---:|:---:|
+| T12 P1-P2 sign (/16) | 0 | 1 | 4 |
+| **T12 P1-P2 MTFP (/80)** | **7** | **9** | **9** |
+| T12 P1-P3 MTFP (/80) | 6 | 13 | — |
+| Split-half null test | SIGNAL > NULL | SIGNAL > NULL | SIGNAL > NULL |
+
+**MTFP P1-P2 separation is robust.** All three seeds produce MTFP Hamming 7-9, well above the null distance (~1). Sign-space varies from 0 to 4 — confirming that the sign-space degeneracy depends on the specific projection, while the underlying magnitude separation does not. The MTFP encoding resolves the bottleneck regardless of weight configuration.
+
+#### Gate Bias Effect (Across Seeds)
+
+| Metric | Seed A | Seed B | Seed C |
+|--------|:---:|:---:|:---:|
+| T14 mean 14A | 4.5 | 2.8 | 4.5 |
+| T14 mean 14C | 5.5 | 1.7 | 6.3 |
+| **14C vs 14A** | **+1.0** | **-1.1** | **+1.8** |
+| Max bias | 15 | 15 | 14 |
+
+**Gate bias improves LP divergence in 2 of 3 seeds.** Seed B shows a regression: mean Hamming decreases under bias. The gate bias mechanism activates in all seeds (max bias 14-15), but the improvement is not universal. The mechanism is directionally positive but depends on the interaction between the random projection and the bias-induced firing rate changes. For projections where the gate bias amplifies a discriminative direction, LP divergence increases. For projections where the amplified direction is non-discriminative, the bias adds noise.
+
+This is an honest limitation: the kinetic attention mechanism does not universally improve LP divergence across all random projections. It improves the majority (2/3) and the mean effect is positive (+0.6 Hamming points across seeds), but it is not a guaranteed improvement for every weight configuration.
+
+---
+
 ## 5. Analysis
 
 ### 5.1 The Robust Result: 14C vs 14A
@@ -387,7 +417,7 @@ The architectural decoupling between the prior pathway (LP state -> gate bias ->
 
 ## 7. Limitations
 
-1. **N=3, same seed.** TEST 14 was run three times with the same weight seed (`0xCAFE1234`). The weights are identical across runs; variance comes only from the sender's pattern timing phase at each condition start. This demonstrates robustness to input timing variance, not architectural variance. The 14C vs 14A improvement is consistent across all three runs (+1.0 to +2.5 mean Hamming). The 14C-iso vs 14C comparison is not consistent (2 of 3 runs favor 14C-iso). Formal replication with different seeds is needed to establish robustness to the random projection itself.
+1. **Multi-seed results are mixed.** Three weight seeds were tested (Section 4.4). MTFP encoding is robust across all seeds (P1-P2 Hamming 7-9/80, null ~1). Gate bias improves LP divergence in 2 of 3 seeds but regresses in 1. The kinetic attention mechanism is directionally positive (mean +0.6) but not universally beneficial. Additional seeds or adaptive bias tuning may be needed to establish robustness. The within-seed TEST 14 runs (3 runs, same seed) show consistent improvement (+1.0 to +2.5), confirming the mechanism works when it works — the question is for which projections it fails.
 
 2. **Fixed weights.** The CfC projection is random and never updates. The P1-P2 sign-space degeneracy is a permanent feature of seed `0xCAFE1234`. Different seeds produce different degeneracies. MTFP dot encoding resolves the measurement bottleneck for this seed; whether it generalizes across seeds is untested. A production system would either learn weights (Pillar 3) or use multiple random projections.
 
