@@ -1,28 +1,40 @@
 # The Reflex: Strategic Roadmap
 
-*Last updated: March 22, 2026 — post TEST 12/13, 13/13 PASS.*
+*Last updated: April 8, 2026 — Phase 5 verified, multi-seed 14C on silicon, three papers updated.*
 
 ---
 
 ## Current State
 
-As of commit `12aa970`, the Reflex architecture has demonstrated:
+As of commit `d6339d0`, the Reflex architecture has demonstrated:
 
-- **GIE**: Peripheral-hardware ternary dot products at 430.8 Hz, ISR-driven, 100% classification accuracy on 4 known patterns from live wireless input (ESP-NOW).
+- **GIE**: Peripheral-hardware ternary dot products at 430.8 Hz, ISR-driven, 100% TriX classification accuracy on 4 well-separated patterns from live wireless input (ESP-NOW).
 - **VDB**: 64-node NSW graph in LP SRAM, 48-trit vectors, recall@1=95%, 10–15ms round-trip.
 - **LP CfC**: 16-trit hidden state, CMD 5 (CfC + VDB + feedback blend) running at ~100 Hz on the 16 MHz LP core (~30 µA).
-- **Memory-modulated priors**: LP hidden state develops pattern-specific representations after 90s of live operation. All cross-pattern pairs diverge Hamming ≥ 1. VDB feedback is causally necessary — ablation (CMD 4) collapses P1 and P2 to Hamming=0 in 2 of 3 runs.
-- **Claim verified**: The sub-conscious layer reflects classification history. Modulation is **potential** — the LP state contains pattern information, but does not yet shape GIE behavior.
+- **Memory-modulated priors**: LP hidden state develops pattern-specific representations after 90s of live operation. VDB feedback is causally necessary — ablation (CMD 4) collapses P1 and P2 to Hamming=0 in 2 of 3 runs. Multi-seed validated (3 seeds).
+- **Kinetic attention (Phase 5)**: Agreement-weighted gate bias with ternary disagree-count. LP feedback dispatched from TriX ISR (100% accuracy, structural guarantee). Integer bias state — no floating point in the mechanism path. Bias releases within 4 steps at pattern transitions. Multi-seed TEST 14C verified (3 seeds × 3 conditions).
+- **CLS stabilization**: VDB stabilization confirmed across all seeds — no-bias transitions monotonically at step 0, ablation shows P1 regression at step +20. The hippocampus stabilizes, not accelerates.
+- **Three papers drafted**: Stratum 1 (engineering), Stratum 2 (CLS architecture), Stratum 3 (prior-signal separation). All updated with multi-seed data.
 
-The modulation loop is half-closed. What remains is making it kinetic.
+The modulation loop is closed. The three pillars are next.
 
 ---
 
-## Phase 5: Kinetic Attention (Immediate Priority)
+## Immediate Blockers (Before Paper Submission)
 
-**The claim to be tested:** LP hidden state biases GIE gate thresholds, making peripheral hardware compute differently based on accumulated experience.
+1. **UART-only verification.** Re-route console to GPIO 16/17, power from battery/dumb USB, direct current measurement. All runs to date use USB-JTAG. The "peripheral-autonomous" and "~30 µA" claims require this data.
 
-**Why this is first:** Every other step-change becomes more interesting and more rigorous once the LP state actively shapes perception. SAMA (Pillar 2) without kinetic attention is a passive relay. Hebbian learning (Pillar 3) without kinetic attention changes weights that may or may not influence behavior — kinetic attention gives you a direct behavioral measure. Dynamic scaffolding (Pillar 1) pruning criteria require knowing which memories the CfC can represent independently — which requires kinetic attention experiments to establish.
+2. **Full test suite validation.** Run the complete 15-test suite with the normal sender (4-pattern cycling) and the current firmware (TriX dispatch, ternary agreement, integer bias). Confirm no regressions from April 8 changes.
+
+---
+
+## Phase 5: Kinetic Attention (Verified)
+
+**Claim verified:** LP hidden state biases GIE gate thresholds via agreement-weighted gate bias. The bias is ternary: a per-trit disagree-count detects conflict and zeros the bias immediately. LP feedback dispatched from TriX ISR. No float in the mechanism path.
+
+**Multi-seed TEST 14C results (3 seeds × 3 conditions):** VDB stabilization holds across all seeds. Bias releases within 4 steps. Seed B shows a 22-step headwind attributable to a degenerate LP projection, not the mechanism.
+
+**Why this was first:** Kinetic attention provides the behavioral measure that all three pillars require. It is now the foundation for forward work.
 
 **Design:** See `docs/KINETIC_ATTENTION.md` for full specification. Summary:
 

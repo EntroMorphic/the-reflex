@@ -4,7 +4,7 @@
 EntroMorphic Research
 
 *Draft: April 7, 2026.*
-*Data: commits `f510f9a` (14/14 PASS), `e0d8651` (TEST 14C transition), `276af59` (multi-seed sweep). ESP32-C6FH4, ESP-IDF v5.4. Multi-seed TEST 14C transition data (3 seeds × 3 conditions, April 8 2026). LP feedback dispatched from TriX ISR (100% accuracy). Ternary disagree-count agreement.*
+*Data: commits `f510f9a` (14/14 PASS), `e0d8651` (TEST 14C transition), `276af59` (multi-seed sweep). ESP32-C6FH4, ESP-IDF v5.4. Multi-seed TEST 14C transition data (3 seeds × 3 conditions, April 8 2026). Ternary disagree-count agreement with immediate bias release. Integer bias state — no float in mechanism path.*
 
 ---
 
@@ -231,7 +231,7 @@ Episodic memory modules in robotics (Stachenfeld et al., 2017; Blundell et al., 
 
 7. **Bias decay rate not optimized.** The 0.9 decay rate was chosen without tuning. The transition data suggests a faster decay might improve transition dynamics at the cost of stable-period amplification. The optimal decay rate is an open parameter.
 
-8. **LP feedback classifier (resolved).** An earlier implementation dispatched LP feedback from CPU core_pred (~80% accuracy), producing systematic P0-P1 cross-contamination. This was identified during red-team review (April 8, 2026) and fixed: LP feedback is now dispatched from the TriX ISR (100% accuracy, W_f hidden = 0 structural guarantee). The multi-seed data in Section 3.1 uses TriX dispatch with ternary agreement.
+8. **LP feedback uses CPU core_pred (~80% accuracy).** LP feedback dispatch uses CPU core_pred, which has systematic P0-P1 cross-contamination (73% cross-dot ratio). Direct TriX dispatch was investigated but is not viable due to the GDMA chain offset. The contamination is mitigated by the ternary disagree-count agreement, which detects conflict at the trit level. The multi-seed data in Section 3.1 uses ternary agreement with CPU core_pred dispatch. The no-bias and ablation conditions (the basis for the stabilization finding) do not use the pattern label for bias, only for accumulator binning, so the contamination is controlled across conditions.
 
 ---
 

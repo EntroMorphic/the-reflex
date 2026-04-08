@@ -342,7 +342,7 @@ The answer is almost certainly yes. The question is how to build it.
 
 **Silicon verification of the five components:**
 1. Prior-holder: LP CfC hidden state. Pattern-specific after 90s. VDB causally necessary (TEST 13 ablation).
-2. Evidence-reader: GIE peripheral hardware. 430 Hz, 100% TriX accuracy, zero prior influence on classification. LP feedback dispatched from TriX ISR (100%, structural guarantee extends to accumulation pathway).
+2. Evidence-reader: GIE peripheral hardware. 430 Hz, 100% TriX accuracy (4 well-separated patterns), zero prior influence on classification. LP feedback dispatched from CPU core_pred (~80% accuracy; TriX dispatch not viable due to GDMA chain offset — see Stratum 1 paper).
 3. Structural separation: `W_f hidden = 0`. Verified: TriX ISR and CPU classification agree at 100% (`0b09f69`).
 4. Disagreement detection: Ternary disagree-count per trit. When 4+ of 16 trits disagree, prior and evidence are in conflict. The disagreement is computed in trit-space, not collapsed to a scalar — preserving the ternary structure that distinguishes "strong prior with gaps" from "conflicted prior."
 5. Evidence-deference policy: When disagreement detected, gate_bias zeros immediately (not gradual decay). Multi-seed TEST 14C verified: bias releases within 0-2 steps of pattern switch in 2 of 3 seeds. The deference is structural — the disagree count cannot be elevated by prior influence because the TriX classification that feeds the accumulator is structurally immune to the prior (W_f hidden = 0).

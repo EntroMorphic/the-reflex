@@ -6,7 +6,7 @@
 
 ## Summary
 
-Red-teamed all three papers. Identified 10 issues. Ran multi-seed TEST 14C on silicon (3 seeds × 3 conditions). Discovered and fixed a critical bug in the agreement computation. Replaced the float agreement signal with ternary disagree-count. Replaced CPU core_pred dispatch with TriX ISR dispatch. Three compounding fixes eliminated the transition headwind in 2 of 3 seeds and reduced it from 35→22 steps in the third.
+Red-teamed all three papers. Identified 10 issues. Ran multi-seed TEST 14C on silicon (3 seeds × 3 conditions). Discovered and fixed a critical bug in the agreement computation (hardcoded P1 accumulator). Replaced the float agreement signal with ternary disagree-count. Replaced float bias state with integer at 10× resolution. Investigated TriX ISR dispatch — worked for 2-pattern transition sender but failed for 4-pattern normal sender due to GDMA chain offset (ISR group index ≠ pattern ID). Reverted to CPU core_pred dispatch. Full test suite: 14/15 PASS (same as pre-session baseline; TEST 14 mean Hamming 14C < 14A is the existing seed-dependent limitation).
 
 **Key results:**
 
@@ -169,22 +169,28 @@ Seeds A and C: bias is no longer a headwind. Seed B: reduced from 35→22 but st
 
 ## Open Items
 
-1. **TriX accuracy 0/15 in TEST 14C** — because the transition sender only provides P1/P2, P0/P3 signatures are empty. TriX classifies correctly (P1 or P2) but the test harness compares `trix_pred` against ground truth `pattern_id`, and the TriX group→pattern mapping may not match the sender's pattern_id encoding for all cases. This is a test harness reporting issue, not a real accuracy failure. Needs investigation.
+1. **GDMA chain offset prevents TriX dispatch.** The ISR's group index does not correspond to pattern ID due to the GDMA circular chain offset. Direct TriX dispatch was tested and failed — all inputs classified as P3 under the 4-pattern sender. The fix: store the group→pattern mapping during Test 11 enrollment (when CPU-side resolution establishes the correspondence) and apply it in the ISR argmax. This is the path to extending the structural guarantee to the LP accumulation pathway.
 
-2. **Seed B headwind (22 steps)** — the projection limitation. The disagree threshold of 4 is too strict for degenerate projections where P1 and P2 produce similar LP states. An adaptive threshold based on the accumulator's trit energy could help, but this is a Pillar 3 concern (Hebbian learning would fix the projection itself).
+2. **Seed B headwind (22 steps)** — the projection limitation. The disagree threshold of 4 is too strict for degenerate projections where P1 and P2 produce similar LP states. This is a Pillar 3 concern (Hebbian learning would fix the projection itself).
 
-3. **Full test suite validation** — all runs used SKIP_TO_14C with the transition sender. A full 15-test run with the normal sender (4-pattern cycling) is needed to verify that TriX dispatch and ternary agreement don't regress any existing test.
+3. **Full test suite validation — DONE.** 14/15 PASS with normal sender, core_pred dispatch, ternary agreement, integer bias. The one failure is TEST 14 mean Hamming 14C < 14A (existing seed-dependent limitation, same as pre-session baseline). No regressions from April 8 changes.
 
 4. **UART-only verification** — still pending. All runs used USB-JTAG.
+
+5. **TriX accuracy scope.** The 100% claim applies to the 4-pattern sender with well-separated signatures. Under the 2-pattern transition sender, P1-P2 cross-dot ratio is 73% and TriX misclassifies. Papers now document this scope explicitly.
 
 ---
 
 ## Data Files
 
-All serial captures saved in repository root:
+All serial captures saved in `data/apr8_2026/`:
 - `results_seed_{a,b,c}.log` — CPU dispatch, first multi-seed 14C run
 - `results_trix_seed_{a,b,c}.log` — TriX dispatch, float agreement
-- `results_ternary_seed_{a,b,c}.log` — TriX dispatch, ternary agreement (final)
+- `results_ternary_seed_{a,b,c}.log` — TriX dispatch, ternary agreement
+- `results_fix_seed_a.log`, `results_fix2_seed_a.log` — ISR argmax fix iterations
+- `results_phase_a_seed_a.log` — integer bias validation
+- `full_suite_trix_dispatch.log` — full suite with TriX dispatch (failed: P3 misclassification)
+- `full_suite_core_pred.log` — full suite with core_pred dispatch (14/15 PASS)
 
 ---
 
