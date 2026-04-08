@@ -337,8 +337,8 @@ The answer is almost certainly yes. The question is how to build it.
 ---
 
 **Date**: March 22–23, 2026. Updated April 7, 2026.
-**Hardware basis**: ESP32-C6, 14/14 PASS (commit `f510f9a`), ablation-controlled, red-team remediated
-**Key commits**: `12aa970` (TEST 12/13), `429ce38` (Phase 5), `98800a9` (MTFP dot encoding), `f510f9a` (red-team fixes)
+**Hardware basis**: ESP32-C6, 15/15 PASS (commit `d05c8d8`), ablation-controlled, red-team remediated, multi-seed validated (3 seeds)
+**Key commits**: `12aa970` (TEST 12/13), `429ce38` (Phase 5), `98800a9` (MTFP encoding), `f510f9a` (red-team), `276af59` (seed sweep), `e0d8651` (TEST 14C transition)
 
 **Silicon verification of the five components:**
 1. Prior-holder: LP CfC hidden state. Pattern-specific after 90s. VDB causally necessary (TEST 13 ablation).
@@ -347,6 +347,10 @@ The answer is almost certainly yes. The question is how to build it.
 4. Disagreement detection: Agreement score drives gate bias. MTFP-space (80 trits) provides 5× measurement resolution.
 5. Evidence-deference policy: gate_bias ≤ 15, hard floor 30. Red-teamed: MTFP agreement caused entrainment (runaway feedback); reverted to sign-space agreement for stability. The deference mechanism works because the agreement signal is conservative.
 
-**Depends on**: `KINETIC_ATTENTION.md`, `PAPER_READINESS.md`
+**Companion papers:**
+- Stratum 1 (Engineering): `PAPER_KINETIC_ATTENTION.md` — ternary peripheral-fabric neural computation with kinetic attention, multi-seed validated
+- Stratum 2 (Architecture): `PAPER_CLS_ARCHITECTURE.md` — fixed-weight CLS, hippocampal stabilization during transitions
+- Stratum 3 (this paper): Prior-signal separation as structural hallucination resistance
+
 **See also**: `THE_PRIOR_AS_VOICE.md` (full perspective paper)
-**Status**: Ready for submission. All five components silicon-verified under confound-controlled conditions.
+**Status**: Ready for submission. All five components silicon-verified under confound-controlled conditions, multi-seed validated.

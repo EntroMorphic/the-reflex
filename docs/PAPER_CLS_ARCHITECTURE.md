@@ -4,7 +4,7 @@
 EntroMorphic Research
 
 *Draft: April 7, 2026.*
-*Data: commits `f510f9a` (14/14 PASS), `e0d8651` (TEST 14C transition). ESP32-C6FH4, ESP-IDF v5.4.*
+*Data: commits `f510f9a` (14/14 PASS), `e0d8651` (TEST 14C transition), `276af59` (multi-seed sweep). ESP32-C6FH4, ESP-IDF v5.4. Transition data from seed `0xCAFE1234`. Multi-seed validation (3 seeds) confirms MTFP encoding robustness; multi-seed 14C replication pending.*
 
 ---
 
@@ -212,9 +212,9 @@ Episodic memory modules in robotics (Stachenfeld et al., 2017; Blundell et al., 
 
 ## 7. Limitations
 
-1. **N=1 per condition.** The transition experiment ran once per condition. The ablation regression at step +20 is a single observation. Multi-run replication with different weight seeds is needed to establish robustness.
+1. **N=1 per condition, single seed.** The transition experiment ran once per condition with seed `0xCAFE1234`. The ablation regression at step +20 is a single observation. A separate multi-seed validation (3 seeds, Tests 12-14) confirms that MTFP P1-P2 separation is robust across seeds (Hamming 7-9/80, all above null). Multi-seed TEST 14C replication is needed to confirm that the stabilization finding (monotonic VDB, oscillating ablation) holds across projections.
 
-2. **Fixed weight seed.** All conditions share seed `0xCAFE1234`. The P1-P2 projection degeneracy is a property of this specific seed. Different seeds produce different degeneracy profiles.
+2. **Projection-dependent effects.** The multi-seed sweep (companion paper, Stratum 1) shows that the kinetic attention mechanism (gate bias) improves LP divergence in 2 of 3 seeds but regresses in 1. The transition experiment's full-system condition may interact differently with projections that don't benefit from gate bias. The ablation condition (no bias) is projection-independent and is the cleaner test of VDB contribution.
 
 3. **Two patterns only.** The transition experiment uses P1→P2. The system has four patterns. Multi-pattern transitions (P1→P3, P2→P0) may show different dynamics.
 
@@ -255,6 +255,14 @@ The hippocampus stabilizes. The neocortex projects. The classifier measures. The
 | Phase 2 | 200 steps measured, ~30s |
 | Firmware | `geometry_cfc_freerun.c:run_test_14c()` |
 | Sender | `espnow_sender.c` with `TRANSITION_MODE=1` |
+
+## Companion Papers
+
+This paper is part of a coordinated cluster:
+
+- **Stratum 1:** Engineering — ternary peripheral-fabric neural computation with kinetic attention, multi-seed validated. See `PAPER_KINETIC_ATTENTION.md`.
+- **Stratum 2 (this paper):** Architecture — fixed-weight CLS, hippocampal stabilization.
+- **Stratum 3:** Principle — prior-signal separation as structural hallucination resistance. See `PRIOR_SIGNAL_SEPARATION.md`.
 
 ---
 

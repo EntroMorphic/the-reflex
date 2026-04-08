@@ -4,7 +4,7 @@
 EntroMorphic Research
 
 *Draft: April 7, 2026. Updated with MTFP dot encoding and red-team remediation.*
-*Data: commits `12aa970` (TEST 12/13), `429ce38` (TEST 14), `98800a9` (MTFP encoding), `f510f9a` (red-team fixes). ESP32-C6FH4, ESP-IDF v5.4. 14/14 PASS.*
+*Data: commits `12aa970` (TEST 12/13), `429ce38` (TEST 14), `98800a9` (MTFP encoding), `f510f9a` (red-team fixes), `276af59` (multi-seed sweep). ESP32-C6FH4, ESP-IDF v5.4. 15/15 PASS (normal sender). Multi-seed validated (3 seeds).*
 
 ---
 
@@ -477,6 +477,14 @@ Not used: multiply, divide, floating point (HP core uses float only for gate bia
 ## Appendix C: Repository
 
 Source code, test firmware, hand-written RISC-V assembly, and all documentation are available at `github.com/EntroMorphic/the-reflex`.
+
+## Appendix D: Companion Papers
+
+This paper is part of a coordinated cluster describing the same hardware platform at three levels:
+
+- **Stratum 1 (this paper):** Engineering contribution — ternary peripheral-fabric neural computation with kinetic attention. Silicon-verified, multi-seed validated.
+- **Stratum 2:** Architecture contribution — fixed-weight Complementary Learning Systems, hippocampal stabilization during transitions. See `PAPER_CLS_ARCHITECTURE.md`.
+- **Stratum 3:** Principle contribution — prior-signal separation as a five-component structural requirement for hallucination resistance. See `PRIOR_SIGNAL_SEPARATION.md`.
 
 ---
 
