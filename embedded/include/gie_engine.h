@@ -85,6 +85,7 @@ extern volatile int32_t gate_steps_total;
 #define BASE_GATE_BIAS      15      /* max bias magnitude at full agreement */
 #define MIN_GATE_THRESHOLD  30      /* hard floor: 33% of gate_threshold=90 */
 extern volatile int8_t gie_gate_bias[TRIX_NUM_PATTERNS];
+extern volatile int8_t gie_gate_bias_pn[CFC_HIDDEN_DIM];  /* per-neuron bias */
 extern volatile int32_t gie_gate_fires_per_group[TRIX_NUM_PATTERNS];
 
 /* TriX ISR classification state */

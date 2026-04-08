@@ -3722,16 +3722,12 @@ static int run_test_14(void) {
                         for (int p = 0; p < TRIX_NUM_PATTERNS; p++)
                             bias_f[p] *= T14_BIAS_DECAY;
 
-                        /* Update for current prediction if enough
-                         * samples (cold-start guard).
-                         *
-                         * Compute BOTH sign-space and MTFP-space agreement
-                         * (red-team control: isolate encoding vs mechanism).
-                         * USE sign-space for actual bias (conservative — same
-                         * mechanism as pre-MTFP runs). Report MTFP agreement
-                         * for comparison but don't use it for bias. */
+                        /* Sign-space agreement → per-group bias.
+                         * Per-neuron projection-aware bias was tested and
+                         * performed worse (2/3 seeds regressed). The disc
+                         * metric lacked selectivity — all neurons scored
+                         * nonzero. Reverted to per-group. See LMM journal. */
                         if (t14_n[pred] >= T14_MIN_SAMPLES) {
-                            /* Sign-space agreement (used for bias) */
                             int dot_sign = 0;
                             for (int j = 0; j < LP_HIDDEN_DIM; j++) {
                                 int8_t m = tsign(t14_lp_sum[pred][j]);

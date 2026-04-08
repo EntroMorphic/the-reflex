@@ -129,6 +129,7 @@ volatile int32_t gate_steps_total = 0;  /* diagnostic: count total neurons check
 
 /* Phase 5: per-group gate bias + per-group fire counters */
 volatile int8_t gie_gate_bias[TRIX_NUM_PATTERNS] = {0};
+volatile int8_t gie_gate_bias_pn[CFC_HIDDEN_DIM] = {0};
 volatile int32_t gie_gate_fires_per_group[TRIX_NUM_PATTERNS] = {0};
 
 /* TriX ISR classification — computed at 430 Hz in hardware.
