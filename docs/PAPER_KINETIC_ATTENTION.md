@@ -381,7 +381,17 @@ The agreement mechanism gates the prior's influence by comparing it to the curre
 
 The bias duty cycle confirms this: under 14C, bias is active on 94-96% of confirmations. This means agreement is consistently high during stable-pattern periods — the LP prior reliably aligns with the TriX classification. The 4-6% of confirmations without bias are the transition moments where the prior and the classification disagree.
 
-### 5.5 Structural Guarantees
+### 5.5 Why Seed B Regresses
+
+The gate bias is per-pattern-group: 4 values, one for each TriX neuron group of 8 GIE neurons. Lowering the threshold for a group increases firing for all 8 neurons equally. Whether this increases LP pattern separation depends on whether the LP weight matrix `W_f` carries pattern-discriminative information in the columns corresponding to that group's GIE neurons.
+
+For seeds A and C, the LP projection happens to be discriminative in the directions amplified by the group bias — the LP weight columns for the biased GIE neurons connect to LP outputs that differ across patterns. The bias amplifies signal. For seed B, the LP columns for the biased group carry common-mode information rather than pattern-specific information. The bias amplifies noise.
+
+The predicted fix is per-neuron discriminability-weighted bias: 32 values instead of 4, where each GIE neuron's bias is weighted by how much its LP projection contributes to pattern separation. The discriminability of GIE neuron `n` can be computed from the fixed LP weight matrices and the accumulated MTFP means: count how many LP neurons are both influenced by `n` (`W_f[k][n] ≠ 0`) and pattern-discriminative (their MTFP representation differs across pattern pairs). Neurons whose LP columns connect to discriminative outputs receive full bias; neurons whose columns connect to non-discriminative outputs receive zero bias. This concentrates amplification on directions that help and zeroes it on directions that hurt.
+
+The ISR change is minimal — one array index substitution (`bias_pn[n]` instead of `bias[n/8]`). The HP computation is ~32 lookups after each classification event. Implementation is deferred to future work; the current per-group mechanism is reported as-is.
+
+### 5.6 Structural Guarantees
 
 Three properties hold by construction, not by empirical observation:
 
