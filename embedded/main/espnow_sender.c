@@ -179,13 +179,64 @@ void app_main(void) {
 
     uint32_t seq = 0;
     int pattern = 0;
-    int64_t pattern_duration_us = 5000000LL;  /* 5 seconds per pattern (equal airtime) */
     int64_t pattern_start_us = esp_timer_get_time();
 
-    /* Send loop: cycle through all 4 patterns with equal airtime.
-     * Each pattern gets exactly pattern_duration_us regardless of its
-     * per-cycle timing. This prevents P1 (burst+pause = 650ms/cycle)
-     * from dominating P3 (steady = 100ms/cycle) in sample counts. */
+    /* ── Mode selection ──
+     * TRANSITION_MODE: P1 for 90s → P2 for 30s → repeat.
+     *   Used by TEST 14C (CLS transition experiment).
+     * Normal mode: cycle P0→P1→P2→P3 at 5s each (equal airtime).
+     *   Used by Tests 9-14.
+     *
+     * Set TRANSITION_MODE=1 before building to enable transition mode.
+     * Default: normal cycling mode (TRANSITION_MODE undefined or 0). */
+#ifndef TRANSITION_MODE
+#define TRANSITION_MODE 0
+#endif
+
+#if TRANSITION_MODE
+    /* Transition mode: P1 (90s) → P2 (30s) → repeat */
+    int64_t phase1_us = 90000000LL;   /* 90s on P1 */
+    int64_t phase2_us = 30000000LL;   /* 30s on P2 */
+    int phase = 1;  /* start with P1 */
+    pattern = 1;
+
+    printf("[MODE] TRANSITION: P1 (90s) -> P2 (30s) -> repeat\n");
+    fflush(stdout);
+
+    while (1) {
+        switch (pattern) {
+            case 1: send_pattern_1(&seq); break;
+            case 2: send_pattern_2(&seq); break;
+            default: send_pattern_1(&seq); break;
+        }
+
+        int64_t elapsed = esp_timer_get_time() - pattern_start_us;
+        int64_t threshold = (phase == 1) ? phase1_us : phase2_us;
+
+        if (elapsed >= threshold) {
+            pattern_start_us = esp_timer_get_time();
+            int old_pattern = pattern;
+            if (phase == 1) {
+                phase = 2;
+                pattern = 2;
+            } else {
+                phase = 1;
+                pattern = 1;
+            }
+            printf("[SEND] P%d -> P%d (phase %d) | seq=%lu ok=%lu fail=%lu\n",
+                   old_pattern, pattern, phase,
+                   (unsigned long)seq, (unsigned long)send_ok,
+                   (unsigned long)send_fail);
+            fflush(stdout);
+        }
+    }
+#else
+    /* Normal mode: cycle P0→P1→P2→P3 at 5s each (equal airtime) */
+    int64_t pattern_duration_us = 5000000LL;
+
+    printf("[MODE] CYCLING: P0->P1->P2->P3 at 5s each\n");
+    fflush(stdout);
+
     while (1) {
         switch (pattern) {
             case 0: send_pattern_0(&seq); break;
@@ -205,4 +256,5 @@ void app_main(void) {
             fflush(stdout);
         }
     }
+#endif
 }

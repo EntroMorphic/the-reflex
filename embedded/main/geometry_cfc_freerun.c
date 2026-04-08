@@ -41,6 +41,7 @@ extern const uint8_t ulp_main_bin_end[]   asm("_binary_ulp_main_bin_end");
 #define NOVELTY_THRESHOLD  60
 #define T11_DRAIN_MS       10
 #define LP_MTFP_DIM        (LP_HIDDEN_DIM * 5)  /* 80: 16 neurons × 5 trits */
+#define BIAS_SCALE         10  /* 10× resolution for integer bias decay */
 
 /* ── File-scope shared state ── */
 static int8_t sig[NUM_TEMPLATES][CFC_INPUT_DIM];
@@ -208,7 +209,11 @@ void app_main(void) {
         }
     }
     printf("[INIT] LP core weights (after binary load)...\n");
-    init_lp_core_weights(0xCAFE1234);
+#ifndef LP_SEED
+#define LP_SEED 0xCAFE1234
+#endif
+    init_lp_core_weights(LP_SEED);
+    printf("[INIT] LP seed: 0x%08lX\n", (unsigned long)LP_SEED);
     start_lp_core();
     printf("[INIT] ESP-NOW receiver...\n");
     {
@@ -227,6 +232,13 @@ void app_main(void) {
     /* ── Run all tests ── */
     int test_count = 0, pass_count = 0;
 
+#ifdef SKIP_TO_14C
+    /* Multi-seed 14C sweep: skip Tests 1-10,12-14. Only run Test 11
+     * (signature enrollment — required for classification) and Test 14C. */
+    printf("[SWEEP] SKIP_TO_14C: running Test 11 (enrollment) + Test 14C only\n\n");
+    test_count++; pass_count += run_test_11();
+    test_count++; pass_count += run_test_14c();
+#else
     test_count++; pass_count += run_test_1();
     test_count++; pass_count += run_test_2();
     test_count++; pass_count += run_test_3();
@@ -242,6 +254,7 @@ void app_main(void) {
     test_count++; pass_count += run_test_13();
     test_count++; pass_count += run_test_14();
     test_count++; pass_count += run_test_14c();
+#endif
 
     /* ── Summary ── */
     printf("============================================================\n");
@@ -2978,7 +2991,7 @@ static int run_test_12(void) {
                 if (core_best < NOVELTY_THRESHOLD) continue;
 
                 /* Confirmed classification */
-                int pred = core_pred;
+                int pred = (int)trix_pred;  /* TriX ISR: 100%, W_f hidden = 0 */
                 t12_confirmed[pred]++;
                 t12_confirmations++;
 
@@ -3317,7 +3330,7 @@ static int run_test_13(void) {
                 }
                 if (core_best < NOVELTY_THRESHOLD) continue;
 
-                int pred = core_pred;
+                int pred = (int)trix_pred;  /* TriX ISR: 100%, W_f hidden = 0 */
                 t13_confirmed[pred]++;
 
                 /* CMD 4: CfC step + VDB search.
@@ -3493,7 +3506,7 @@ static int run_test_14(void) {
         #define T14_INSERT_EVERY   8
         #define T14_FB_THRESHOLD   8
         #define T14_MIN_SAMPLES    15
-        #define T14_BIAS_DECAY     0.9f
+        /* Bias decay: integer 9/10 per step (see BIAS_SCALE) */
         #define T14_N_COND         3
         #define T14_COND_14A       0
         #define T14_COND_14C       1
@@ -3566,8 +3579,8 @@ static int run_test_14(void) {
             memset(t14_lp_sum_mtfp, 0, sizeof(t14_lp_sum_mtfp));
             memset(t14_lp_sum_snap60_mtfp, 0, sizeof(t14_lp_sum_snap60_mtfp));
 
-            /* Gate bias float state (for decay) */
-            float bias_f[TRIX_NUM_PATTERNS] = {0};
+            /* Gate bias integer state (BIAS_SCALE× resolution for decay) */
+            int16_t bias_i[TRIX_NUM_PATTERNS] = {0};
             int max_bias_seen = 0;
             int total_confirms = 0;
             int correct_count = 0;
@@ -3617,7 +3630,7 @@ static int run_test_14(void) {
                     }
                     if (core_best < NOVELTY_THRESHOLD) continue;
 
-                    int pred = core_pred;
+                    int pred = (int)trix_pred;  /* TriX ISR: 100%, W_f hidden = 0 */
                     total_confirms++;
 
                     /* Classification accuracy vs ground truth */
@@ -3718,38 +3731,44 @@ static int run_test_14(void) {
                     /* 14A: use_bias stays 0 */
 
                     if (use_bias) {
-                        /* Decay all groups */
+                        /* Ternary agreement: count agree/disagree/gap per trit.
+                         * If disagree >= 4 (25%): prior is wrong, zero immediately.
+                         * Otherwise: bias = BASE * margin / 16, integer arithmetic.
+                         * All biases decay at 9/10 per step (integer). */
                         for (int p = 0; p < TRIX_NUM_PATTERNS; p++)
-                            bias_f[p] *= T14_BIAS_DECAY;
+                            bias_i[p] = (int16_t)(bias_i[p] * 9 / 10);
 
-                        /* Sign-space agreement → per-group bias.
-                         * Per-neuron projection-aware bias was tested and
-                         * performed worse (2/3 seeds regressed). The disc
-                         * metric lacked selectivity — all neurons scored
-                         * nonzero. Reverted to per-group. See LMM journal. */
                         if (t14_n[pred] >= T14_MIN_SAMPLES) {
-                            int dot_sign = 0;
+                            int n_agree = 0, n_disagree = 0;
                             for (int j = 0; j < LP_HIDDEN_DIM; j++) {
                                 int8_t m = tsign(t14_lp_sum[pred][j]);
-                                dot_sign += tmul(lp_now[j], m);
+                                int8_t t = tmul(lp_now[j], m);
+                                if (t > 0) n_agree++;
+                                else if (t < 0) n_disagree++;
                             }
-                            float ag = (float)dot_sign / LP_HIDDEN_DIM;
-                            float b = BASE_GATE_BIAS *
-                                      (ag > 0.0f ? ag : 0.0f);
-                            if (b > bias_f[pred]) bias_f[pred] = b;
+                            if (n_disagree >= 4) {
+                                bias_i[pred] = 0;
+                            } else {
+                                int margin = n_agree - n_disagree;
+                                int b = (margin > 0)
+                                    ? (BASE_GATE_BIAS * BIAS_SCALE * margin
+                                       + LP_HIDDEN_DIM / 2) / LP_HIDDEN_DIM
+                                    : 0;
+                                if (b > bias_i[pred]) bias_i[pred] = (int16_t)b;
+                            }
                         }
 
                         /* Write to engine */
                         for (int p = 0; p < TRIX_NUM_PATTERNS; p++) {
-                            gie_gate_bias[p] = (int8_t)bias_f[p];
-                            if ((int)bias_f[p] > max_bias_seen)
-                                max_bias_seen = (int)bias_f[p];
+                            gie_gate_bias[p] = (int8_t)(bias_i[p] / BIAS_SCALE);
+                            if (bias_i[p] / BIAS_SCALE > max_bias_seen)
+                                max_bias_seen = bias_i[p] / BIAS_SCALE;
                         }
                     } else {
                         /* Ensure bias is zero for this condition/phase */
                         memset((void *)gie_gate_bias, 0,
                                sizeof(gie_gate_bias));
-                        memset(bias_f, 0, sizeof(bias_f));
+                        memset(bias_i, 0, sizeof(bias_i));
                     }
 
                     /* Track bias duty cycle: count loops where any
@@ -4126,7 +4145,7 @@ static int run_test_14c(void) {
     #define T14C_INSERT_EVERY   8
     #define T14C_FB_THRESHOLD   8
     #define T14C_MIN_SAMPLES    15          /* cold-start guard for bias */
-    #define T14C_BIAS_DECAY     0.9f
+    /* Bias decay: integer 9/10 per step (see BIAS_SCALE) */
     #define T14C_N_COND         3
     #define T14C_COND_FULL      0           /* CMD 5 + bias */
     #define T14C_COND_NOBIAS    1           /* CMD 5, no bias */
@@ -4179,10 +4198,12 @@ static int run_test_14c(void) {
 
         /* Sign-space accumulators (for bias computation) */
         static int16_t p1_sum_sign[LP_HIDDEN_DIM];
-        int p1_n_sign = 0;
+        static int16_t p2_sum_sign[LP_HIDDEN_DIM];
+        int p1_n_sign = 0, p2_n_sign = 0;
         memset(p1_sum_sign, 0, sizeof(p1_sum_sign));
+        memset(p2_sum_sign, 0, sizeof(p2_sum_sign));
 
-        float bias_f[TRIX_NUM_PATTERNS] = {0};
+        int16_t bias_i[TRIX_NUM_PATTERNS] = {0};
         int trix_correct_15 = 0, trix_total_15 = 0;
         int phase2_step = 0;
         int saw_p2 = 0;   /* detected switch to P2 */
@@ -4290,7 +4311,7 @@ static int run_test_14c(void) {
                 }
                 if (core_best < NOVELTY_THRESHOLD) continue;
 
-                int pred = core_pred;
+                int pred = (int)trix_pred;  /* TriX ISR: 100%, W_f hidden = 0 */
                 total_confirms++;
 
                 /* Feed LP + run appropriate command */
@@ -4322,27 +4343,50 @@ static int run_test_14c(void) {
                 } else if (gt == 2) {
                     for (int j = 0; j < LP_MTFP_DIM; j++)
                         p2_sum_mtfp[j] += lp_mtfp[j];
+                    for (int j = 0; j < LP_HIDDEN_DIM; j++)
+                        p2_sum_sign[j] += lp_now[j];
                     p2_n++;
+                    p2_n_sign++;
                 }
 
-                /* Gate bias (conditions a only) */
+                /* Gate bias (conditions a only).
+                 * Ternary agreement: count agree/disagree/gap per trit.
+                 * If disagree >= 4: prior is wrong, zero bias immediately.
+                 * Otherwise: bias = BASE * margin / 16. */
                 int use_bias = (cond == T14C_COND_FULL);
                 if (use_bias) {
                     for (int p = 0; p < TRIX_NUM_PATTERNS; p++)
-                        bias_f[p] *= T14C_BIAS_DECAY;
-                    if (p1_n_sign >= T14C_MIN_SAMPLES && pred >= 0 && pred < 4) {
-                        int dot_sign = 0;
+                        bias_i[p] = (int16_t)(bias_i[p] * 9 / 10);
+
+                    /* Select accumulator for predicted pattern */
+                    int16_t *acc = NULL;
+                    if (pred == 1 && p1_n_sign >= T14C_MIN_SAMPLES) {
+                        acc = p1_sum_sign;
+                    } else if (pred == 2 && p2_n_sign >= T14C_MIN_SAMPLES) {
+                        acc = p2_sum_sign;
+                    }
+
+                    if (acc && pred >= 0 && pred < 4) {
+                        int n_agree = 0, n_disagree = 0;
                         for (int j = 0; j < LP_HIDDEN_DIM; j++) {
-                            int16_t *src = (pred == 1) ? p1_sum_sign : p1_sum_sign;
-                            int8_t m = tsign(src[j]);
-                            dot_sign += tmul(lp_now[j], m);
+                            int8_t m = tsign(acc[j]);
+                            int8_t t = tmul(lp_now[j], m);
+                            if (t > 0) n_agree++;
+                            else if (t < 0) n_disagree++;
                         }
-                        float ag = (float)dot_sign / LP_HIDDEN_DIM;
-                        float b = BASE_GATE_BIAS * (ag > 0.0f ? ag : 0.0f);
-                        if (b > bias_f[pred]) bias_f[pred] = b;
+                        if (n_disagree >= 4) {
+                            bias_i[pred] = 0;
+                        } else {
+                            int margin = n_agree - n_disagree;
+                            int b = (margin > 0)
+                                ? (BASE_GATE_BIAS * BIAS_SCALE * margin
+                                   + LP_HIDDEN_DIM / 2) / LP_HIDDEN_DIM
+                                : 0;
+                            if (b > bias_i[pred]) bias_i[pred] = (int16_t)b;
+                        }
                     }
                     for (int p = 0; p < TRIX_NUM_PATTERNS; p++)
-                        gie_gate_bias[p] = (int8_t)bias_f[p];
+                        gie_gate_bias[p] = (int8_t)(bias_i[p] / BIAS_SCALE);
                 } else {
                     memset((void *)gie_gate_bias, 0, sizeof(gie_gate_bias));
                 }
@@ -4411,9 +4455,11 @@ static int run_test_14c(void) {
             /* Exit conditions */
             if (saw_p2 && phase2_step >= T14C_PHASE2_STEPS) break;
 
-            /* Timeout: if not synced within 120s, sender is in normal cycling
-             * mode (P1 only gets 5s per cycle). Skip gracefully. */
-            int64_t sync_timeout = need_full_sync ? 120000000LL : 180000000LL;
+            /* Timeout: must be long enough to survive seeing a P2 phase (30s)
+             * and then accumulate 60s of continuous P1 (90s phase).
+             * Worst case: start during P2 → 30s wait + 90s P1 phase.
+             * With margin: 200s for full sync, 180s for conditions 1+. */
+            int64_t sync_timeout = need_full_sync ? 200000000LL : 180000000LL;
             if (!synced && (esp_timer_get_time() - start_us) > sync_timeout) {
                 printf("  SKIP: no ≥60s P1 dwell in 120s. Sender not in TRANSITION_MODE.\n");
                 stop_freerun();
@@ -4421,9 +4467,12 @@ static int run_test_14c(void) {
                 goto t14c_skip;
             }
 
-            /* If synced but no P2 within 150s total, timeout */
-            if (synced && !saw_p2 && (esp_timer_get_time() - start_us) > 150000000LL) {
-                printf("  TIMEOUT: synced but no P2 switch in 150s.\n");
+            /* If synced but no P2 within 200s total, timeout.
+             * Sender cycle: 90s P1 + 30s P2 = 120s. Worst case: sync
+             * completes at t=90s (end of P1), wait 30s P2 (missed),
+             * then 90s P1, then P2 at t=210s. 200s should catch it. */
+            if (synced && !saw_p2 && (esp_timer_get_time() - start_us) > 200000000LL) {
+                printf("  TIMEOUT: synced but no P2 switch in 200s.\n");
                 break;
             }
         }

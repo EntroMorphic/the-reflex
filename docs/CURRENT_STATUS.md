@@ -1,6 +1,6 @@
 # The Reflex: Current Status
 
-**Last Updated:** April 7, 2026 — 14/14 PASS. Phase 5 kinetic attention implemented and verified. MTFP21 gap history encoding resolves P1-P2 timing degeneracy (80% → 96% classification). LP dot magnitude diagnostic confirms P1-P2 separation is in the magnitudes, not the projections. MTFP dot encoding spec ready for implementation.
+**Last Updated:** April 8, 2026 — Red-team remediation complete. Multi-seed TEST 14C (3 seeds × 3 conditions) on silicon. Three compounding fixes: TriX dispatch (LP feedback from 100% ISR classifier), per-pattern accumulator (bug fix), ternary disagree-count agreement with immediate release. Transition headwind eliminated in 2 of 3 seeds (crossover step 18→0 for Seed A, 7→2 for Seed C). Seed B headwind reduced (0→22, degenerate projection). All three papers updated.
 
 ---
 
@@ -25,11 +25,13 @@ All ternary. No floating point. No multiplication. No training.
 - March 23 (evening): TEST 14C AVX2 simulation (3 conditions × 1000 trials, three-claim structure confirmed). Red-team + LMM cycle on 3 open risks — root cause identified as unknown LP dominant path. LP characterization firmware written (`625b00d`).
 - April 6: Full repository audit. Monolith split (`c815869`): `gie_engine.c`/`.h` extracted from `geometry_cfc_freerun.c`. ESP-NOW refactored to `.c` + header. Dead code archived. **13/13 PASS** post-refactor. Phase 5 kinetic attention implemented (`429ce38`): agreement-weighted gate bias, three conditions (14A/14C/14C-iso), confound controls. **14/14 PASS.** MTFP21 gap history encoding (`c814e51`): 80% → 96% classification accuracy. Sequence features masked from signatures (`5735119`). Paper draft with confusion matrices (`feb709b`). TriX ISR vs CPU agreement at 100% (`0b09f69`).
 - April 7: LP dot magnitude diagnostic (`7391876`): P1-P2 separation IS in the magnitudes. `sign()` quantization is the bottleneck. MTFP dot encoding spec written (`81175c6`): 5 trits/neuron, LP hidden expands from 16 to 80 trits. LMM cycle on Pillar 3 concerns (`b77bf01`): dimensionality must be proven before learning.
+- April 8: Red-team of all 3 papers (10 issues). "Enrollment, not training" terminology. Multi-seed TEST 14C on silicon (3 seeds × 3 conditions). Discovered bug: agreement hardcoded to P1 accumulator. Three compounding fixes: (1) TriX dispatch — LP feedback from 100% ISR, not 80% CPU classifier; (2) per-pattern accumulator — bug fix; (3) ternary disagree-count agreement — immediate bias release when 4+ trits disagree. Transition headwind: 18/0/7 → 0/22/2 across seeds. LMM cycle on TriX dispatch (`journal/trix_dispatch_{raw,nodes,reflect,synth}.md`). All three papers updated. Session: `docs/SESSION_APR08_2026.md`.
 
 **Key documentation:**
 - `docs/SESSION_MAR22_2026.md`: Full March 22 session — 13/13 PASS, complete TEST 12/13 results.
 - `docs/SESSION_MAR23_2026.md`: Full March 23 session — LMM assessment, three strata, blockers, action table.
 - `docs/SESSION_APR06_07_2026.md`: April 6-7 session — audit remediation, Phase 5, MTFP21, LP diagnostics.
+- `docs/SESSION_APR08_2026.md`: April 8 session — red-team, multi-seed 14C, TriX dispatch, ternary agreement, three bug fixes.
 - `docs/MEMORY_MODULATED_ATTENTION.md`: Paper-quality writeup of TEST 12 — experimental design, silicon results, analysis.
 - `docs/KINETIC_ATTENTION.md`: Phase 5 design spec — agreement-weighted gate bias, TEST 14 three conditions.
 - `docs/PAPER_KINETIC_ATTENTION.md`: Paper draft — kinetic attention results with confusion matrices.

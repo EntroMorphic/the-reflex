@@ -67,7 +67,7 @@ A wireless signal classifier running on ESP32-C6 peripheral hardware at 430.8 Hz
 - VDB episodic memory causally necessary (CMD 4 ablation: P1=P2 without blend, P1≠P2 with blend)
 - Agreement-weighted gate bias (Phase 5 kinetic attention) verified under three confound-controlled conditions
 - MTFP dot encoding resolving the P1-P2 sign-space degeneracy (Hamming 0/16 → 5-10/80, null distance ~1)
-- All ternary. No floating point. No multiplication. No training.
+- All ternary. No floating point. No multiplication. No backpropagation. Signatures enrolled, not trained.
 
 ### Silicon Data (Complete)
 
@@ -82,7 +82,7 @@ A wireless signal classifier running on ESP32-C6 peripheral hardware at 430.8 Hz
 | MTFP21 gap encoding | Classification 80% → 96% | `c814e51` |
 | MTFP dot encoding | P1-P2: sign=0/16, mtfp=5-10/80, null≈1 | `98800a9` |
 | Red-team remediation | Null test, entrainment fix, P3 airtime, controls | `f510f9a` |
-| Classification accuracy | 96% (TriX signatures, zero training) | `5735119` |
+| Classification accuracy | 96% (TriX signatures, enrolled not trained) | `5735119` |
 | TriX ISR agreement | 100% ISR-CPU agreement | `0b09f69` |
 
 ### What's Missing

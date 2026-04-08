@@ -19,6 +19,14 @@ if(REFLEX_TARGET STREQUAL "sender")
     endif()
 else()
     set(app_sources "gie_engine.c" "geometry_cfc_freerun.c" "reflex_vdb.c" "reflex_espnow.c")
+    # Pass LP_SEED to C preprocessor if set via -DLP_SEED=0xDEAD5678
+    if(DEFINED LP_SEED)
+        add_compile_definitions(LP_SEED=${LP_SEED})
+    endif()
+    # Skip Tests 1-13, run only Test 11 (enrollment) + Test 14C
+    if(DEFINED SKIP_TO_14C AND SKIP_TO_14C)
+        add_compile_definitions(SKIP_TO_14C=1)
+    endif()
 endif()
 
 idf_component_register(

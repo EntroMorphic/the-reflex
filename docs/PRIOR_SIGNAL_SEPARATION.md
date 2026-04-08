@@ -336,16 +336,16 @@ The answer is almost certainly yes. The question is how to build it.
 
 ---
 
-**Date**: March 22–23, 2026. Updated April 7, 2026.
-**Hardware basis**: ESP32-C6, 15/15 PASS (commit `d05c8d8`), ablation-controlled, red-team remediated, multi-seed validated (3 seeds)
+**Date**: March 22–23, 2026. Updated April 8, 2026.
+**Hardware basis**: ESP32-C6, ablation-controlled, red-team remediated, multi-seed validated (3 seeds). Multi-seed TEST 14C transition data (3 seeds × 3 conditions).
 **Key commits**: `12aa970` (TEST 12/13), `429ce38` (Phase 5), `98800a9` (MTFP encoding), `f510f9a` (red-team), `276af59` (seed sweep), `e0d8651` (TEST 14C transition)
 
 **Silicon verification of the five components:**
 1. Prior-holder: LP CfC hidden state. Pattern-specific after 90s. VDB causally necessary (TEST 13 ablation).
-2. Evidence-reader: GIE peripheral hardware. 430 Hz, 100% TriX accuracy, zero prior influence on classification.
+2. Evidence-reader: GIE peripheral hardware. 430 Hz, 100% TriX accuracy, zero prior influence on classification. LP feedback dispatched from TriX ISR (100%, structural guarantee extends to accumulation pathway).
 3. Structural separation: `W_f hidden = 0`. Verified: TriX ISR and CPU classification agree at 100% (`0b09f69`).
-4. Disagreement detection: Agreement score drives gate bias. MTFP-space (80 trits) provides 5× measurement resolution.
-5. Evidence-deference policy: gate_bias ≤ 15, hard floor 30. Red-teamed: MTFP agreement caused entrainment (runaway feedback); reverted to sign-space agreement for stability. The deference mechanism works because the agreement signal is conservative.
+4. Disagreement detection: Ternary disagree-count per trit. When 4+ of 16 trits disagree, prior and evidence are in conflict. The disagreement is computed in trit-space, not collapsed to a scalar — preserving the ternary structure that distinguishes "strong prior with gaps" from "conflicted prior."
+5. Evidence-deference policy: When disagreement detected, gate_bias zeros immediately (not gradual decay). Multi-seed TEST 14C verified: bias releases within 0-2 steps of pattern switch in 2 of 3 seeds. The deference is structural — the disagree count cannot be elevated by prior influence because the TriX classification that feeds the accumulator is structurally immune to the prior (W_f hidden = 0).
 
 **Companion papers:**
 - Stratum 1 (Engineering): `PAPER_KINETIC_ATTENTION.md` — ternary peripheral-fabric neural computation with kinetic attention, multi-seed validated

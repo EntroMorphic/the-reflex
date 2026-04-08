@@ -379,26 +379,15 @@ static void IRAM_ATTR isr_loop_boundary(void) {
      * The main loop sets gie_input_pending=1 (instead of calling
      * update_gie_input), then waits for gie_input_pending==0 + 1 more loop. */
     if (trix_enabled) {
-        /* Validate dots and detect GDMA chain offset.
+        /* ── TriX classification: clean-loop path preferred, sum fallback ──
          *
-         * Each pattern group (8 neurons) should have identical dots.
-         * The GDMA circular chain offset shifts which neurons appear
-         * at which capture indices. Since base detection only searches
-         * the first NUM_DUMMIES+2 captures, the post-dummy neurons
-         * may start at an offset: dots[0] might be neuron K, not 0.
+         * Clean path: all 8 neurons in each group have identical dots.
+         * This gives exact per-group values. Used for trix_pred and
+         * trix_channel when available.
          *
-         * Strategy: check all 4 groups of 8 for uniformity. If all 4
-         * are uniform, the dots are clean (no stale/mixed data). Then
-         * dots[0..7] all have value V0, dots[8..15] have V1, etc.
-         * These V0-V3 correspond to patterns at offset positions.
-         * We don't need to know the offset — we just classify by
-         * taking the argmax of {V0, V1, V2, V3}. The winner is the
-         * pattern with the highest dot, regardless of position.
-         *
-         * This works because TriX classification is argmax: which
-         * pattern has the highest dot product with the input? The
-         * GDMA offset permutes the order of the 4 values, but the
-         * maximum is the same regardless of permutation. */
+         * Sum fallback: if clean check fails (stale/mixed loop), compute
+         * per-group sums and take argmax. Less precise but always available.
+         * Only updates trix_pred, not trix_channel. */
         int clean = 1;
         int group_val[TRIX_NUM_PATTERNS];
         for (int p = 0; p < TRIX_NUM_PATTERNS && clean; p++) {
@@ -412,32 +401,49 @@ static void IRAM_ATTR isr_loop_boundary(void) {
             }
         }
         if (clean) {
-            /* All 4 groups are uniform. Publish the group dot values.
-             * group_val[g] is the dot for whichever pattern landed
-             * in group position g. Due to the GDMA circular chain
-             * offset, group g may not correspond to pattern g.
-             *
-             * Pack all 4 group dots into the channel value as bytes:
-             *   value = (d0 & 0xFF) | (d1 << 8) | (d2 << 16) | (d3 << 24)
-             * Consumer unpacks and matches against CPU-computed dots
-             * from sig[] to resolve the GDMA offset.
-             *
-             * Also publish to volatile globals for backward compat. */
+            /* Exact: uniform neurons → group_val is the dot product.
+             * Update trix_pred from argmax of exact values. */
+            int best_g = 0, best_v = group_val[0];
+            for (int g = 1; g < TRIX_NUM_PATTERNS; g++) {
+                if (group_val[g] > best_v) { best_v = group_val[g]; best_g = g; }
+            }
+            trix_pred = best_g;
+            trix_confidence = best_v;
+            trix_timestamp_us = esp_timer_get_time();
+            trix_count++;
+
+            /* Publish to channel for detailed resolution (Test 11) */
             uint32_t packed = 0;
             for (int g = 0; g < TRIX_NUM_PATTERNS; g++) {
                 trix_scores[g] = group_val[g];
-                /* Clamp to int8 range for channel packing */
                 int v = group_val[g];
                 if (v > 127) v = 127;
                 if (v < -128) v = -128;
                 packed |= ((uint32_t)(v & 0xFF)) << (g * 8);
             }
-            trix_pred = -2;  /* valid but needs main-loop resolution */
-            trix_confidence = 0;
-            trix_timestamp_us = esp_timer_get_time();
-            trix_count++;
             trix_valid_lc = loop_count + 1;
             reflex_signal(&trix_channel, packed);
+        } else if (trix_pred < 0) {
+            /* Fallback: clean check failed but trix_pred has never been set.
+             * Use group sums for an approximate classification so that
+             * trix_pred is not stuck at -1. Once a clean loop sets it,
+             * clean loops will keep it updated at 430 Hz. */
+            int group_sum[TRIX_NUM_PATTERNS];
+            for (int p = 0; p < TRIX_NUM_PATTERNS; p++) {
+                int p_base = p * TRIX_NEURONS_PP;
+                int s = 0;
+                for (int k = 0; k < TRIX_NEURONS_PP; k++)
+                    s += dots[p_base + k];
+                group_sum[p] = s;
+            }
+            int best_g = 0, best_v = group_sum[0];
+            for (int g = 1; g < TRIX_NUM_PATTERNS; g++) {
+                if (group_sum[g] > best_v) { best_v = group_sum[g]; best_g = g; }
+            }
+            trix_pred = best_g;
+            trix_confidence = best_v;
+            trix_timestamp_us = esp_timer_get_time();
+            trix_count++;
         }
     }
 
@@ -1301,30 +1307,14 @@ int espnow_encode_input(const espnow_state_t *st) {
 
     encode_gap_history((int)gap_ms, new_input);
 
-    /* ── [104..119] Sequence features ──
-     * Lower 4 bits of sequence → 8 trits (one-hot pairs).
-     * Upper bits (seq / 16) mod 8 → 8 trits (one-hot pairs). */
-    uint32_t seq_lo = st->sequence & 0x0F;  /* 0..15 */
-    for (int i = 0; i < 8; i++) {
-        /* Pair encoding: each pair represents one of 4 values */
-        int idx = 104 + i;
-        if (i < 4) {
-            /* Lower nibble: thermometer over 4 bits */
-            new_input[idx] = (seq_lo > (uint32_t)(i * 4)) ? T_POS : T_NEG;
-        } else {
-            /* Upper nibble / phase encoding */
-            uint32_t seq_hi = (st->sequence >> 4) & 0x0F;
-            new_input[idx] = (seq_hi > (uint32_t)((i - 4) * 4)) ? T_POS : T_NEG;
-        }
-    }
-    /* Remaining 8 trits: sequence modular pattern */
-    for (int i = 0; i < 8; i++) {
-        uint32_t bit = (st->sequence >> i) & 1;
-        new_input[112 + i] = bit ? T_POS : T_NEG;
-    }
-
-    /* ── [120..127] Reserved ── */
-    /* Already zeroed by memset */
+    /* ── [104..127] Zeroed — sequence + reserved ──
+     * Sequence counter is monotonic and not pattern-specific.
+     * Previously encoded as binary thermometer + bit extraction.
+     * Already masked in classification signatures (commit 5735119).
+     * Now silenced at the source: zero trits contribute nothing to
+     * the GIE dot product (tmul(0, x) = 0), eliminating ~661K
+     * unnecessary AND+popcount operations per second. */
+    /* (Already zeroed by memset at top of function) */
 
     /* Check if input actually changed */
     if (memcmp(new_input, cfc.input, CFC_INPUT_DIM) == 0) return 0;
