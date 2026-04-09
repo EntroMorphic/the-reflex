@@ -23,10 +23,7 @@
 
 #include "test_harness.h"
 
-
-/* ── LP Core binary (embedded by build system) ── */
-extern const uint8_t ulp_main_bin_start[] asm("_binary_ulp_main_bin_start");
-extern const uint8_t ulp_main_bin_end[]   asm("_binary_ulp_main_bin_end");
+/* ulp_main_bin_start/end declared in gie_engine.h (included via test_harness.h). */
 
 
 /* ══════════════════════════════════════════════════════════════════

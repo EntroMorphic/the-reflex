@@ -125,6 +125,12 @@ extern volatile int32_t diag_disagree[DIAG_LEN];
 extern int8_t lp_W_f[LP_HIDDEN_DIM][LP_CONCAT_DIM];
 extern int8_t lp_W_g[LP_HIDDEN_DIM][LP_CONCAT_DIM];
 
+/* LP core binary blob (linked in by the ULP build system).
+ * Used by gie_engine.c (weight init) and geometry_cfc_freerun.c
+ * (ulp_lp_core_load_binary in app_main). */
+extern const uint8_t ulp_main_bin_start[] asm("_binary_ulp_main_bin_start");
+extern const uint8_t ulp_main_bin_end[]   asm("_binary_ulp_main_bin_end");
+
 /* ESP-NOW timing state (reset by test harness between tests) */
 extern int64_t espnow_last_rx_us;
 

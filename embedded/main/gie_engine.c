@@ -173,11 +173,7 @@ static intr_handle_t gdma_isr_handle = NULL;
 cfc_state_t cfc;
 int8_t all_products[NUM_NEURONS][CFC_MAX_DIM];
 
-/* ── LP Core binary (embedded by build system) ── */
-extern const uint8_t ulp_main_bin_start[] asm("_binary_ulp_main_bin_start");
-extern const uint8_t ulp_main_bin_end[]   asm("_binary_ulp_main_bin_end");
-
-/* ulp_addr() is defined in gie_engine.h as static inline */
+/* ulp_addr() is defined in gie_engine.h as static inline. */
 
 /* LP Core dimensions defined in gie_engine.h */
 
