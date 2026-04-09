@@ -35,6 +35,12 @@ extern "C" {
 #define NUM_NEURONS     64   /* 32 f + 32 g pathways */
 #define NEURON_BUF_SIZE 80   /* 160 trits = 80 bytes */
 
+/* DMA chain layout — shared between engine and test harness.
+ * NUM_DUMMIES + NUM_NEURONS separator captures form one loop. */
+#define SEP_SIZE           64
+#define NUM_DUMMIES        5
+#define CAPTURES_PER_LOOP  (NUM_DUMMIES + NUM_NEURONS)
+
 #define TRIX_NUM_PATTERNS  4
 #define TRIX_NEURONS_PP    (CFC_HIDDEN_DIM / TRIX_NUM_PATTERNS)  /* 8 */
 

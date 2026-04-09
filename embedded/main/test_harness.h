@@ -32,9 +32,7 @@ extern "C" {
  *  CONSTANTS (used across Tests 11-14C)
  * ══════════════════════════════════════════════════════════════════ */
 
-#define NUM_DUMMIES         5
-#define SEP_SIZE            64
-#define CAPTURES_PER_LOOP   (NUM_DUMMIES + NUM_NEURONS)
+/* SEP_SIZE, NUM_DUMMIES, CAPTURES_PER_LOOP are in gie_engine.h */
 #define NUM_TEMPLATES       4
 
 #define NOVELTY_THRESHOLD   60

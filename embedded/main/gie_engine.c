@@ -93,16 +93,13 @@
 #define GPIO_Y_POS   6
 #define GPIO_Y_NEG   7
 
-/* ── Constants (engine-internal; shared constants are in gie_engine.h) ── */
-#define SEP_SIZE        64   /* separator: all zeros, no PCNT edges */
-#define NUM_DUMMIES     5    /* Extra dummies absorb PCNT residue from PARLIO re-arm */
+/* ── Engine-internal constants ──
+ * SEP_SIZE, NUM_DUMMIES, CAPTURES_PER_LOOP are in gie_engine.h
+ * (shared with the test harness). */
 #define TOTAL_DESCS     (NUM_DUMMIES * 2 + NUM_NEURONS * 2)
 
 /* Total bytes per loop — must match PARLIO tx_bytelen */
 #define CHAIN_BYTES     ((NUM_DUMMIES + NUM_NEURONS) * (NEURON_BUF_SIZE + SEP_SIZE))
-
-/* Expected captures per loop: NUM_DUMMIES + NUM_NEURONS separators */
-#define CAPTURES_PER_LOOP  (NUM_DUMMIES + NUM_NEURONS)
 
 /* ── Static allocations (BSS) ── */
 static uint8_t __attribute__((aligned(4))) neuron_bufs[NUM_NEURONS][NEURON_BUF_SIZE];
