@@ -45,6 +45,13 @@ sim/test14c
 # Claude Code artifacts
 archived/
 
+# Working drafts and per-session remediation plans (not project record)
+docs/SUBSTACK_DRAFT_*.md
+docs/REMEDIATION_PLAN_*.md
+
+# LMM cycle working files for in-progress enrollment work
+journal/lp_enrollment_*.md
+
 # Separate git repos (local-only)
 pulse-arithmetic-lab/
 delta-observer/

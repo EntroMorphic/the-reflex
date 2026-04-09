@@ -8,20 +8,24 @@ Board: ESP32-C6FH4 (QFN32) revision v0.2, built-in USB Serial/JTAG (VID 0x303a, 
 source ~/esp/v5.4/export.sh
 ```
 
-## Selecting the Active Firmware
+## Build Targets
 
-Edit `reflex-os/main/CMakeLists.txt` — the `SRCS` line controls which `.c` file compiles:
+`embedded/main/CMakeLists.txt` defines two targets via `REFLEX_TARGET`:
 
-```cmake
-idf_component_register(SRCS "raid_etm_fabric.c"   # <-- change this
-                       INCLUDE_DIRS "../include")
-```
+- `gie` (default): GIE + LP core + VDB + test suite (Board A / receiver)
+- `sender`: ESP-NOW pattern sender (Board B)
+
+Additional cmake defines:
+- `-DLP_SEED=0x...` — override the LP init seed
+- `-DSKIP_TO_14C=1` — skip Tests 1–13, run Test 11 enrollment + Test 14C
+- `-DTRANSITION_MODE=1` — (sender only) P1 (90s) → P2 (30s) transition pattern
 
 ## Build
 
 ```bash
-cd reflex-os
-idf.py build
+cd embedded
+idf.py -DREFLEX_TARGET=gie build          # Board A
+idf.py -DREFLEX_TARGET=sender build       # Board B
 ```
 
 Output binaries land in `build/`:
