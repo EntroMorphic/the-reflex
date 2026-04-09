@@ -1,6 +1,9 @@
 /*
  * gie_engine.c — Geometry Intersection Engine Core
  *
+ * INVARIANT: No float or double anywhere in this file. The "no floating
+ * point in the mechanism path" claim depends on this. grep before commit.
+ *
  * The GIE runs a ternary CfC liquid neural network continuously in
  * peripheral hardware. After boot, the CPU never computes a dot product.
  * The hidden state updates autonomously at ~430 Hz via:
@@ -1261,7 +1264,12 @@ int espnow_encode_input(const espnow_state_t *st) {
 
     /* ── [0..15] RSSI thermometer ──
      * 16 thresholds from -80 to -20 dBm, step = 3.75 ≈ 4 dBm.
-     * Each trit: +1 if RSSI >= threshold, -1 if below. */
+     * Each trit: +1 if RSSI >= threshold, -1 if below.
+     *
+     * NOTE: Dead zone (RSSI_MARGIN=2) was tested on silicon (April 8, 2026)
+     * and caused P0/P1/P2 LP hidden collapse in Test 12. Reverted to binary.
+     * Dead zone needs RSSI_MARGIN=1 or per-threshold tuning. See §4A in
+     * docs/REMEDIATION_PLAN_APR08.md. */
     for (int i = 0; i < 16; i++) {
         int threshold = -80 + i * 4;  /* -80, -76, -72, ..., -20 */
         new_input[i] = (st->rssi >= threshold) ? T_POS : T_NEG;

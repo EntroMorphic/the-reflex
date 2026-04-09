@@ -42,6 +42,9 @@ silicon_grail_deploy.sh
 # Compiled simulation binaries
 sim/test14c
 
+# Claude Code artifacts
+archived/
+
 # Separate git repos (local-only)
 pulse-arithmetic-lab/
 delta-observer/

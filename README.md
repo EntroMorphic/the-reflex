@@ -176,7 +176,14 @@ the-reflex/
 │   ├── main/
 │   │   ├── ulp/main.S                # LP core: hand-written RISC-V assembly (CMD 1–5)
 │   │   ├── gie_engine.c              # GIE core: peripherals, ISR, TriX, LP interface
-│   │   ├── geometry_cfc_freerun.c    # Test harness: TEST 1–14C, app_main()
+│   │   ├── geometry_cfc_freerun.c    # Test orchestrator: app_main(), shared state
+│   │   ├── test_harness.h            # Shared constants, state decls, MTFP encoder
+│   │   ├── test_gie_core.c           # Tests 1–8: GIE, LP core, VDB, pipeline, feedback
+│   │   ├── test_espnow.c             # Tests 9–10: ESP-NOW receive, live input
+│   │   ├── test_live_input.c         # Test 11: pattern classification + enrollment
+│   │   ├── test_memory.c             # Tests 12–13: memory-modulated attention, VDB necessity
+│   │   ├── test_kinetic.c            # Tests 14, 14C: kinetic attention, CLS transition
+│   │   ├── test_lp_char.c            # LP characterization + dot magnitude diagnostic
 │   │   ├── espnow_sender.c           # Board B: ESP-NOW pattern sender
 │   │   ├── reflex_vdb.c              # HP-side VDB API
 │   │   └── reflex_espnow.c           # ESP-NOW receiver (Board A)

@@ -18,7 +18,18 @@ if(REFLEX_TARGET STREQUAL "sender")
         add_compile_definitions(TRANSITION_MODE=1)
     endif()
 else()
-    set(app_sources "gie_engine.c" "geometry_cfc_freerun.c" "reflex_vdb.c" "reflex_espnow.c")
+    set(app_sources
+        "gie_engine.c"
+        "geometry_cfc_freerun.c"
+        "test_gie_core.c"
+        "test_espnow.c"
+        "test_live_input.c"
+        "test_memory.c"
+        "test_kinetic.c"
+        "test_lp_char.c"
+        "reflex_vdb.c"
+        "reflex_espnow.c"
+    )
     # Pass LP_SEED to C preprocessor if set via -DLP_SEED=0xDEAD5678
     if(DEFINED LP_SEED)
         add_compile_definitions(LP_SEED=${LP_SEED})
