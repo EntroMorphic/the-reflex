@@ -1,91 +1,115 @@
 # DO THIS NEXT
 
-*Written April 8, 2026. End of session.*
-*Context: 4 commits pushed today. TriX dispatch working. Ternary agreement implemented. Multi-seed 14C data collected but invalid for the Full condition (trix_enabled was not set — bias was never active). VDB stabilization data is valid.*
+*Written April 9, 2026. End of session.*
+*Supersedes the April 8 version. Two compounding bugs fixed; multi-seed TEST 14C now measurable on silicon; papers need rewriting around the corrected metrics.*
 
 ---
 
-## CRITICAL: Multi-Seed 14C Must Be Re-Run
+## Context — what actually happened
 
-The multi-seed TEST 14C crossover data in the papers and session doc was collected with `trix_enabled` not set in Tests 12-13. The ISR never ran TriX classification during those runs. The Full condition (CMD5+bias) was accidentally running as no-bias — the bias was computed from `trix_pred = -1`, which doesn't match any pattern, so the accumulator selection returned NULL and no bias was ever applied.
+Two bugs were invalidating every multi-seed TEST 14C run on record. They compounded — fixing one alone would not have surfaced the other.
 
-**The VDB stabilization finding (no-bias vs ablation) is valid.** Those conditions don't use the bias mechanism. The no-bias condition dispatches CMD 5 (with VDB blend) and the ablation dispatches CMD 4 (no blend). The transition dynamics depend on VDB feedback, not on the bias or the classification label. The alignment traces for no-bias and ablation are real.
+1. **`trix_enabled` was not set in Tests 12-13** (fixed April 8, commit `f97ac1c`). The ISR never ran TriX classification. `trix_pred = -1` matched no pattern accumulator, so the agreement-weighted gate bias computed `bias = 0` every step of the Full condition. The "Full" crossover column in every pre-April-9 multi-seed table was actually measuring the no-bias condition.
 
-**The Full condition crossover data is invalid.** Every "Full" crossover number in the papers (0, 22, 2 for Seeds A, B, C) is actually the no-bias crossover. The ternary agreement mechanism was never tested on silicon during those runs.
+2. **Enrollment starvation in transition mode** (fixed April 9, commit `63877f7`). The sender's TRANSITION_MODE started sending P1 immediately on boot, so Board A's Test 11 Phase 0a (30s observation window) only ever saw pattern P1. `sig[0]`, `sig[2]`, and `sig[3]` were computed from zero samples and stayed zero. TriX's argmax over `sig[] · hidden` could never select P2 because P2 had no weights.
 
-### What to do
-
-1. Flash sender with `TRANSITION_MODE=1`:
-   ```
-   cd embedded
-   idf.py fullclean
-   idf.py -DREFLEX_TARGET=sender -DTRANSITION_MODE=1 build
-   idf.py -p /dev/ttyACM0 flash
-   ```
-   Verify: serial output should show `[MODE] TRANSITION: P1 (90s) -> P2 (30s) -> repeat`
-
-2. For each seed (0xCAFE1234, 0xDEAD5678, 0xBEEF9ABC):
-   ```
-   idf.py fullclean
-   idf.py -DREFLEX_TARGET=gie -DLP_SEED=<seed> -DSKIP_TO_14C=1 build
-   idf.py -p /dev/ttyACM1 flash
-   ```
-   Capture serial to `data/apr8_2026/results_final_seed_{a,b,c}.log`
-
-3. Sync timeout is 200s. Full condition runs first (needs 60s sync). Each condition takes ~2-3 min. Total per seed: ~10-15 min. Total for 3 seeds: ~30-45 min.
-
-4. **What to look for in the data:**
-   - `bias=[X,Y]` should be non-zero during P1 phase for the Full condition. If `bias=[0,0]` throughout, the mechanism is still not engaging — debug.
-   - `pred=1` or `pred=2` (not `pred=-1`). If pred is -1, trix_enabled is not set.
-   - Crossover step for Full condition vs no-bias. The ternary disagree-count should release bias within 4 steps of the switch.
-   - Ablation regression at step +20 (P1 alignment exceeding P2). This is the CLS finding.
-
-5. Update papers with corrected crossover data. Update session doc.
+The April 8 version of this doc only identified bug #1 and concluded that "VDB stabilization data (no-bias vs ablation) is valid." That conclusion is wrong. Bug #2 affected every condition in every pre-April-9 run because the TriX classifier itself had no P2 signature. Alignment traces (computed from LP MTFP means accumulated during TEST 14C, not from `sig[]`) may be partially salvageable, but all TriX-accuracy numbers from the apr8 dataset are invalid.
 
 ---
 
-## BLOCKING: UART-Only Verification
+## New authoritative dataset
 
-Every run in the project's history uses USB-JTAG for serial output and power. The "peripheral-autonomous" and "~30 µA" claims require data without a development tool attached.
+`data/apr9_2026/results_final_seed_{a,b,c}.log` — three seeds × three conditions, all on silicon, both bugs fixed.
 
-### What to do
+Digest: `data/apr9_2026/SUMMARY.md` (committed). Raw logs: gitignored (local-only).
 
-1. Wire GPIO 16 (TX) and GPIO 17 (RX) to a secondary serial bridge (FTDI, CP2102, or another ESP32)
-2. Power Board A from battery or dumb USB (5V VBUS, no data lines)
-3. Run the full 15-test suite with the normal sender
-4. Measure current with a µA-resolution meter (INA219 or bench DMM in series)
-5. Record: all 15 tests PASS/FAIL, current draw during GIE free-run, current draw during LP sleep
+Headline TriX@15 numbers:
 
-### What this proves
+| Seed | Full | No bias | Ablation |
+|---|---|---|---|
+| A | 15/15 | 15/15 | 15/15 |
+| B |  8/15 | 12/15 | 14/15 |
+| C | 15/15 | 15/15 | 15/15 |
 
-- The GIE runs on peripheral hardware independent of USB-JTAG
-- The ~30 µA claim is measured, not inferred from datasheet
-- The "peripheral-autonomous" language in all three papers is backed by data
+Seeds A and C: clean. Seed B: documented degenerate-projection headwind visible — Full underperforms No-bias underperforms Ablation. This is the real "Seed B headwind" the papers describe, now properly grounded in data.
 
 ---
 
-## SHOULD DO: Remove Last Float
+## BLOCKING: Papers need rewriting around the corrected metrics
 
-The bias magnitude computation in Test 14 still uses a float intermediate:
-```c
-int b = (margin > 0)
-    ? (BASE_GATE_BIAS * BIAS_SCALE * margin + LP_HIDDEN_DIM / 2) / LP_HIDDEN_DIM
-    : 0;
+The three paper drafts (`docs/PAPER_KINETIC_ATTENTION.md`, `docs/PAPER_CLS_ARCHITECTURE.md`, `docs/PRIOR_SIGNAL_SEPARATION.md`) cite crossover-step numbers from the broken dataset. Those numbers are all wrong and the metric itself is dead (see "Broken metrics" below). The papers need to be reframed around:
+
+- **TriX@15** (first-15-step post-switch accuracy) as the headline metric
+- **Alignment traces** as the secondary metric showing CLS structure
+- **Bias release progression** (linear decay ~1/step, ~12–15 steps to full release) as the mechanism demonstration
+- **`pred` flip latency** (step +1 for clean seeds) as the "how fast does the prior release" answer — and this is what should replace the "within 4 steps" language, because 4 steps was a measurement-window artifact, not the actual mechanism timing
+
+Every crossover-step value currently printed in the papers is invalid. Do a full pass grepping for "crossover" in `docs/PAPER_*.md` and replace with the correct metric citations.
+
+Also: the Seed B headwind is now a real finding with real numbers (Full 8/15 < No-bias 12/15 < Ablation 14/15). The papers currently report it qualitatively; they should report it quantitatively and use it as evidence that the mechanism is projection-dependent (motivating Pillar 3 Hebbian GIE).
+
+---
+
+## BLOCKING: Fix the test_kinetic.c verdict logic
+
+`embedded/main/test_kinetic.c` prints `Crossover step: 0` for every condition in every run of this dataset. That sentinel value is also what the verdict gates compare against, so:
+
+```
+Full system crossover ≤ 30:    PASS (step 0)
+Bias helps (full ≤ no-bias):   PASS (0 vs 0)
+Ablation slower:               PASS (0 vs 0)
 ```
 
-This IS integer now (the float was removed). But verify by grep: `grep -n "float" embedded/main/geometry_cfc_freerun.c` — any remaining floats should be in display/diagnostic code only, not in the mechanism path.
-
-The "no floating point in the mechanism path" claim should be airtight before submission.
-
----
-
-## SHOULD DO: RSSI Dead Zone (Phase B, Ternary Remediation)
-
-The RSSI thermometer (trits [0..15]) is binary: `(rssi >= threshold) ? +1 : -1`. Never 0. The input is 81% binary.
+All four gates pass trivially and the verdict is always PASS, even for Seed B where the TriX@15 evidence clearly shows bias is **hurting** for that seed. The verdict logic is lying.
 
 ### What to do
 
-In `gie_engine.c`, `espnow_encode_input()`:
+1. Replace the "crossover step" metric with one of:
+   - First step where `pred` flips from the P1 ground truth to the P2 ground truth **and stays there for ≥3 consecutive steps**.
+   - First step where `(align_P2 − align_P1) > 0` sustained for ≥3 steps.
+2. Rewrite the verdict gates against the new metric:
+   - `TriX@15 > 10/15` for Full (>66%)
+   - `Full TriX@15 ≥ No-bias TriX@15 − margin` with a 2-step slack (so Seed B would correctly FAIL this gate and the overall run would FAIL for Seed B, flagging the headwind)
+   - `Ablation final alignment gap < No-bias final alignment gap` (regression test)
+3. Re-run the seed sweep against the new verdict to confirm gates behave correctly.
+
+---
+
+## BLOCKING: UART-only verification (carryover)
+
+Unchanged from the April 8 version. Every run to date uses USB-JTAG for serial and power. The "peripheral-autonomous" and "~30 µA" claims require data without a development tool attached.
+
+### What to do
+
+1. Wire GPIO 16 (TX) and GPIO 17 (RX) to a secondary serial bridge
+2. Power Board A from battery or dumb USB (5V VBUS, no data lines)
+3. Run the full suite with the normal (cycling) sender
+4. Measure current with INA219 or bench DMM in series
+5. Record: all tests PASS/FAIL, current draw during GIE free-run, current draw during LP sleep
+
+This is orthogonal to the TEST 14C work. Can run in parallel.
+
+---
+
+## SHOULD DO: Robustify the sender enrollment window
+
+The April 9 fix (`63877f7`) depends on **manual reset synchronization**. Board A's enrollment (~45s of activity starting ~10s into boot) must overlap Board B's 90s cycling window. In practice this works if Board B is reset within ~30s of Board A. If someone later runs the test without knowing this, Board B may already be in the transition loop and the bug returns silently.
+
+### Options
+
+- **(A) Document and accept.** Add reset-sync note to `embedded/docs/FLASH_GUIDE.md` and the paper methods section. Cheapest.
+- **(B) Periodic re-cycling.** Sender runs the 90s enrollment window at the start of every P1 phase (not just at boot). Airtime cost: ~6 extra cycles every 120s, ~50% duty cycle spent on enrollment. Robust but wasteful.
+- **(C) ESP-NOW handshake.** Board A sends a "begin enrollment" packet, sender responds by starting the cycling window. Complex and invasive.
+
+Recommend (A) for the paper submission, (B) as a v2 if reviewers ask.
+
+---
+
+## SHOULD DO: RSSI Dead Zone (carryover, Phase B ternary remediation)
+
+Unchanged from the April 8 version. The RSSI thermometer is 81% binary. Add a dead zone so the ternary engine gets access to the {+1, 0, −1} state space it was designed for.
+
+In `gie_engine.c::espnow_encode_input()`:
 ```c
 #define RSSI_MARGIN 2
 for (int i = 0; i < 16; i++) {
@@ -97,70 +121,80 @@ for (int i = 0; i < 16; i++) {
 }
 ```
 
-### Validation
+**Previous attempt:** `RSSI_MARGIN=2` was tested on silicon (April 8) and caused P0/P1/P2 LP hidden collapse in Test 12. Reverted. The comment in `gie_engine.c:1264` documents this. Retry with `RSSI_MARGIN=1` first.
 
-1. Build with normal sender, flash Board A
-2. Run Test 11: check signature energy (expect ~2-4 fewer non-zero trits per signature)
-3. Run Test 14C: check TriX accuracy (should remain high)
-4. If accuracy drops: try RSSI_MARGIN = 1
-
-### Why this matters
-
-The ternary engine is designed for {agree, disagree, uncertain}. An input that never says "uncertain" denies the engine access to the zero state. The dead zone adds honest uncertainty where the signal is noisy.
-
-Full LMM cycle: `journal/ternary_remediation_{raw,nodes,reflect,synth}.md`
+**When to do it:** After papers are rewritten. This changes input encoding and would invalidate the apr9 dataset if done first.
 
 ---
 
-## KNOWN LIMITATIONS (Report Honestly)
+## DATA HYGIENE
 
-### Seed B Headwind
+### Deprecate the apr8_2026 dataset
 
-Seed B (0xDEAD5678) shows a transition headwind under gate bias. The LP projection for this seed doesn't separate P1 from P2, so the ternary disagree-count stays below 4 for many steps. This is a projection limitation, not a mechanism failure.
+`data/apr8_2026/` contains ~16 log files from the broken-enrollment era. None of them have valid TriX classification for any condition. Alignment traces may be partially salvageable but need careful re-reading.
 
-**The corrected headwind number needs to come from the re-run (item #1 above).** The current number (22 steps) is from a run where the bias was never active.
+**Action:** Add a `data/apr8_2026/DEPRECATED.md` note pointing at `data/apr9_2026/SUMMARY.md` and explaining that these logs predate both the `trix_enabled` and enrollment-starvation fixes. Keep the files; the historical record matters. But flag them as invalid so no one accidentally cites them.
 
-Fix: Pillar 3 (Hebbian GIE) — learned weights fix the projection degeneracy. The mechanism should not be enabled unconditionally with random weights in production.
+### Current apr9_2026 contents
 
-### TriX Accuracy Scope
-
-100% on the 4-pattern sender with well-separated signatures. Degrades on the P1-P2 pair under the 2-pattern transition sender (73% cross-dot ratio). The structural guarantee (W_f hidden = 0) ensures TriX is independent of the prior, but does not guarantee discrimination between patterns with high signature overlap. Documented in PAPER_KINETIC_ATTENTION.md Section 2.2.
-
-### Test 12 P2-P3 Under TriX Dispatch
-
-TriX dispatch produces a different label distribution than CPU core_pred (P0=310, P1=156, P2=39, P3=51 vs the more even core_pred distribution). Some pairs may collapse (P2-P3 Hamming=0 in one run). Within expected variance but noted.
+- `results_final_seed_a.log` — Seed A, full TEST 14C, 15/15 across all conditions
+- `results_final_seed_b.log` — Seed B, full TEST 14C, headwind visible
+- `results_final_seed_c.log` — Seed C, full TEST 14C, 15/15 across all conditions
+- `SUMMARY.md` — digest with tables, analysis, caveats (committed)
 
 ---
 
-## FORWARD RESEARCH (Not Blocking)
+## KNOWN LIMITATIONS (report honestly)
+
+### TriX "release within 4 steps" claim is wrong
+
+The previous paper language said "bias releases within 4 steps of the switch." The actual mechanism is:
+- `pred` flips at **step +1** (1 step after first P2 packet) for clean seeds
+- The bias **magnitude** decays linearly at ~1 unit/step, reaching zero at ~step +12–15
+- The new P2 prior forms in parallel, reaching stable magnitude by step +20
+
+The "4 steps" number appears to have been the agreement-weighted disagree-count threshold (4 trits), not a time constant. The paper should cite both: `pred` latency = 1 step, bias-release duration = ~12 steps, new-prior formation = ~20 steps.
+
+### Seed B headwind is quantified
+
+Full 8/15 < No bias 12/15 < Ablation 14/15. Full bias is **actively harmful** for Seed B. The LP projection for this seed collapses P1 and P2 to near-parallel directions; the bias amplifies the wrong neurons.
+
+This is a negative result that belongs in the paper. It motivates Pillar 3 (Hebbian weight updates) as the designed fix.
+
+### Seed A/C 15/15 is real but context-dependent
+
+Both clean seeds show 100% TriX accuracy post-switch because the ground-truth-labeled ESP-NOW packet (pattern_id in the payload) survives the degraded RSSI thermometer. TriX is mostly reading the pattern_id trits, not the RSSI. This is the same result the papers document at 100% for 4-pattern classification. It's honest to note that post-switch TriX accuracy is bounded by the informativeness of the payload trits, which are explicitly labeled. Once the RSSI dead zone lands (and the explicit label trits are masked more aggressively), this will become a sterner test.
+
+---
+
+## FORWARD RESEARCH (not blocking)
 
 ### Pillar 1: Dynamic Scaffolding
-VDB pruning — LP core monitors node utility, prunes redundant nodes, retains outliers. The 64-node limit becomes a sliding window. Requires kinetic attention data to know what's load-bearing.
+Unchanged. VDB pruning requires kinetic-attention data to know what's load-bearing. The apr9 dataset provides that data.
 
 ### Pillar 2: SAMA (Substrate-Aware Multi-Agent)
-Treat incoming ESP-NOW packets as GIE inputs without OS involvement. Robot A classifies Robot B's GIE state through its own representational lens. Requires kinetic attention for context-sensitive inter-agent response.
+Unchanged. Treat ESP-NOW packets as GIE inputs without OS involvement. Requires kinetic attention for context-sensitive response — now demonstrated.
 
 ### Pillar 3: Hebbian GIE
-LP core generates weight-update signal from VDB mismatch, applies to GDMA descriptor chain in-situ. Fixes Seed B. Requires kinetic attention as the behavioral signal. This is the path to learned weights that fix projection degeneracies.
+**Priority raised.** The Seed B headwind is now quantitative evidence that fixed random weights are the bottleneck. Learned weights would fix projection degeneracy. This is the path from "works on 2/3 seeds" to "works on every seed."
 
 ### Phase C: MTFP RSSI Encoding
-Replace the 16-trit RSSI thermometer with a 5-trit MTFP value (sign + 2 exp + 2 mant). Frees 11 trits for other features. Separate LMM cycle. Changes input layout — needs full re-enrollment and validation.
-
-### Phase C: Timing Feature Expansion
-Use freed sequence trits [104..119] for MTFP timing features: gap variance, burst count, steady count. Adds temporal discrimination without increasing input dimension.
+Unchanged. Replace 16-trit RSSI thermometer with 5-trit MTFP value.
 
 ---
 
 ## COMMIT ORDER FOR NEXT SESSION
 
-1. Re-run multi-seed 14C (the critical data fix)
-2. Update papers with corrected data
-3. RSSI dead zone (Phase B)
-4. Validate full suite with RSSI dead zone
-5. Commit and push
+1. **Rewrite PAPER_KINETIC_ATTENTION.md** — replace crossover metric with TriX@15 + alignment traces. Cite apr9 SUMMARY.md. Fix the "within 4 steps" language.
+2. **Rewrite PAPER_CLS_ARCHITECTURE.md** — update transition experiment section with corrected alignment data. Seed B becomes quantitative evidence for Pillar 3 necessity.
+3. **Rewrite PRIOR_SIGNAL_SEPARATION.md** — shortest rewrite; check every cited number against apr9 SUMMARY.md.
+4. **Fix test_kinetic.c verdict logic** — replace sentinel crossover with real metric, re-run seed sweep.
+5. **Add DEPRECATED.md to data/apr8_2026/** — historical flag.
+6. **UART-only verification** — physical rewiring, separate session.
+7. **RSSI dead zone retry** (RSSI_MARGIN=1) — after papers settle.
 
-Item 1 is the priority. The papers have invalid Full-condition data. Fix the data before anything else.
+Items 1-3 and 5 are docs/data only. Item 4 is code. Item 6 is physical. Item 7 is code + silicon re-run.
 
 ---
 
-*The one-line fix (`trix_enabled = 1`) unblocked TriX dispatch. The data collected before that fix is invalid for the bias condition. The VDB stabilization data is valid. Re-run with the mechanism actually engaged.*
+*The mechanism works. The data is honest. Two seeds pass cleanly, one seed shows the designed-fix motivation. The metric was broken in three different ways and is now either fixed or flagged for fixing. Everything downstream depends on rewriting the papers against the new numbers.*
