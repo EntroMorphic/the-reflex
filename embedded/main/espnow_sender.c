@@ -194,13 +194,49 @@ void app_main(void) {
 #endif
 
 #if TRANSITION_MODE
-    /* Transition mode: P1 (90s) → P2 (30s) → repeat */
-    int64_t phase1_us = 90000000LL;   /* 90s on P1 */
-    int64_t phase2_us = 30000000LL;   /* 30s on P2 */
-    int phase = 1;  /* start with P1 */
-    pattern = 1;
+    /* Transition mode — two-stage so enrollment can build all 4 signatures:
+     *   Stage 1 (ENROLL): cycle P0→P1→P2→P3 at 5s each for 90s (18 pattern
+     *                     slots). Covers Test 11 Phase 0a (30s) + Phase 0d
+     *                     (15s) + margin for TriX Cube observation.
+     *   Stage 2 (LOOP):   P1 (90s) → P2 (30s) → repeat. TEST 14C runs here.
+     *
+     * Prior bug: Stage 2 was the entire sender. Enrollment saw only P1 for
+     * 30s, so sig[0]/sig[2]/sig[3] were zero and TriX could never predict
+     * P2, even though the bias mechanism and LP alignment were correct.
+     */
+    int64_t enroll_us        = 90000000LL;    /* 90s total enrollment window */
+    int64_t enroll_slot_us   = 5000000LL;     /* 5s per pattern */
+    int64_t phase1_us        = 90000000LL;    /* 90s on P1 (post-enrollment) */
+    int64_t phase2_us        = 30000000LL;    /* 30s on P2 (post-enrollment) */
 
-    printf("[MODE] TRANSITION: P1 (90s) -> P2 (30s) -> repeat\n");
+    printf("[MODE] TRANSITION: ENROLL cycle (90s) -> P1 (90s) -> P2 (30s) -> repeat\n");
+    fflush(stdout);
+
+    /* ── Stage 1: enrollment cycle ── */
+    int64_t enroll_start_us = esp_timer_get_time();
+    int64_t slot_start_us   = enroll_start_us;
+    pattern = 0;
+    while ((esp_timer_get_time() - enroll_start_us) < enroll_us) {
+        switch (pattern) {
+            case 0: send_pattern_0(&seq); break;
+            case 1: send_pattern_1(&seq); break;
+            case 2: send_pattern_2(&seq); break;
+            case 3: send_pattern_3(&seq); break;
+        }
+        if ((esp_timer_get_time() - slot_start_us) >= enroll_slot_us) {
+            slot_start_us = esp_timer_get_time();
+            pattern = (pattern + 1) % 4;
+        }
+    }
+    printf("[SEND] ENROLL complete | seq=%lu ok=%lu fail=%lu\n",
+           (unsigned long)seq, (unsigned long)send_ok, (unsigned long)send_fail);
+    fflush(stdout);
+
+    /* ── Stage 2: transition loop ── */
+    int phase = 1;
+    pattern = 1;
+    pattern_start_us = esp_timer_get_time();
+    printf("[SEND] Entering P1 (90s) -> P2 (30s) transition loop\n");
     fflush(stdout);
 
     while (1) {
