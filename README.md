@@ -10,7 +10,7 @@
 
 The Reflex is a three-layer ternary neural computing system running on an ESP32-C6 microcontroller. It classifies wireless signals at 100% accuracy using only peripheral hardware — no CPU, no floating point, no multiplication. Beneath that classifier, it builds a temporal model of what it has been perceiving, using that model to bias future perception while ensuring the bias can always be overridden by direct measurement.
 
-**The core claim:** Peripheral-hardware ternary dot products at 430.8 Hz. ~30 µA. Pattern-specific LP hidden states after 90 seconds of live operation. VDB episodic memory causally necessary (distillation test: CMD 4 collapses P1=P2; CMD 5 separates them). Agreement-weighted gate bias with ternary disagree-count releases the prior within 4 steps of a pattern switch. Multi-seed validated (3 seeds × 3 conditions). LP feedback dispatched from TriX ISR (100% accuracy, structural guarantee). No floating point anywhere in the mechanism path.
+**The core claim:** Peripheral-hardware ternary dot products at 430.8 Hz. ~30 µA. Pattern-specific LP hidden states after 90 seconds of live operation. VDB episodic memory causally necessary (distillation test: CMD 4 collapses P1=P2; CMD 5 separates them). Agreement-weighted gate bias releases the old prior via geometric decay (×0.9/step, half-life ~6.6 steps) after `pred` flips at step +1 post-switch; new-prior formation begins by step +15 once T14C_MIN_SAMPLES accumulate. The ternary disagree-count (≥4 trits) provides a hard-zero safety release that was not exercised on clean seeds. Multi-seed validated (3 seeds × 3 conditions, `data/apr9_2026/`). LP feedback dispatched from TriX ISR (100% accuracy on 4-pattern set). No floating point anywhere in the mechanism path.
 
 The system was not designed toward this architecture. It emerged from a minimum-assumptions experiment — and the constraints (ternary, peripheral, no floating point) are what made the structure visible.
 
@@ -77,7 +77,10 @@ See [`docs/THE_PRIOR_AS_VOICE.md`](docs/THE_PRIOR_AS_VOICE.md) for the full argu
 | CMD 5 separation | Hamming 1–5 across all runs | TEST 13 |
 | LP feedback steps applied | 97% | TEST 12 |
 | Gate bias LP divergence improvement | +1.0 to +2.5 Hamming (2/3 seeds) | TEST 14, multi-seed |
-| Transition bias release | 4 steps (ternary disagree-count) | TEST 14C, multi-seed |
+| Post-switch pred flip | step +1 (Seeds A, C) | TEST 14C, multi-seed |
+| Bias release | geometric ×0.9/step, half-life ~6.6 steps | TEST 14C, traced in Seed A |
+| New prior formation | step +15 (gated on T14C_MIN_SAMPLES) | TEST 14C |
+| TriX@15 post-switch | A=15/15, B=8/15, C=15/15 | TEST 14C, multi-seed |
 | VDB stabilization | No-bias crosses step 0, all seeds | TEST 14C, 3 seeds |
 | MTFP P1-P2 separation | Hamming 7-9/80 (null ~1) | 3 seeds |
 
@@ -107,7 +110,7 @@ P0: neurons 0–7, P1: 8–15, P2: 16–23, P3: 24–31.
 
 ## Phase 5: Kinetic Attention (Verified)
 
-The LP hidden state biases GIE gate thresholds, making the peripheral hardware compute differently based on accumulated experience. The bias is agreement-weighted: a ternary disagree-count per trit detects when the prior conflicts with the current classification, and zeros the bias immediately (within 4 steps). LP feedback is dispatched from the TriX ISR (100% accuracy, structural guarantee). No floating point in the mechanism path — integer bias state, integer decay, integer magnitude.
+The LP hidden state biases GIE gate thresholds, making the peripheral hardware compute differently based on accumulated experience. The bias is agreement-weighted with two release paths: (1) a soft geometric decay (×0.9/step, half-life ~6.6 steps) that runs unconditionally every step, and (2) a hard disagree-count zero (`n_disagree ≥ 4` trits) that sets bias to 0 immediately. The soft path is what runs on clean seeds in TEST 14C; the hard path is a safety gate for cases where the new input is very far from the prior. LP feedback is dispatched from the TriX ISR (100% accuracy on the 4-pattern set). No floating point in the mechanism path — integer bias state, integer decay, integer magnitude.
 
 **TEST 14 (three conditions, multi-seed validated):**
 - 14A: Baseline (bias = 0)
@@ -115,7 +118,7 @@ The LP hidden state biases GIE gate thresholds, making the peripheral hardware c
 - 14C-iso: Bias disabled for 60s, then enabled (delayed onset)
 
 **TEST 14C (transition experiment, 3 seeds × 3 conditions):**
-VDB stabilization confirmed across all seeds. Ablation shows P1 regression. Bias releases within 4 steps of pattern switch via ternary disagree-count.
+VDB stabilization confirmed across Seeds A and C (ablation-regression visible in alignment traces). Seed B shows the documented degenerate-projection headwind (Full 8/15 TriX@15 vs No-bias 12/15 vs Ablation 14/15). Bias releases via geometric ×0.9/step soft decay; the disagree-count hard gate is a safety path and was not exercised on clean seeds. Full multi-seed dataset: `data/apr9_2026/SUMMARY.md`.
 
 Full design: [`docs/KINETIC_ATTENTION.md`](docs/KINETIC_ATTENTION.md). Paper: [`docs/PAPER_KINETIC_ATTENTION.md`](docs/PAPER_KINETIC_ATTENTION.md). CLS paper: [`docs/PAPER_CLS_ARCHITECTURE.md`](docs/PAPER_CLS_ARCHITECTURE.md).
 

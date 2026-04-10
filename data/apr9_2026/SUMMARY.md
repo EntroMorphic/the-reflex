@@ -84,11 +84,11 @@ For Seed B, `pred` oscillates between 0 and 2 post-switch under the Full conditi
 
 ### Bias release + new prior formation (Seed A, Full condition)
 
-The clean Seed A trace shows linear bias decay and simultaneous new-prior formation:
+The clean Seed A trace shows geometric bias decay (×0.9/step) and simultaneous new-prior formation:
 
 ```
 step +0:  bias=[13, 0]   pred=1  (bias blocks the switch for 1 step)
-step +1:  bias=[11, 0]   pred=2  (switch confirmed, release begins)
+step +1:  bias=[11, 0]   pred=2  (switch confirmed, soft decay begins)
 step +2:  bias=[10, 0]   pred=2
 step +5:  bias=[ 7, 0]   pred=2
 step +10: bias=[ 4, 0]   pred=2
@@ -96,7 +96,22 @@ step +20: bias=[ 1,12]   pred=2  (release ~done, new P2 prior forming)
 step +30: bias=[ 0,12]   pred=2  (full release, new prior stable)
 ```
 
-Bias decays at ~1 unit/step (agreement-weighted disagree-count threshold is 4, so each step with 4+ disagreeing trits decrements the bias by 1). Full release takes ~12–15 steps, not 4. The new P2 prior ramps up to 12 by step +20 and holds. **The papers' "release within 4 steps" claim is inaccurate for this mechanism — the actual release is ~12–15 steps, and what flips at step 1 is the `pred` value, not the bias magnitude.**
+**Bias decays geometrically with factor 0.9 per step** (`bias_i[p] = bias_i[p] * 9 / 10` in `test_kinetic.c:907`). With BIAS_SCALE=10 internal resolution, the displayed value follows:
+
+```
+internal: 130 → 117 → 105 → 94 → 84 → 75 → 67 → 60 → 54 → 48 → 43
+display:   13 →  11 →  10 →  9 →  8 →  7 →  6 →  6 →  5 →  4 →  4
+```
+
+This matches the logged data exactly. Half-life ≈ 6.6 steps. 90% decay by step ~22.
+
+The new P2 prior begins forming at step +15 once `T14C_MIN_SAMPLES=15` P2 samples have accumulated for the agreement-check accumulator. By step +20, `bias_i[2]` is at 12 and holds stable.
+
+**Important correction to prior paper language:** the "release within 4 steps" claim conflates the disagree-count threshold (≥4 trits) with a step count. The mechanism has two release paths:
+1. **Soft (geometric ×0.9/step):** runs unconditionally every step. This is what released the prior in this dataset.
+2. **Hard (disagree-count zero):** sets `bias_i[pred] = 0` in one step when `n_disagree ≥ 4`. **Not exercised on any clean seed in this run.**
+
+The hard path can theoretically release in 1 step. The soft path takes ~22 steps for 90% decay. Both are real, only the soft one was active in this dataset.
 
 ---
 
@@ -117,13 +132,31 @@ Reporting recommendation: the papers should cite Seed B as evidence that the mec
 
 ## Metric and verdict caveats
 
-**The test code's `Crossover step: 0` is a sentinel.** It represents "alignment of P2 exceeded alignment of P1 at step 0 or earlier" but the 0 value is also what prints when nothing crossed. For every condition in every seed of this run, the value is 0. It is **not a useful metric** and should be replaced with either:
-- First step where `pred` flips from 1 to 2 **and stays there for ≥N steps** (proposed N=3)
-- First step where `align_P2 − align_P1 > 0` sustained for ≥N steps
+**The test code's `Crossover step: 0` is honest but saturated.** Tracing `test_kinetic.c:980-982`:
 
-**The `Verdict` lines in the test log pass trivially.** All four gates (`Full system crossover ≤ 30`, `Bias helps (full ≤ no-bias)`, `Ablation slower`, `Sufficient P2 data`) are computed against the sentinel crossover value or against coarse thresholds that any real run satisfies. The "Bias helps" gate passes for Seed B even though the TriX@15 evidence contradicts it. This is a known issue — the verdict logic needs tightening in `embedded/main/test_kinetic.c`.
+```c
+/* Detect crossover */
+if (crossover_step < 0 && align2 > align1)
+    crossover_step = phase2_step;
+```
 
-**TriX@15 is the reliable headline metric for this experiment.** Use that, plus the alignment traces, plus the bias-release progression. Do not cite "crossover step" from this test code until the metric is fixed.
+The metric truly measures "first step where align_P2 > align_P1." It returns 0 for every condition in every seed because the LP MTFP state shifts the moment the first P2 packet arrives — `align_P2` exceeds `align_P1` immediately. The metric isn't sentinel-broken; it has **zero discriminative resolution** for this experimental setup. I called it a "sentinel" in earlier session notes; that was wrong.
+
+**The `Verdict` lines pass trivially because the saturated metric has no resolution.** All gates compare against `crossover_step = 0`, so `0 ≤ 30` (PASS), `0 ≤ 0` (PASS), etc. The "Bias helps (full ≤ no-bias)" gate prints PASS for Seed B even though the TriX@15 evidence shows the bias is hurting (Full 8/15 < No-bias 12/15). The verdict isn't actively lying — it's checking the wrong thing.
+
+### Suggested replacements
+
+For the metric to discriminate, it needs to measure something with resolution > 1 step:
+- **`pred` flip held for ≥3 steps:** discriminates clean seeds (1 step) from Seed B (jitter, much longer)
+- **Sustained alignment gap ≥ M trits for ≥3 steps:** discriminates strength of separation
+- **Bias release time:** number of steps for `gie_gate_bias[old_group]` to decay below threshold (e.g., 2). Directly measures soft decay.
+
+For the verdict to be honest about Seed B, it should fail the Full gate and explicitly flag the headwind:
+- `Full TriX@15 ≥ 10/15` would fail Seed B (8/15) — correct
+- Drop `Bias helps (full ≤ no-bias)` — for the Seed B case the answer is genuinely no, and that's a real result, not a test failure
+- Add `Ablation alignment regression visible by step 30` — directly tests the CLS prediction
+
+**Until the verdict logic is fixed, TriX@15 + alignment traces + bias-release progression are the reliable signals from this dataset.** Do not cite "crossover step" from the current test code in papers.
 
 ---
 
