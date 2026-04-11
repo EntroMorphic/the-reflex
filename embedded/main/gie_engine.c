@@ -1271,6 +1271,7 @@ int espnow_encode_input(const espnow_state_t *st) {
     /* ── [16..23] Pattern ID one-hot (4 patterns × 2 trits) ──
      * Pattern p → trits [16 + p*2] and [16 + p*2 + 1] are (+1,+1).
      * All others are (-1,-1). */
+#ifndef MASK_PATTERN_ID_INPUT
     for (int p = 0; p < 4; p++) {
         int idx = 16 + p * 2;
         if (st->pattern_id == p) {
@@ -1281,6 +1282,13 @@ int espnow_encode_input(const espnow_state_t *st) {
             new_input[idx + 1] = T_NEG;
         }
     }
+#else
+    /* H2: Zero pattern_id trits at the INPUT level (not just signatures).
+     * This makes the GIE hidden state genuinely label-free, so the VDB
+     * nodes and LP CfC input contain no label information. Tests whether
+     * Hebbian learning works without indirect label leakage. */
+    /* (trits 16..23 remain zero from memset above) */
+#endif
 
     /* ── [24..87] Payload bits → trits ──
      * 8 bytes × 8 bits = 64 trits.
@@ -1344,6 +1352,7 @@ int espnow_encode_rx_entry(const espnow_rx_entry_t *entry,
     }
 
     /* [16..23] Pattern ID one-hot */
+#ifndef MASK_PATTERN_ID_INPUT
     for (int p = 0; p < 4; p++) {
         int idx = 16 + p * 2;
         if (pkt->pattern_id == p) {
@@ -1354,6 +1363,8 @@ int espnow_encode_rx_entry(const espnow_rx_entry_t *entry,
             new_input[idx + 1] = T_NEG;
         }
     }
+#endif
+    /* (H2: when MASK_PATTERN_ID_INPUT defined, trits 16..23 stay zero from memset) */
 
     /* [24..87] Payload bits → trits */
     for (int b = 0; b < 8; b++) {

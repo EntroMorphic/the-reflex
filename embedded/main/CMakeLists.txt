@@ -47,6 +47,11 @@ else()
     if(DEFINED MASK_RSSI AND MASK_RSSI)
         add_compile_definitions(MASK_RSSI=1)
     endif()
+    # H2: mask pattern_id trits [16..23] from the INPUT (not just signatures)
+    # Makes GIE hidden state genuinely label-free for Hebbian leakage test
+    if(DEFINED MASK_PATTERN_ID_INPUT AND MASK_PATTERN_ID_INPUT)
+        add_compile_definitions(MASK_PATTERN_ID_INPUT=1)
+    endif()
 endif()
 
 idf_component_register(
