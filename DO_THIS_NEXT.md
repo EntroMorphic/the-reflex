@@ -228,14 +228,25 @@ Unchanged. VDB pruning requires kinetic-attention data to know what's load-beari
 ### Pillar 2: SAMA (Substrate-Aware Multi-Agent)
 Unchanged. Treat ESP-NOW packets as GIE inputs without OS involvement. Requires kinetic attention for context-sensitive response — now demonstrated.
 
-### Pillar 3: LP Hebbian — TriX-output-based (corrected April 11)
-**Major revision.** The original "Hebbian GIE" proposal was wrong — it would break the structural wall. The corrected target is LP weights. An HP-side Hebbian step (`lp_hebbian_step()`) was implemented and tested with ablation control (commit `4343447`): +2.5 Hamming over control.
+### Pillar 3: LP Hebbian — OPERATIONAL (resolved April 11)
+**Three iterations to get it right:**
+1. v1 (VDB mismatch, f-only): +2.5 with label, -1.7 without (label-dependent)
+2. v2 (TriX accumulator, f-only): -1.0 label-free (better target, still wrong)
+3. **v3 (TriX accumulator, diagnosed f+g): +1.3 label-free (commit `427fea3`)**
 
-**BUT: label-dependent** (commit `a0d3a36`). H2 experiment: with pattern_id removed from the GIE INPUT (not just signatures), Hebbian contribution became -1.7 (harmful). The VDB mismatch error signal was exploiting label information leaked through the GIE hidden state.
+The missing atomic was DIAGNOSIS: per-neuron, determine if the error is in the gate (f-pathway) or the candidate (g-pathway), then flip the correct matrix. v1-v2 always flipped W_f; ~50% of errors were in g, making half the flips counterproductive.
 
-**Critical secondary finding:** removing pattern_id from the input IMPROVED VDB-only LP divergence from 0.7 to 3.3/16. The recommended operating mode is `MASK_PATTERN_ID_INPUT=1`.
+Result (genuinely label-free, `MASK_PATTERN_ID=1 + MASK_PATTERN_ID_INPUT=1`):
+  Control: 0.7/16 | Diagnosed Hebbian: 2.0/16 | Contribution: **+1.3**
+  P0-P1: 0→4. 161 flips, 53 updates.
 
-**Next step:** Replace VDB mismatch with TriX classifier output as the training signal. TriX is 100% accurate (structural guarantee) and genuinely label-free. Use TriX-predicted pattern identity to select the target LP state, then compute the Hebbian error against that target. This is supervised-from-classifier, architecturally clean, and doesn't leak labels through the GIE. LMM cycle in progress.
+**Secondary finding (still valid):** removing pattern_id from the GIE input improved VDB-only LP divergence from 0.7 to 3.3/16 in some runs (the 0.7 and 3.3 baselines vary by run — run-to-run variance is significant). Recommended operating mode: `MASK_PATTERN_ID_INPUT=1`.
+
+**Remaining for Pillar 3:**
+- Replicate (n=1 for the +1.3 result)
+- Tune: rate limiting, gate thresholds, learning duration
+- P2-P3 still collapsed (Hamming=0) post-learning — may need longer or different rule
+- Paper writeup of the three-iteration journey and the diagnosis insight
 
 ### Phase C: MTFP RSSI Encoding
 Unchanged. Replace 16-trit RSSI thermometer with 5-trit MTFP value.

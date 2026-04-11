@@ -85,6 +85,8 @@ See [`docs/THE_PRIOR_AS_VOICE.md`](docs/THE_PRIOR_AS_VOICE.md) for the full argu
 | TriX@15 post-switch | A=15/15, B=8/15, C=15/15 | TEST 14C, multi-seed |
 | VDB stabilization | No-bias crosses step 0, all seeds | TEST 14C, 3 seeds |
 | MTFP P1-P2 separation | Hamming 7-9/80 (null ~1) | 3 seeds |
+| Hebbian LP learning (label-free) | +1.3 Hamming over control (0.7→2.0) | TEST 15, diagnosed v3 |
+| Hebbian P0-P1 separation | 0→4 (random→learned) | TEST 15 |
 
 **TEST 13 (distillation test):** CMD 4 runs CfC + VDB but skips the blend into LP hidden. CMD 5 runs CfC + VDB + blend. In paired 90-second runs, CMD 4 produces P1=P2 (Hamming=0) in 2 of 3 hardware runs. CMD 5 produces Hamming 1–5 for the same pair every time. The VDB feedback is causally necessary, not incidental.
 

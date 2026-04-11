@@ -116,11 +116,22 @@ The VDB mismatch error signal is label-informed through the GIE hidden state. Wh
 
 **Critical secondary finding:** Removing pattern_id from the GIE input **improved** VDB-only LP divergence from 0.7 to 3.3/16. The label was drowning out discriminative payload/timing features. The recommended operating mode is now `MASK_PATTERN_ID_INPUT=1`.
 
-**Next: TriX-output-based learning.** The TriX classifier is 100% accurate (structural guarantee) and label-free. Using TriX predictions as the training signal — instead of raw VDB mismatch — provides a clean, architecturally guaranteed error signal for LP weight updates. This is supervised-from-classifier, not unsupervised-from-memory. LMM cycle in progress (`journal/`).
+**Resolved: Diagnosed Hebbian v3 (commit `427fea3`).** Three iterations:
+1. v1 (VDB mismatch, f-only): +2.5 with label, -1.7 without → label-dependent
+2. v2 (TriX accumulator, f-only): -1.0 label-free → better target, wrong pathway
+3. **v3 (TriX accumulator, diagnosed f+g): +1.3 label-free → the diagnosis fixed it**
 
-**The biological analog (revised):** CLS consolidation still, but the hippocampus (VDB) doesn't directly train the neocortex (LP weights). Instead, the perceptual classifier (TriX, analogous to sensory cortex) provides the label that organizes the consolidation. The hippocampus stores and retrieves; the classifier tells the LP what pattern it's looking at; the LP weights learn to represent that pattern's temporal signature.
+The missing atomic was DIAGNOSIS: when the output is wrong, ask "is the error in the gate (f) or the candidate (g)?" before flipping. v1-v2 always flipped W_f. ~50% of errors were in g, making half the flips counterproductive. v3 compares |f_dot| vs |g_dot| and fixes the cheaper pathway.
 
-**Impact (unchanged):** The system that learns to walk without a training loop. But the learning signal must come from the structurally guaranteed classifier, not from raw memory retrieval.
+Result (genuinely label-free, `MASK_PATTERN_ID=1 + MASK_PATTERN_ID_INPUT=1`):
+  Control (CMD 5 only): 0.7/16
+  Diagnosed Hebbian:    2.0/16
+  Contribution: **+1.3 Hamming**
+  P0-P1: 0→4. 161 flips across 53 updates.
+
+**The biological analog (revised):** The TriX classifier (sensory cortex, structurally guaranteed) provides the label that organizes the LP consolidation. The VDB (hippocampus) stores and retrieves. The LP weights (neocortex) learn to represent each pattern's temporal signature through Hebbian flips gated by TriX confidence + retrieval stability. Both f-pathway (gate) and g-pathway (candidate) weights update, with per-neuron diagnosis selecting the correct target.
+
+**Impact:** The system learns on silicon, without labels, without gradients, without floats. The structural wall is intact. The prior gets wiser through experience. Pillar 3 is operational.
 
 ---
 

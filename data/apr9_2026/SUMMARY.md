@@ -126,7 +126,7 @@ Observed pathology:
 
 **This is a negative result worth keeping.** It demonstrates that the mechanism is not unconditionally beneficial — it depends on LP projection quality. Pillar 3 (LP Hebbian weight learning, corrected from the original "Hebbian GIE" proposal) is the designed fix — but the April 11 H2 experiment showed that VDB-mismatch-based Hebbian is label-dependent and harmful when the label leak is closed. The next iteration uses TriX classifier output as the training signal (structurally guaranteed, label-free). See `ROADMAP.md` and `DO_THIS_NEXT.md` for current status.
 
-Reporting recommendation: the papers should cite Seed B as evidence that the mechanism is projection-dependent. The Hebbian fix is in progress but not yet validated label-free.
+Reporting recommendation: the papers should cite Seed B as evidence that the mechanism is projection-dependent. The Hebbian learning mechanism (v3, diagnosed f+g with TriX accumulator target) was validated at +1.3 Hamming genuinely label-free on the default seed (commit `427fea3`). Whether it resolves the Seed B headwind specifically requires a Seed B re-run with the diagnosed Hebbian (not yet done).
 
 ---
 
