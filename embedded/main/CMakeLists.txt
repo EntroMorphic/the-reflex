@@ -42,6 +42,10 @@ else()
     if(DEFINED MASK_PATTERN_ID AND MASK_PATTERN_ID)
         add_compile_definitions(MASK_PATTERN_ID=1)
     endif()
+    # R3a follow-up: mask RSSI thermometer [0..15] from signatures
+    if(DEFINED MASK_RSSI AND MASK_RSSI)
+        add_compile_definitions(MASK_RSSI=1)
+    endif()
 endif()
 
 idf_component_register(

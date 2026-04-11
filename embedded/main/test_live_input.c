@@ -178,6 +178,15 @@ int run_test_11(void) {
             for (int i = 16; i < 24; i++)
                 sig[p][i] = T_ZERO;
 #endif
+#ifdef MASK_RSSI
+            /* R3a follow-up: also mask RSSI thermometer [0..15].
+             * RSSI is shift-invariant (same sender → same mean RSSI for
+             * all patterns) but per-packet fluctuations add ±2-3 trits
+             * of noise that can overwhelm the ~9-13 discriminative trits
+             * separating P1 from P2 in payload+timing. */
+            for (int i = 0; i < 16; i++)
+                sig[p][i] = T_ZERO;
+#endif
             /* Recount non-zero after masking */
             nz = 0;
             for (int i = 0; i < CFC_INPUT_DIM; i++)

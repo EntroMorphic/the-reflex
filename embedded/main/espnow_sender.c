@@ -120,13 +120,17 @@ static void send_pattern_1(uint32_t *seq) {
 }
 
 static void send_pattern_2(uint32_t *seq) {
-    /* Slow: 2 Hz, alternating payload */
-    uint8_t alt = (*seq) & 1;
+    /* Slow: 2 Hz, distinct payload.
+     * Prior payload was {0xAA, alt, alt, ...} which shared bytes 2-7
+     * with P1 ({0xFF, i, 0, 0, ...}), leaving only 4 discriminative
+     * payload trits from byte 0. Label-free accuracy was 10% for P2.
+     * New payload uses all 8 bytes distinctly so the ternary dot product
+     * has ~32+ discriminative payload trits vs any other pattern. */
     espnow_packet_t pkt = {
         .pattern_id = 2,
         .sequence = (*seq)++,
         .timestamp_ms = (uint32_t)(esp_timer_get_time() / 1000),
-        .payload = {0xAA, alt, alt, alt, alt, alt, alt, alt}
+        .payload = {0x55, 0x33, 0xCC, 0x66, 0x99, 0x0F, 0xF0, 0x3C}
     };
     esp_now_send(PEER_MAC, (uint8_t *)&pkt, sizeof(pkt));
     vTaskDelay(pdMS_TO_TICKS(500));
