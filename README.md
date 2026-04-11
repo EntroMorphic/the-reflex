@@ -68,7 +68,9 @@ See [`docs/THE_PRIOR_AS_VOICE.md`](docs/THE_PRIOR_AS_VOICE.md) for the full argu
 
 | Metric | Value | Verified |
 |--------|-------|---------|
-| GIE classification accuracy | 100% (4 patterns, TriX ISR) | All runs, structural guarantee |
+| GIE classification accuracy (with label) | 100% (4 patterns, TriX ISR) | All runs, structural guarantee |
+| GIE classification accuracy (label-free) | 100% (4 patterns, pattern_id masked) | `c7ef286`, `-DMASK_PATTERN_ID=1` |
+| Prior P1-P2 label-free (old payload) | 71% (P2 at 10%, others 100%) | `2fc5219` — test-design artifact |
 | GIE rate | 430.8 Hz | Silicon |
 | GIE power | ~0 CPU after init | Silicon |
 | LP core power | ~30 µA | Datasheet (JTAG-free measurement pending) |

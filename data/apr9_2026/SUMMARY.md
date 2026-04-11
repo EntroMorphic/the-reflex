@@ -171,4 +171,16 @@ Seeds: `0xCAFE1234`, `0xDEAD5678`, `0xBEEF9ABC`. Each run is ~10 min end-to-end 
 
 ---
 
+---
+
+## P2 payload caveat (added April 11, 2026)
+
+All data in this directory was collected with the **old P2 payload** (`{0xAA, alt, alt, ...}`), which shared 48/64 payload trits with P1. A subsequent label-free accuracy experiment (R3a, commit `2fc5219`) revealed that without the pattern_id label trits, P2 classification dropped to 10% accuracy due to this payload overlap.
+
+The P2 payload was redesigned in commit `c7ef286` to `{0x55, 0x33, 0xCC, 0x66, 0x99, 0x0F, 0xF0, 0x3C}`, achieving 100% label-free accuracy (32/32, 14/14 PASS). **The multi-seed TEST 14C data in this directory should be re-collected with the new P2 payload** before citing it in papers, because the Seed B headwind finding may be affected by the payload change (different cross-dot ratios change the TriX classification dynamics).
+
+The TriX@15 numbers reported here (A=15/15, B=8/15, C=15/15) were computed with the old P2 payload and pattern_id labels present in the signatures. With the new P2 payload and label masking, these numbers are expected to change. A re-run is listed in `DO_THIS_NEXT.md`.
+
+---
+
 *Dataset produced April 9, 2026. Supersedes all prior `data/apr8_2026/results_*.log` files for TEST 14C claims. The apr8 data should be considered invalid for all three conditions, not just Full, because enrollment starvation affected every condition's TriX classification.*

@@ -1,7 +1,7 @@
 # DO THIS NEXT
 
-*Written April 9, 2026. End of session.*
-*Supersedes the April 8 version. Two compounding bugs fixed; multi-seed TEST 14C now measurable on silicon; papers need rewriting around the corrected metrics.*
+*Written April 9, 2026. Updated April 11.*
+*Supersedes the April 8 version. Two compounding bugs fixed; multi-seed TEST 14C measurable on silicon; label-free 100% classification achieved after P2 payload redesign; papers need rewriting around the corrected metrics.*
 
 ---
 
@@ -135,11 +135,9 @@ for (int i = 0; i < 16; i++) {
 
 ## DATA HYGIENE
 
-### Deprecate the apr8_2026 dataset
+### Deprecate the apr8_2026 dataset [DONE]
 
-`data/apr8_2026/` contains ~16 log files from the broken-enrollment era. None of them have valid TriX classification for any condition. Alignment traces may be partially salvageable but need careful re-reading.
-
-**Action:** Add a `data/apr8_2026/DEPRECATED.md` note pointing at `data/apr9_2026/SUMMARY.md` and explaining that these logs predate both the `trix_enabled` and enrollment-starvation fixes. Keep the files; the historical record matters. But flag them as invalid so no one accidentally cites them.
+`data/apr8_2026/DEPRECATED.md` committed in `ef4902d`. Points at `data/apr9_2026/SUMMARY.md`. Explains both bugs. Note: the deprecation may be too sweeping — VDB distillation (TEST 13) and LP characterization data may still be valid (see red-team item R4).
 
 ### Current apr9_2026 contents
 
@@ -203,6 +201,22 @@ This is a negative result that belongs in the paper. It motivates Pillar 3 (Hebb
 ### Seed A/C 15/15 is real but context-dependent
 
 Both clean seeds show 100% TriX accuracy post-switch because the ground-truth-labeled ESP-NOW packet (pattern_id in the payload) survives the degraded RSSI thermometer. TriX is mostly reading the pattern_id trits, not the RSSI. This is the same result the papers document at 100% for 4-pattern classification. It's honest to note that post-switch TriX accuracy is bounded by the informativeness of the payload trits, which are explicitly labeled. Once the RSSI dead zone lands (and the explicit label trits are masked more aggressively), this will become a sterner test.
+
+---
+
+## RESOLVED: Label-free accuracy (R3a)
+
+**Pattern_id trits [16..23] were the "primary discriminator" in TriX signatures, undisclosed in papers.** With label masked, accuracy was 71% (P2 at 10%). Root cause: P2 payload `{0xAA, alt, alt, ...}` shared 48/64 payload trits with P1 `{0xFF, i, 0, 0, ...}`. Margin: ~9-13 discriminative trits out of 96. RSSI noise hypothesis disproved (masking RSSI → 68%, worse).
+
+**Fix: distinct P2 payload** `{0x55, 0x33, 0xCC, 0x66, 0x99, 0x0F, 0xF0, 0x3C}` (commit `c7ef286`). P1-P2 cross-dot dropped from 78/96 (81%) to 29/96 (30%). Label-free accuracy: **32/32 = 100%. 14/14 PASS.**
+
+Build flags for measurement: `-DMASK_PATTERN_ID=1` (mask label trits from signatures), `-DMASK_RSSI=1` (mask RSSI trits).
+
+**Remaining from R3:**
+- R3b: Disclose full input encoding (all 6 regions) in all three papers
+- R3c: Re-examine Seed B puzzle (if TriX reads features, not labels, why does Seed B differ?)
+- R3d: Reframe headline claims honestly
+- Multi-seed TEST 14C re-run needed with new P2 payload (apr9 data used OLD payload)
 
 ---
 
