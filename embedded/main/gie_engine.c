@@ -1783,71 +1783,101 @@ int lp_hebbian_step(void) {
     int8_t lp_h[LP_HIDDEN_DIM];
     memcpy(lp_h, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
 
-    /* ── 4. Read f-pathway dots from LP SRAM ── */
+    /* ── 3. Read f-pathway AND g-pathway dots from LP SRAM ── */
     int32_t dots_f[LP_HIDDEN_DIM];
+    int32_t dots_g[LP_HIDDEN_DIM];
     memcpy(dots_f, ulp_addr(&ulp_lp_dots_f), LP_HIDDEN_DIM * sizeof(int32_t));
+    memcpy(dots_g, ulp_addr(&ulp_lp_dots_g), LP_HIDDEN_DIM * sizeof(int32_t));
 
-    /* ── 5. Build the concat vector [gie_hidden | lp_hidden] ── */
+    /* ── 4. Build the concat vector [gie_hidden | lp_hidden] ── */
     int8_t concat[LP_CONCAT_DIM];
     memcpy(concat, ulp_addr(&ulp_gie_hidden), LP_GIE_HIDDEN);
     memcpy(concat + LP_GIE_HIDDEN, lp_h, LP_HIDDEN_DIM);
 
-    /* ── 6. Hebbian update: for each neuron with error, flip one W_f weight ── */
-    int flips = 0;
+    /* ── 5. Diagnosed Hebbian update ──
+     *
+     * Three error regions per neuron:
+     *   Region 1 (target=0, f!=0): gate should hold → push f_dot toward zero
+     *   Region 2 (target!=0, f=0): gate should fire → push f_dot toward desired_f
+     *   Region 3 (target!=0, f!=0, output wrong): diagnose f vs g, fix cheaper
+     *
+     * V1 always fixed W_f. ~50% of Region 3 errors were in g, making flips
+     * counterproductive. V2 diagnoses which pathway is wrong and fixes it. */
+    int f_flips = 0, g_flips = 0;
 
     for (int n = 0; n < LP_HIDDEN_DIM; n++) {
-        /* Skip if target and current agree (no error) */
-        if (target[n] == lp_h[n]) continue;
-        /* Skip if target is zero (memory has no opinion for this trit) */
-        if (target[n] == T_ZERO) continue;
+        if (target[n] == lp_h[n]) continue;    /* no error */
+        if (target[n] == T_ZERO) continue;      /* accumulator undecided */
 
         int f_dot = dots_f[n];
-
-        /* Find a W_f weight that contributed to the current f_dot direction
-         * and flip it. Same logic as cfc_homeostatic_step(): pick pseudo-
-         * randomly among contributing weights.
-         *
-         * If f_dot > 0: flip a weight with positive contribution (push f_dot down)
-         * If f_dot < 0: flip a weight with negative contribution (push f_dot up)
-         * If f_dot == 0: the gate held when it should have fired — flip any
-         *   non-zero contributing weight to increase |f_dot|. */
+        int g_dot = dots_g[n];
+        int f = tsign(f_dot);
+        int g = tsign(g_dot);
         int best_i = -1;
 
-        for (int i = 0; i < LP_CONCAT_DIM; i++) {
-            if (lp_W_f[n][i] == T_ZERO || concat[i] == T_ZERO)
-                continue;
-            int contrib = tmul(lp_W_f[n][i], concat[i]);
+        if (f == 0) {
+            /* ── Region 2: gate held, should fire ──
+             * Desired f = tmul(target, g). Push f_dot toward desired_f.
+             * Select a weight with contribution OPPOSITE to desired_f —
+             * flipping it pushes f_dot in the desired direction. */
+            int desired_f = (g == 0) ? target[n] : tmul(target[n], g);
+            int want = (desired_f > 0) ? T_NEG : T_POS;
+            for (int i = 0; i < LP_CONCAT_DIM; i++) {
+                if (lp_W_f[n][i] == T_ZERO || concat[i] == T_ZERO) continue;
+                if (tmul(lp_W_f[n][i], concat[i]) == want)
+                    if (best_i < 0 || (cfc_rand() % 3) == 0) best_i = i;
+            }
+            if (best_i >= 0) { lp_W_f[n][best_i] = -lp_W_f[n][best_i]; f_flips++; }
 
-            if (f_dot > 0 && contrib > 0) {
-                if (best_i < 0 || (cfc_rand() % 3) == 0) best_i = i;
-            } else if (f_dot < 0 && contrib < 0) {
-                if (best_i < 0 || (cfc_rand() % 3) == 0) best_i = i;
-            } else if (f_dot == 0) {
-                /* Gate is holding — we want it to fire. Pick any weight
-                 * to perturb f_dot away from zero. */
-                if (best_i < 0 || (cfc_rand() % 3) == 0) best_i = i;
+        } else {
+            /* ── Region 3: gate fired, output wrong ──
+             * Diagnose: fix f or g? Pick the smaller |dot| (cheaper to reverse).
+             * Push the chosen dot toward zero by flipping a same-direction
+             * contributor. */
+            int abs_f = (f_dot > 0) ? f_dot : -f_dot;
+            int abs_g = (g_dot > 0) ? g_dot : -g_dot;
+
+            if (abs_f <= abs_g) {
+                /* Fix f-pathway: push f_dot toward zero */
+                int want = (f_dot > 0) ? T_POS : T_NEG;
+                for (int i = 0; i < LP_CONCAT_DIM; i++) {
+                    if (lp_W_f[n][i] == T_ZERO || concat[i] == T_ZERO) continue;
+                    if (tmul(lp_W_f[n][i], concat[i]) == want)
+                        if (best_i < 0 || (cfc_rand() % 3) == 0) best_i = i;
+                }
+                if (best_i >= 0) { lp_W_f[n][best_i] = -lp_W_f[n][best_i]; f_flips++; }
+            } else {
+                /* Fix g-pathway: push g_dot toward zero */
+                int want = (g_dot > 0) ? T_POS : T_NEG;
+                for (int i = 0; i < LP_CONCAT_DIM; i++) {
+                    if (lp_W_g[n][i] == T_ZERO || concat[i] == T_ZERO) continue;
+                    if (tmul(lp_W_g[n][i], concat[i]) == want)
+                        if (best_i < 0 || (cfc_rand() % 3) == 0) best_i = i;
+                }
+                if (best_i >= 0) { lp_W_g[n][best_i] = -lp_W_g[n][best_i]; g_flips++; }
             }
         }
-
-        if (best_i >= 0) {
-            lp_W_f[n][best_i] = -lp_W_f[n][best_i];
-            flips++;
-        }
     }
 
-    /* ── 7. Repack updated LP W_f weights to LP SRAM ── */
-    if (flips > 0) {
+    /* ── 6. Repack changed LP weight matrices to LP SRAM ── */
+    if (f_flips > 0) {
         volatile uint32_t *wf_pos = (volatile uint32_t *)ulp_addr(&ulp_lp_W_f_pos);
         volatile uint32_t *wf_neg = (volatile uint32_t *)ulp_addr(&ulp_lp_W_f_neg);
-        for (int n = 0; n < LP_HIDDEN_DIM; n++) {
-            pack_trits_for_lp(lp_W_f[n], LP_CONCAT_DIM,
-                              &wf_pos[n * LP_PACKED_WORDS],
-                              &wf_neg[n * LP_PACKED_WORDS],
-                              LP_PACKED_WORDS);
-        }
+        for (int nn = 0; nn < LP_HIDDEN_DIM; nn++)
+            pack_trits_for_lp(lp_W_f[nn], LP_CONCAT_DIM,
+                              &wf_pos[nn * LP_PACKED_WORDS],
+                              &wf_neg[nn * LP_PACKED_WORDS], LP_PACKED_WORDS);
+    }
+    if (g_flips > 0) {
+        volatile uint32_t *wg_pos = (volatile uint32_t *)ulp_addr(&ulp_lp_W_g_pos);
+        volatile uint32_t *wg_neg = (volatile uint32_t *)ulp_addr(&ulp_lp_W_g_neg);
+        for (int nn = 0; nn < LP_HIDDEN_DIM; nn++)
+            pack_trits_for_lp(lp_W_g[nn], LP_CONCAT_DIM,
+                              &wg_pos[nn * LP_PACKED_WORDS],
+                              &wg_neg[nn * LP_PACKED_WORDS], LP_PACKED_WORDS);
     }
 
-    return flips;
+    return f_flips + g_flips;
 }
 
 /* ══════════════════════════════════════════════════════════════════
