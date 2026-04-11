@@ -124,9 +124,9 @@ Observed pathology:
 - Post-switch, `pred` oscillates: P2 packets sometimes land in the P0 score cell because the P0 signature is actually closer to the degraded LP signal than either P1 or P2 are.
 - **Full** ends up worse than **No bias** and **Ablation** because the bias is pulling the gate threshold in a direction that amplifies the wrong neurons.
 
-**This is a negative result worth keeping.** It demonstrates that the mechanism is not unconditionally beneficial — it depends on LP projection quality. Pillar 3 (Hebbian GIE weight updates, per `ROADMAP.md`) is the designed fix because learned weights would move the projection axis to something that actually separates P1 and P2.
+**This is a negative result worth keeping.** It demonstrates that the mechanism is not unconditionally beneficial — it depends on LP projection quality. Pillar 3 (LP Hebbian weight learning, corrected from the original "Hebbian GIE" proposal) is the designed fix — but the April 11 H2 experiment showed that VDB-mismatch-based Hebbian is label-dependent and harmful when the label leak is closed. The next iteration uses TriX classifier output as the training signal (structurally guaranteed, label-free). See `ROADMAP.md` and `DO_THIS_NEXT.md` for current status.
 
-Reporting recommendation: the papers should cite Seed B as evidence that the mechanism is projection-dependent and that projection quality is the bottleneck the Hebbian layer will address.
+Reporting recommendation: the papers should cite Seed B as evidence that the mechanism is projection-dependent. The Hebbian fix is in progress but not yet validated label-free.
 
 ---
 

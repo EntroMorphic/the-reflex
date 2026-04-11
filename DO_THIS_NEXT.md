@@ -228,8 +228,14 @@ Unchanged. VDB pruning requires kinetic-attention data to know what's load-beari
 ### Pillar 2: SAMA (Substrate-Aware Multi-Agent)
 Unchanged. Treat ESP-NOW packets as GIE inputs without OS involvement. Requires kinetic attention for context-sensitive response — now demonstrated.
 
-### Pillar 3: Hebbian GIE
-**Priority raised.** The Seed B headwind is now quantitative evidence that fixed random weights are the bottleneck. Learned weights would fix projection degeneracy. This is the path from "works on 2/3 seeds" to "works on every seed."
+### Pillar 3: LP Hebbian — TriX-output-based (corrected April 11)
+**Major revision.** The original "Hebbian GIE" proposal was wrong — it would break the structural wall. The corrected target is LP weights. An HP-side Hebbian step (`lp_hebbian_step()`) was implemented and tested with ablation control (commit `4343447`): +2.5 Hamming over control.
+
+**BUT: label-dependent** (commit `a0d3a36`). H2 experiment: with pattern_id removed from the GIE INPUT (not just signatures), Hebbian contribution became -1.7 (harmful). The VDB mismatch error signal was exploiting label information leaked through the GIE hidden state.
+
+**Critical secondary finding:** removing pattern_id from the input IMPROVED VDB-only LP divergence from 0.7 to 3.3/16. The recommended operating mode is `MASK_PATTERN_ID_INPUT=1`.
+
+**Next step:** Replace VDB mismatch with TriX classifier output as the training signal. TriX is 100% accurate (structural guarantee) and genuinely label-free. Use TriX-predicted pattern identity to select the target LP state, then compute the Hebbian error against that target. This is supervised-from-classifier, architecturally clean, and doesn't leak labels through the GIE. LMM cycle in progress.
 
 ### Phase C: MTFP RSSI Encoding
 Unchanged. Replace 16-trit RSSI thermometer with 5-trit MTFP value.

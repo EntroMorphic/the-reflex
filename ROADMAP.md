@@ -94,23 +94,33 @@ The modulation loop is closed. The three pillars are next.
 
 ---
 
-## Pillar 3: Silicon Learning — Hebbian GIE
+## Pillar 3: Silicon Learning — LP Hebbian (Corrected April 11)
 
-**The problem:** The GIE weights are fixed at init time (sign of mean over 30s observation). They never update. If the input distribution shifts — new sender, different environment, channel degradation — the signatures become stale and accuracy degrades.
+**Original proposal (WRONG):** Update GIE W_f weights via VDB mismatch. This was wrong — GIE W_f IS the TriX classifier. Modifying it breaks the structural wall (W_f hidden = 0) and the 100% classification guarantee.
 
-**The step-change:** The LP core generates a weight-update signal based on VDB mismatch and applies it to the GDMA descriptor chain in-situ.
+**Corrected target:** LP core weights (W_f_lp, W_g_lp). The LP temporal context layer learns; the GIE perceptual layer stays frozen. Learning improves what the system *makes of* what it sees, not what it sees.
 
-**Mechanism:**
+**Implemented (commit `32fb061`):** `lp_hebbian_step()` in gie_engine.c. HP-side Hebbian update that flips LP W_f weights based on VDB mismatch, gated by retrieval stability (K=5), TriX agreement, and rate limiting (100ms).
 
-1. After each VDB search (CMD 4/5), the LP core compares the retrieved memory against the current GIE hidden state. The mismatch (Hamming distance × sign of disagreement per trit) is the error signal.
-2. A ternary Hebbian rule: for each GIE neuron i, if the neuron fired (h_new ≠ h_old) and the VDB mismatch indicates the current prediction was wrong, flip the sign of that neuron's weight for the current input trit. ("Neurons that fire together, wire together" — in ternary.)
-3. The LP core re-encodes the affected GDMA descriptor with the updated weight vector. The GDMA circular chain naturally picks up the new descriptor on its next pass.
+**Tested (commit `4343447`):** Ablation-controlled TEST 15 with clean 3-phase design.
+  - Control (CMD 5 only): post mean = 0.7/16
+  - Hebbian (CMD 5 + learn): post mean = 3.2/16
+  - Contribution: +2.5 Hamming — attributed to weight learning, not VDB maturation
 
-**Why this is last:** Hebbian weight updates are persistent and non-reversible within a session. A bad update during a noisy period could corrupt a signature and degrade accuracy. All preceding pillars (kinetic attention, dynamic scaffolding) provide the diagnostic infrastructure needed to detect when a weight update is beneficial vs. harmful. Gate bias (Phase 5) should be validated first because it provides a reversible, lower-risk path to experience-dependent behavior change.
+**BUT: label-dependent (commit `a0d3a36`).** H2 experiment with `MASK_PATTERN_ID_INPUT=1` (genuinely label-free GIE input):
+  - Control (label-free): 3.3/16
+  - Hebbian (label-free): 1.7/16
+  - Contribution: **-1.7 Hamming** (Hebbian HURTS without the label)
 
-**The biological analog:** This is where CLS consolidation would happen. The VDB (hippocampus) trains the GIE weights (neocortex) through repeated retrieval under consistent conditions. Once the weights are trained, the VDB becomes less necessary for P1/P2 discrimination — the CfC projection will no longer collapse them. The VDB then shifts to encoding novel states rather than compensating for known degeneracies.
+The VDB mismatch error signal is label-informed through the GIE hidden state. When the label leak is closed, the error signal is too noisy and the learning is harmful.
 
-**Impact:** The system that "learns to walk" without a training loop, a GPU, or a floating-point number. Weights that reflect accumulated live experience rather than a 30-second initialization window.
+**Critical secondary finding:** Removing pattern_id from the GIE input **improved** VDB-only LP divergence from 0.7 to 3.3/16. The label was drowning out discriminative payload/timing features. The recommended operating mode is now `MASK_PATTERN_ID_INPUT=1`.
+
+**Next: TriX-output-based learning.** The TriX classifier is 100% accurate (structural guarantee) and label-free. Using TriX predictions as the training signal — instead of raw VDB mismatch — provides a clean, architecturally guaranteed error signal for LP weight updates. This is supervised-from-classifier, not unsupervised-from-memory. LMM cycle in progress (`journal/`).
+
+**The biological analog (revised):** CLS consolidation still, but the hippocampus (VDB) doesn't directly train the neocortex (LP weights). Instead, the perceptual classifier (TriX, analogous to sensory cortex) provides the label that organizes the consolidation. The hippocampus stores and retrieves; the classifier tells the LP what pattern it's looking at; the LP weights learn to represent that pattern's temporal signature.
+
+**Impact (unchanged):** The system that learns to walk without a training loop. But the learning signal must come from the structurally guaranteed classifier, not from raw memory retrieval.
 
 ---
 
@@ -139,8 +149,9 @@ Phase 5: Kinetic Attention (TEST 14)
     ├── Pillar 2: SAMA
     │       (needs kinetic attention for context-sensitive inter-agent response)
     │
-    └── Pillar 3: Hebbian GIE
-            (needs kinetic attention as the behavioral signal for weight updates)
+    └── Pillar 3: LP Hebbian (TriX-output-based)
+            (needs kinetic attention as the behavioral signal
+             + TriX classifier as the structurally guaranteed label source)
 
 UART Falsification (independent, can run at any time)
 ```
