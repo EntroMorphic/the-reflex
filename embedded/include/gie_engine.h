@@ -219,6 +219,22 @@ void cpu_lp_reference(const int8_t *gie_h, const int8_t *lp_h,
                       int *dots_f, int *dots_g);
 
 /* ══════════════════════════════════════════════════════════════════
+ *  LP HEBBIAN WEIGHT UPDATE (Pillar 3)
+ *
+ *  Applies ternary Hebbian rule to LP W_f weights based on VDB
+ *  mismatch. Only LP weights are modified — GIE W_f (the TriX
+ *  classifier) is NEVER touched. The structural wall stays intact.
+ *
+ *  Call from HP core feedback loop when gating conditions are met.
+ *  Returns number of weight flips applied (0..LP_HIDDEN_DIM).
+ * ══════════════════════════════════════════════════════════════════ */
+
+int lp_hebbian_step(void);
+
+/* VDB constants needed by Hebbian step (match ulp/main.S) */
+#define VDB_MAX_NODES   64
+
+/* ══════════════════════════════════════════════════════════════════
  *  DISPLAY HELPERS
  * ══════════════════════════════════════════════════════════════════ */
 

@@ -1714,6 +1714,124 @@ void cpu_lp_reference(const int8_t *gie_h, const int8_t *lp_h,
 }
 
 /* ══════════════════════════════════════════════════════════════════
+ *  LP HEBBIAN WEIGHT UPDATE (Pillar 3: Self-Organizing Representation)
+ *
+ *  Applies a ternary Hebbian rule to LP core f-pathway weights based
+ *  on VDB mismatch. For each LP neuron where the current lp_hidden
+ *  disagrees with the VDB best match's LP portion, flip one W_f weight
+ *  that contributed to the current f_dot direction.
+ *
+ *  This is the CLS consolidation path: the VDB (hippocampus) trains
+ *  the LP weights (neocortex) through retrieval under stable conditions.
+ *
+ *  IMPORTANT: Only LP weights are updated. GIE W_f is NOT touched.
+ *  The structural wall (W_f hidden = 0, 100% TriX accuracy) stays intact.
+ *  Learning improves the temporal context extraction (LP), which improves
+ *  gate bias quality (Phase 5), which improves GIE selectivity — without
+ *  ever modifying the classifier.
+ *
+ *  Called from the HP core's feedback loop when gating conditions are met:
+ *  (1) retrieval stability (same top-1 for K consecutive CMD 5 calls)
+ *  (2) TriX agreement (classifier and retrieval agree on pattern)
+ *  (3) rate limiting (one call per N wake cycles)
+ *
+ *  Returns: number of weight flips applied (0..LP_HIDDEN_DIM).
+ * ══════════════════════════════════════════════════════════════════ */
+
+int lp_hebbian_step(void) {
+    /* ── 1. Read the VDB best match ID from LP SRAM ── */
+    int source_id = (int)ulp_fb_source_id;
+    if (source_id < 0 || source_id >= VDB_MAX_NODES || source_id == 0xFF)
+        return 0;
+
+    /* ── 2. Read the best match node's LP hidden portion (trits 32..47) ──
+     * Node layout: 6 words (3 pos + 3 neg) + 8 bytes graph metadata = 32 bytes.
+     * Word 2 of pos_mask = bits 0..15 = trits 32..47 = the LP portion. */
+    volatile uint32_t *nodes = (volatile uint32_t *)ulp_addr(&ulp_vdb_nodes);
+    int node_word_off = source_id * 8;  /* 32 bytes / 4 = 8 words per node */
+    uint32_t target_pos = nodes[node_word_off + 2];  /* pos_mask word 2 */
+    uint32_t target_neg = nodes[node_word_off + 5];  /* neg_mask word 2 (offset 12B+8B=20B = word 5) */
+
+    /* Decode target LP hidden (16 trits) */
+    int8_t target[LP_HIDDEN_DIM];
+    for (int i = 0; i < LP_HIDDEN_DIM; i++) {
+        int p = (target_pos >> i) & 1;
+        int n = (target_neg >> i) & 1;
+        target[i] = p ? T_POS : (n ? T_NEG : T_ZERO);
+    }
+
+    /* ── 3. Read current LP hidden from LP SRAM ── */
+    int8_t lp_h[LP_HIDDEN_DIM];
+    memcpy(lp_h, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
+
+    /* ── 4. Read f-pathway dots from LP SRAM ── */
+    int32_t dots_f[LP_HIDDEN_DIM];
+    memcpy(dots_f, ulp_addr(&ulp_lp_dots_f), LP_HIDDEN_DIM * sizeof(int32_t));
+
+    /* ── 5. Build the concat vector [gie_hidden | lp_hidden] ── */
+    int8_t concat[LP_CONCAT_DIM];
+    memcpy(concat, ulp_addr(&ulp_gie_hidden), LP_GIE_HIDDEN);
+    memcpy(concat + LP_GIE_HIDDEN, lp_h, LP_HIDDEN_DIM);
+
+    /* ── 6. Hebbian update: for each neuron with error, flip one W_f weight ── */
+    int flips = 0;
+
+    for (int n = 0; n < LP_HIDDEN_DIM; n++) {
+        /* Skip if target and current agree (no error) */
+        if (target[n] == lp_h[n]) continue;
+        /* Skip if target is zero (memory has no opinion for this trit) */
+        if (target[n] == T_ZERO) continue;
+
+        int f_dot = dots_f[n];
+
+        /* Find a W_f weight that contributed to the current f_dot direction
+         * and flip it. Same logic as cfc_homeostatic_step(): pick pseudo-
+         * randomly among contributing weights.
+         *
+         * If f_dot > 0: flip a weight with positive contribution (push f_dot down)
+         * If f_dot < 0: flip a weight with negative contribution (push f_dot up)
+         * If f_dot == 0: the gate held when it should have fired — flip any
+         *   non-zero contributing weight to increase |f_dot|. */
+        int best_i = -1;
+
+        for (int i = 0; i < LP_CONCAT_DIM; i++) {
+            if (lp_W_f[n][i] == T_ZERO || concat[i] == T_ZERO)
+                continue;
+            int contrib = tmul(lp_W_f[n][i], concat[i]);
+
+            if (f_dot > 0 && contrib > 0) {
+                if (best_i < 0 || (cfc_rand() % 3) == 0) best_i = i;
+            } else if (f_dot < 0 && contrib < 0) {
+                if (best_i < 0 || (cfc_rand() % 3) == 0) best_i = i;
+            } else if (f_dot == 0) {
+                /* Gate is holding — we want it to fire. Pick any weight
+                 * to perturb f_dot away from zero. */
+                if (best_i < 0 || (cfc_rand() % 3) == 0) best_i = i;
+            }
+        }
+
+        if (best_i >= 0) {
+            lp_W_f[n][best_i] = -lp_W_f[n][best_i];
+            flips++;
+        }
+    }
+
+    /* ── 7. Repack updated LP W_f weights to LP SRAM ── */
+    if (flips > 0) {
+        volatile uint32_t *wf_pos = (volatile uint32_t *)ulp_addr(&ulp_lp_W_f_pos);
+        volatile uint32_t *wf_neg = (volatile uint32_t *)ulp_addr(&ulp_lp_W_f_neg);
+        for (int n = 0; n < LP_HIDDEN_DIM; n++) {
+            pack_trits_for_lp(lp_W_f[n], LP_CONCAT_DIM,
+                              &wf_pos[n * LP_PACKED_WORDS],
+                              &wf_neg[n * LP_PACKED_WORDS],
+                              LP_PACKED_WORDS);
+        }
+    }
+
+    return flips;
+}
+
+/* ══════════════════════════════════════════════════════════════════
  *  ACCESSORS (for test harness)
  * ══════════════════════════════════════════════════════════════════ */
 

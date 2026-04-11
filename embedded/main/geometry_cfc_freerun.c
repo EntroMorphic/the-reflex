@@ -137,6 +137,7 @@ void app_main(void) {
     test_count++; pass_count += run_test_13();
     test_count++; pass_count += run_test_14();
     test_count++; pass_count += run_test_14c();
+    test_count++; pass_count += run_test_15();
 #endif
 
     /* ── Summary ── */

@@ -27,6 +27,7 @@ else()
         "test_memory.c"
         "test_kinetic.c"
         "test_lp_char.c"
+        "test_hebbian.c"
         "reflex_vdb.c"
         "reflex_espnow.c"
     )
