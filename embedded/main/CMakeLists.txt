@@ -38,6 +38,10 @@ else()
     if(DEFINED SKIP_TO_14C AND SKIP_TO_14C)
         add_compile_definitions(SKIP_TO_14C=1)
     endif()
+    # R3a: mask pattern_id trits [16..23] from signatures
+    if(DEFINED MASK_PATTERN_ID AND MASK_PATTERN_ID)
+        add_compile_definitions(MASK_PATTERN_ID=1)
+    endif()
 endif()
 
 idf_component_register(

@@ -171,6 +171,13 @@ int run_test_11(void) {
              * patterns have different inter-packet gaps). */
             for (int i = 104; i < CFC_INPUT_DIM; i++)
                 sig[p][i] = T_ZERO;     /* sequence + reserved */
+#ifdef MASK_PATTERN_ID
+            /* R3a experiment: also mask pattern_id one-hot [16..23].
+             * Measures whether TriX classification relies on the literal
+             * label field vs. payload/timing features. */
+            for (int i = 16; i < 24; i++)
+                sig[p][i] = T_ZERO;
+#endif
             /* Recount non-zero after masking */
             nz = 0;
             for (int i = 0; i < CFC_INPUT_DIM; i++)
