@@ -62,6 +62,7 @@ static int run_t15_condition(int cond, int8_t mean_out[][LP_HIDDEN_DIM],
     vdb_clear();
     memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
     ulp_lp_step_count = 0;
+    lp_hebbian_reset_accum();
 
     /* Re-init LP weights from the SAME seed each condition so they start equal.
      * LP_SEED is defined in CMakeLists.txt or defaults to 0xCAFE1234. */
@@ -134,6 +135,9 @@ static int run_t15_condition(int cond, int8_t mean_out[][LP_HIDDEN_DIM],
         memcpy(lp_now, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
         int pred = trix_pred;
 
+        /* ── Accumulate LP state into TriX-labeled target (all phases) ── */
+        lp_hebbian_accumulate(pred, lp_now);
+
         /* ── Phase routing ── */
         if (now < t_ab) {
             /* Phase A: baseline accumulation */
@@ -161,7 +165,11 @@ static int run_t15_condition(int cond, int8_t mean_out[][LP_HIDDEN_DIM],
                 int trix_agrees = (pred == (int)gt);
                 int rate_ok = (now - last_update_us) >= (HEBBIAN_RATE_LIMIT_MS * 1000LL);
 
-                if (stable_count >= HEBBIAN_STABILITY_K && trix_agrees && rate_ok) {
+                int accum_ready = (pred >= 0 && pred < NUM_TEMPLATES &&
+                                   lp_hebbian_accum_n[pred] >= 50);
+
+                if (stable_count >= HEBBIAN_STABILITY_K && trix_agrees &&
+                    rate_ok && accum_ready) {
                     int flips = lp_hebbian_step();
                     if (flips > 0) {
                         total_flips += flips;

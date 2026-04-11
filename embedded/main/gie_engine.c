@@ -1727,51 +1727,59 @@ void cpu_lp_reference(const int8_t *gie_h, const int8_t *lp_h,
 /* ══════════════════════════════════════════════════════════════════
  *  LP HEBBIAN WEIGHT UPDATE (Pillar 3: Self-Organizing Representation)
  *
- *  Applies a ternary Hebbian rule to LP core f-pathway weights based
- *  on VDB mismatch. For each LP neuron where the current lp_hidden
- *  disagrees with the VDB best match's LP portion, flip one W_f weight
- *  that contributed to the current f_dot direction.
+ *  Applies a ternary Hebbian rule to LP core f-pathway weights.
+ *  Target comes from the TriX-labeled accumulator (population mean of
+ *  LP hidden states per pattern), NOT from VDB mismatch (which was
+ *  shown to be label-dependent in the H2 experiment, commit a0d3a36).
  *
- *  This is the CLS consolidation path: the VDB (hippocampus) trains
- *  the LP weights (neocortex) through retrieval under stable conditions.
+ *  The TriX classifier is structurally guaranteed (W_f hidden = 0) and
+ *  100% accurate. Using its output as the training signal means:
+ *  - The learning signal is genuinely label-free
+ *  - The prior (LP weights) cannot influence the measurement (TriX)
+ *  - The population target is noise-resistant (sign-of-sum over many samples)
  *
  *  IMPORTANT: Only LP weights are updated. GIE W_f is NOT touched.
- *  The structural wall (W_f hidden = 0, 100% TriX accuracy) stays intact.
- *  Learning improves the temporal context extraction (LP), which improves
- *  gate bias quality (Phase 5), which improves GIE selectivity — without
- *  ever modifying the classifier.
+ *  The structural wall stays intact.
  *
  *  Called from the HP core's feedback loop when gating conditions are met:
  *  (1) retrieval stability (same top-1 for K consecutive CMD 5 calls)
  *  (2) TriX agreement (classifier and retrieval agree on pattern)
  *  (3) rate limiting (one call per N wake cycles)
+ *  (4) accumulator depth (≥ HEBBIAN_ACCUM_MIN samples for predicted pattern)
  *
  *  Returns: number of weight flips applied (0..LP_HIDDEN_DIM).
  * ══════════════════════════════════════════════════════════════════ */
 
+/* TriX-labeled LP accumulator: sign-of-sum per pattern per trit.
+ * Updated externally (test harness) every CMD 5 step when TriX confirms.
+ * The target for Hebbian learning is tsign(lp_hebbian_accum[pred][i]). */
+int16_t lp_hebbian_accum[TRIX_NUM_PATTERNS][LP_HIDDEN_DIM];
+int     lp_hebbian_accum_n[TRIX_NUM_PATTERNS];
+#define HEBBIAN_ACCUM_MIN 50
+
+void lp_hebbian_accumulate(int pred, const int8_t *lp_now) {
+    if (pred < 0 || pred >= TRIX_NUM_PATTERNS) return;
+    for (int j = 0; j < LP_HIDDEN_DIM; j++)
+        lp_hebbian_accum[pred][j] += lp_now[j];
+    lp_hebbian_accum_n[pred]++;
+}
+
+void lp_hebbian_reset_accum(void) {
+    memset(lp_hebbian_accum, 0, sizeof(lp_hebbian_accum));
+    memset(lp_hebbian_accum_n, 0, sizeof(lp_hebbian_accum_n));
+}
+
 int lp_hebbian_step(void) {
-    /* ── 1. Read the VDB best match ID from LP SRAM ── */
-    int source_id = (int)ulp_fb_source_id;
-    if (source_id < 0 || source_id >= VDB_MAX_NODES || source_id == 0xFF)
-        return 0;
+    /* ── 1. Get target from TriX-labeled accumulator ── */
+    int pred = trix_pred;
+    if (pred < 0 || pred >= TRIX_NUM_PATTERNS) return 0;
+    if (lp_hebbian_accum_n[pred] < HEBBIAN_ACCUM_MIN) return 0;
 
-    /* ── 2. Read the best match node's LP hidden portion (trits 32..47) ──
-     * Node layout: 6 words (3 pos + 3 neg) + 8 bytes graph metadata = 32 bytes.
-     * Word 2 of pos_mask = bits 0..15 = trits 32..47 = the LP portion. */
-    volatile uint32_t *nodes = (volatile uint32_t *)ulp_addr(&ulp_vdb_nodes);
-    int node_word_off = source_id * 8;  /* 32 bytes / 4 = 8 words per node */
-    uint32_t target_pos = nodes[node_word_off + 2];  /* pos_mask word 2 */
-    uint32_t target_neg = nodes[node_word_off + 5];  /* neg_mask word 2 (offset 12B+8B=20B = word 5) */
-
-    /* Decode target LP hidden (16 trits) */
     int8_t target[LP_HIDDEN_DIM];
-    for (int i = 0; i < LP_HIDDEN_DIM; i++) {
-        int p = (target_pos >> i) & 1;
-        int n = (target_neg >> i) & 1;
-        target[i] = p ? T_POS : (n ? T_NEG : T_ZERO);
-    }
+    for (int i = 0; i < LP_HIDDEN_DIM; i++)
+        target[i] = tsign(lp_hebbian_accum[pred][i]);
 
-    /* ── 3. Read current LP hidden from LP SRAM ── */
+    /* ── 2. Read current LP hidden from LP SRAM ── */
     int8_t lp_h[LP_HIDDEN_DIM];
     memcpy(lp_h, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
 

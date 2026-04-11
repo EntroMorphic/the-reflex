@@ -230,6 +230,11 @@ void cpu_lp_reference(const int8_t *gie_h, const int8_t *lp_h,
  * ══════════════════════════════════════════════════════════════════ */
 
 int lp_hebbian_step(void);
+void lp_hebbian_accumulate(int pred, const int8_t *lp_now);
+void lp_hebbian_reset_accum(void);
+
+extern int16_t lp_hebbian_accum[TRIX_NUM_PATTERNS][LP_HIDDEN_DIM];
+extern int     lp_hebbian_accum_n[TRIX_NUM_PATTERNS];
 
 /* VDB constants needed by Hebbian step (match ulp/main.S) */
 #define VDB_MAX_NODES   64
