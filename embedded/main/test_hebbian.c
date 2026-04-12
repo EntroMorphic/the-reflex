@@ -51,6 +51,7 @@ static const char *t15_cond_name[T15_N_COND] = {
  * Populates mean_out[4][LP_HIDDEN_DIM] with the Phase C LP means
  * and count_out[4] with per-pattern sample counts. */
 static int run_t15_condition(int cond, int8_t mean_out[][LP_HIDDEN_DIM],
+                             int8_t mtfp_mean_out[][LP_MTFP_DIM],
                              int *count_out, int *out_flips, int *out_updates) {
     printf("\n  ── Condition: %s ──\n", t15_cond_name[cond]);
     fflush(stdout);
@@ -72,12 +73,17 @@ static int run_t15_condition(int cond, int8_t mean_out[][LP_HIDDEN_DIM],
 #endif
     init_lp_core_weights(LP_SEED);
 
-    /* Accumulators — Phase A (pre) and Phase C (post) only */
+    /* Accumulators — Phase A (pre) and Phase C (post) only.
+     * Both sign-space (16 trits) and MTFP-space (80 trits). */
     int16_t sum_a[NUM_TEMPLATES][LP_HIDDEN_DIM];
     int16_t sum_c[NUM_TEMPLATES][LP_HIDDEN_DIM];
+    int16_t mtfp_sum_a[NUM_TEMPLATES][LP_MTFP_DIM];
+    int16_t mtfp_sum_c[NUM_TEMPLATES][LP_MTFP_DIM];
     int count_a[NUM_TEMPLATES], count_c[NUM_TEMPLATES];
     memset(sum_a, 0, sizeof(sum_a));
     memset(sum_c, 0, sizeof(sum_c));
+    memset(mtfp_sum_a, 0, sizeof(mtfp_sum_a));
+    memset(mtfp_sum_c, 0, sizeof(mtfp_sum_c));
     memset(count_a, 0, sizeof(count_a));
     memset(count_c, 0, sizeof(count_c));
 
@@ -136,15 +142,23 @@ static int run_t15_condition(int cond, int8_t mean_out[][LP_HIDDEN_DIM],
         memcpy(lp_now, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
         int pred = trix_pred;
 
+        /* Read LP f-pathway dots and encode as 80-trit MTFP */
+        int32_t dots_f_now[LP_HIDDEN_DIM];
+        memcpy(dots_f_now, ulp_addr(&ulp_lp_dots_f), LP_HIDDEN_DIM * sizeof(int32_t));
+        int8_t lp_mtfp[LP_MTFP_DIM];
+        encode_lp_mtfp(dots_f_now, lp_mtfp);
+
         /* ── Accumulate LP state into TriX-labeled target (all phases) ── */
         lp_hebbian_accumulate(pred, lp_now);
 
         /* ── Phase routing ── */
         if (now < t_ab) {
-            /* Phase A: baseline accumulation */
+            /* Phase A: baseline accumulation (sign + MTFP) */
             if (gt < NUM_TEMPLATES) {
                 for (int j = 0; j < LP_HIDDEN_DIM; j++)
                     sum_a[gt][j] += lp_now[j];
+                for (int j = 0; j < LP_MTFP_DIM; j++)
+                    mtfp_sum_a[gt][j] += lp_mtfp[j];
                 count_a[gt]++;
             }
         } else if (now < t_bc) {
@@ -191,6 +205,8 @@ static int run_t15_condition(int cond, int8_t mean_out[][LP_HIDDEN_DIM],
             if (gt < NUM_TEMPLATES) {
                 for (int j = 0; j < LP_HIDDEN_DIM; j++)
                     sum_c[gt][j] += lp_now[j];
+                for (int j = 0; j < LP_MTFP_DIM; j++)
+                    mtfp_sum_c[gt][j] += lp_mtfp[j];
                 count_c[gt]++;
             }
         }
@@ -214,7 +230,7 @@ static int run_t15_condition(int cond, int8_t mean_out[][LP_HIDDEN_DIM],
 
     stop_freerun();
 
-    /* Compute Phase C means → output */
+    /* Compute Phase C sign means → output */
     for (int p = 0; p < NUM_TEMPLATES; p++) {
         for (int j = 0; j < LP_HIDDEN_DIM; j++)
             mean_out[p][j] = (count_c[p] > 0) ? tsign(sum_c[p][j]) : 0;
@@ -222,6 +238,11 @@ static int run_t15_condition(int cond, int8_t mean_out[][LP_HIDDEN_DIM],
     }
     *out_flips = total_flips;
     *out_updates = total_updates;
+
+    /* Compute Phase C MTFP means → output */
+    for (int p = 0; p < NUM_TEMPLATES; p++)
+        for (int j = 0; j < LP_MTFP_DIM; j++)
+            mtfp_mean_out[p][j] = (count_c[p] > 0) ? tsign(mtfp_sum_c[p][j]) : 0;
 
     /* Print Phase A + C divergence */
     for (int phase = 0; phase < 2; phase++) {
@@ -266,8 +287,9 @@ int run_test_15(void) {
            (PHASE_A_S + PHASE_B_S + PHASE_C_S) * T15_N_REPS * T15_N_COND);
     fflush(stdout);
 
-    /* Per-rep results */
+    /* Per-rep results (sign-space and MTFP-space) */
     float rep_mean[T15_N_COND][T15_N_REPS];
+    float rep_mtfp[T15_N_COND][T15_N_REPS];
     int   rep_flips[T15_N_COND][T15_N_REPS];
     int   rep_updates[T15_N_COND][T15_N_REPS];
 
@@ -278,11 +300,12 @@ int run_test_15(void) {
             fflush(stdout);
 
             static int8_t pm[NUM_TEMPLATES][LP_HIDDEN_DIM];
+            static int8_t mm[NUM_TEMPLATES][LP_MTFP_DIM];
             static int pc[NUM_TEMPLATES];
             int fl, up;
-            run_t15_condition(c, pm, pc, &fl, &up);
+            run_t15_condition(c, pm, mm, pc, &fl, &up);
 
-            /* Compute mean divergence for this rep */
+            /* Compute mean divergence for this rep — sign-space */
             int total = 0, pairs = 0;
             for (int p = 0; p < NUM_TEMPLATES; p++)
                 for (int q = p + 1; q < NUM_TEMPLATES; q++)
@@ -291,11 +314,22 @@ int run_test_15(void) {
                         pairs++;
                     }
             rep_mean[c][r] = pairs > 0 ? (float)total / pairs : -1;
+
+            /* Compute mean divergence — MTFP-space */
+            int mtotal = 0, mpairs = 0;
+            for (int p = 0; p < NUM_TEMPLATES; p++)
+                for (int q = p + 1; q < NUM_TEMPLATES; q++)
+                    if (pc[p] >= 15 && pc[q] >= 15) {
+                        mtotal += trit_hamming(mm[p], mm[q], LP_MTFP_DIM);
+                        mpairs++;
+                    }
+            rep_mtfp[c][r] = mpairs > 0 ? (float)mtotal / mpairs : -1;
+
             rep_flips[c][r] = fl;
             rep_updates[c][r] = up;
 
-            printf("    Rep %d result: mean=%.1f/16 (%d pairs), flips=%d, updates=%d\n",
-                   r + 1, rep_mean[c][r], pairs, fl, up);
+            printf("    Rep %d: sign=%.1f/16 mtfp=%.1f/80 (%d pairs) flips=%d\n",
+                   r + 1, rep_mean[c][r], rep_mtfp[c][r], pairs, fl);
             fflush(stdout);
         }
     }
@@ -303,30 +337,45 @@ int run_test_15(void) {
     /* ── Comparison with mean ± std ── */
     printf("\n  ══ TEST 15 COMPARISON (%d reps per condition) ══\n", T15_N_REPS);
 
+    /* Compute stats for both metrics */
     float cond_avg[T15_N_COND], cond_std[T15_N_COND];
+    float mtfp_avg[T15_N_COND], mtfp_std[T15_N_COND];
     for (int c = 0; c < T15_N_COND; c++) {
-        float sum = 0;
-        int valid = 0;
+        /* Sign-space */
+        float sum = 0; int valid = 0;
         for (int r = 0; r < T15_N_REPS; r++)
             if (rep_mean[c][r] >= 0) { sum += rep_mean[c][r]; valid++; }
         cond_avg[c] = valid > 0 ? sum / valid : 0;
-
         float var = 0;
         for (int r = 0; r < T15_N_REPS; r++)
-            if (rep_mean[c][r] >= 0) {
-                float d = rep_mean[c][r] - cond_avg[c];
-                var += d * d;
-            }
+            if (rep_mean[c][r] >= 0) { float d = rep_mean[c][r] - cond_avg[c]; var += d * d; }
         cond_std[c] = valid > 1 ? __builtin_sqrtf(var / (valid - 1)) : 0;
 
-        printf("  %-24s  %.1f ± %.1f /16  (reps:", t15_cond_name[c], cond_avg[c], cond_std[c]);
+        /* MTFP-space */
+        float msum = 0; int mvalid = 0;
+        for (int r = 0; r < T15_N_REPS; r++)
+            if (rep_mtfp[c][r] >= 0) { msum += rep_mtfp[c][r]; mvalid++; }
+        mtfp_avg[c] = mvalid > 0 ? msum / mvalid : 0;
+        float mvar = 0;
+        for (int r = 0; r < T15_N_REPS; r++)
+            if (rep_mtfp[c][r] >= 0) { float d = rep_mtfp[c][r] - mtfp_avg[c]; mvar += d * d; }
+        mtfp_std[c] = mvalid > 1 ? __builtin_sqrtf(mvar / (mvalid - 1)) : 0;
+
+        printf("  %-24s  sign: %.1f±%.1f /16  mtfp: %.1f±%.1f /80\n",
+               t15_cond_name[c], cond_avg[c], cond_std[c], mtfp_avg[c], mtfp_std[c]);
+        printf("  %24s  (sign reps:", "");
         for (int r = 0; r < T15_N_REPS; r++) printf(" %.1f", rep_mean[c][r]);
+        printf(")  (mtfp reps:");
+        for (int r = 0; r < T15_N_REPS; r++) printf(" %.1f", rep_mtfp[c][r]);
         printf(")\n");
     }
 
     float contribution = cond_avg[T15_HEBBIAN] - cond_avg[T15_CONTROL];
     float combined_std = __builtin_sqrtf(cond_std[0] * cond_std[0] + cond_std[1] * cond_std[1]);
-    printf("\n  Hebbian contribution: %+.1f ± %.1f Hamming\n", contribution, combined_std);
+    float mtfp_contribution = mtfp_avg[T15_HEBBIAN] - mtfp_avg[T15_CONTROL];
+    float mtfp_combined = __builtin_sqrtf(mtfp_std[0] * mtfp_std[0] + mtfp_std[1] * mtfp_std[1]);
+    printf("\n  Sign contribution:  %+.1f ± %.1f Hamming /16\n", contribution, combined_std);
+    printf("  MTFP contribution:  %+.1f ± %.1f Hamming /80\n", mtfp_contribution, mtfp_combined);
 
     /* ── Verdict ── */
     printf("\n  ── Verdict ──\n");
