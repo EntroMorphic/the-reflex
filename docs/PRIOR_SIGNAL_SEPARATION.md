@@ -9,6 +9,18 @@
 
 ---
 
+## ⚠ CORRECTIONS (April 12, 2026)
+
+**The structural guarantee (W_f hidden = 0) holds across ALL experiments in the April 9-12 session, including Hebbian weight updates.** TriX accuracy remains 100% label-free and independent of LP state. The prior-signal separation principle is the project's most robust claim. However:
+
+1. **"Bias releases within 0-2 steps" (Section 5) → geometric ×0.9/step.** `pred` flips at step +1 but the bias magnitude decays over ~12 steps. The disagree-count hard-zero path (≥4 trits) was not exercised on clean seeds. The "evidence-deference policy" is real but slower than stated. See commit `3670a51`.
+
+2. **"100% TriX accuracy (4 well-separated patterns)" (Section 5) → 100% label-free confirmed** with distinct P2 payload and pattern_id masked from both signatures and input. The paper should disclose the full input encoding. See commits `2fc5219`, `c7ef286`.
+
+3. **The disagreement detection mechanism (kinetic attention) is harmful at MTFP resolution.** The five-component architecture holds — the structural wall, the evidence reader, the separation guarantee — but the specific "disagreement detection + evidence deference" implementation via gate bias degrades LP magnitude diversity. The PRINCIPLE is intact; the IMPLEMENTATION needs revision. The principle paper should note this honestly.
+
+---
+
 ## Abstract
 
 We describe a five-component architecture for structural hallucination resistance — resistance that is enforced by design rather than achieved by statistical training. The architecture requires: (1) a prior-holder, (2) an evidence-reader that the prior cannot corrupt, (3) a structural separation guarantee between them, (4) a mechanism to detect genuine disagreement between prior and evidence, and (5) a policy of evidence deference at the point of conflict. We demonstrate this architecture in silicon on an ESP32-C6 microcontroller drawing ~30 µA, where it emerged from a minimum-assumptions experiment rather than deliberate design. The key structural element is `W_f hidden = 0` — a fixed zero in the weight matrix of the perceptual layer that creates an architectural wall preventing the accumulated prior from entering the classification path. We describe how this wall works, why homogeneous systems (including current large language models) cannot implement an equivalent, and what would need to be true for such a separation to exist at language model scale. The argument is not that the Reflex solves hallucination in language models. The argument is that hallucination resistance has a structural description — and the structure requires prior-signal separation as a necessary condition, not a sufficient one.

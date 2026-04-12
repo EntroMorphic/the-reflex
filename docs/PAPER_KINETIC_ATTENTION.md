@@ -4,7 +4,27 @@
 EntroMorphic Research
 
 *Draft: April 8, 2026. Updated with TriX dispatch, ternary agreement, multi-seed TEST 14C, and red-team remediation.*
-*Data: commits `12aa970` (TEST 12/13), `429ce38` (TEST 14), `98800a9` (MTFP encoding), `f510f9a` (red-team fixes), `276af59` (multi-seed sweep). ESP32-C6FH4, ESP-IDF v5.4. Multi-seed validated (3 seeds). Multi-seed TEST 14C transition data (3 seeds × 3 conditions). LP feedback dispatched from TriX ISR (100% accuracy). Ternary disagree-count agreement with immediate release.*
+*Data: commits `12aa970` (TEST 12/13), `429ce38` (TEST 14), `98800a9` (MTFP encoding), `f510f9a` (red-team fixes), `276af59` (multi-seed sweep). ESP32-C6FH4, ESP-IDF v5.4.*
+
+---
+
+## ⚠ CORRECTIONS REQUIRED (April 12, 2026)
+
+**This paper contains claims invalidated by the April 9-12 session. See `DO_THIS_NEXT.md` and `data/apr11_2026/SUMMARY.md` for the authoritative findings. The corrections below mark the most critical false claims; a full rewrite is pending.**
+
+### Critical corrections:
+
+1. **"Gate bias consistently increases LP divergence" (Section 5, passim) → FALSE.** Three runs of Test 14 under label-free conditions (`MASK_PATTERN_ID_INPUT=1`) show kinetic attention is **harmful at MTFP resolution**: mean -5.5/80 (runs: +0.4, -7.0, -9.8). The sign-space metric (+1.3/16 mean) was an artifact — the bias trades magnitude diversity for sign diversity, a net information loss. The bias saturates the GIE hidden state (more neurons fire → LP input becomes more uniform → LP dot magnitudes converge). See commits `774fa4c`, `5959466`.
+
+2. **"Bias releases within 0-2 steps" / "immediate release" (Sections 2.4, 5.7) → WRONG.** The actual mechanism has two release paths: soft geometric decay (×0.9/step, half-life ~6.6 steps, runs unconditionally) and hard disagree-zero (≥4 trits, safety gate, not exercised on clean seeds). `pred` flips at step +1. Bias magnitude decays over ~12 steps. The "immediate release" language conflated the disagree threshold (4 trits) with a step count. See commit `3670a51`.
+
+3. **"100% accuracy" (Abstract, passim) → NEEDS CONTEXT.** Classification is 100% label-free (32/32) with the distinct P2 payload (`c7ef286`) and both `MASK_PATTERN_ID=1` (signatures) and `MASK_PATTERN_ID_INPUT=1` (input). The prior undisclosed "primary discriminator" was the pattern_id field in the input. The paper must disclose the full input encoding (6 regions: RSSI, pattern_id, payload, timing, sequence, reserved) and which are masked. See commits `2fc5219`, `c7ef286`.
+
+4. **Multi-seed data (Sections 4, 5) → INVALID.** All multi-seed TEST 14C data in this paper was collected before two compounding bugs were fixed (sender enrollment starvation `63877f7`, trix_enabled not set `f97ac1c`). Crossover numbers (0, 22, 2) are from broken runs. The apr9 re-run (`data/apr9_2026/SUMMARY.md`) used the old P2 payload with label in input. A multi-seed re-run under label-free conditions with the distinct P2 payload has not been done.
+
+5. **"Hebbian GIE" as future fix (Section 5.5) → TESTED AND FOUND INEFFECTIVE.** Three iterations of Hebbian LP weight learning were implemented and tested. Result at n=3: +0.1 ± 1.1 MTFP (noise). The mechanism doesn't improve VDB-only baseline. See commits `32fb061` through `698231c`.
+
+6. **The paper's core claim needs reframing.** The system's demonstrated capability is: 100% label-free classification + 8.5-9.7/80 MTFP LP divergence from VDB alone + VDB causally necessary. The kinetic attention mechanism (which the paper is named after) is harmful at MTFP resolution. The paper should be reframed around the VDB temporal context finding, with kinetic attention reported as an honest negative result.
 
 ---
 

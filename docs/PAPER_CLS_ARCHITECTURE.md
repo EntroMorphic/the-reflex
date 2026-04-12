@@ -4,7 +4,29 @@
 EntroMorphic Research
 
 *Draft: April 7, 2026.*
-*Data: commits `f510f9a` (14/14 PASS), `e0d8651` (TEST 14C transition), `276af59` (multi-seed sweep). ESP32-C6FH4, ESP-IDF v5.4. Multi-seed TEST 14C transition data (3 seeds × 3 conditions, April 8 2026). Ternary disagree-count agreement with immediate bias release. Integer bias state — no float in mechanism path.*
+*Data: commits `f510f9a` (14/14 PASS), `e0d8651` (TEST 14C transition), `276af59` (multi-seed sweep). ESP32-C6FH4, ESP-IDF v5.4.*
+
+---
+
+## ⚠ CORRECTIONS REQUIRED (April 12, 2026)
+
+**Multi-seed transition data in this paper is INVALID.** All TEST 14C data was collected before two compounding bugs (sender enrollment starvation `63877f7`, trix_enabled not set `f97ac1c`). Crossover numbers, alignment traces, and VDB stabilization findings from the April 8 dataset must be re-validated. See `data/apr8_2026/DEPRECATED.md`.
+
+### What's STRENGTHENED:
+
+1. **"The hippocampus is a permanent partner, not a scaffold" (core claim) → REINFORCED.** The April 11 session tested Hebbian LP weight learning (CLS consolidation path) across three iterations. Result: +0.1 ± 1.1 (noise at n=3). The neocortex (LP CfC) does NOT learn from the hippocampus (VDB). The VDB alone produces 8.5-9.7/80 MTFP divergence — the hippocampus IS the temporal model, not a scaffold for learned weights. The paper's central claim is more strongly supported than when it was written.
+
+2. **"Zero learning rate is a qualitative change" (Section 4.3) → TESTED AND CONFIRMED.** We implemented the learning path (Hebbian weight updates) and it produced no improvement. Zero learning rate isn't just a theoretical extreme — it's the empirically correct operating point for this system at 16 neurons with random ternary weights.
+
+### What's INVALIDATED:
+
+1. **Multi-seed transition data (Section 4) → all from broken runs.** Needs re-collection under label-free conditions (`MASK_PATTERN_ID_INPUT=1`) with distinct P2 payload.
+
+2. **"Immediate bias release" (Section 2) → geometric ×0.9/step.** See Stratum 1 corrections.
+
+3. **"Hippocampus stabilizes" transition finding → not yet verified label-free.** The transition experiment (TEST 14C) needs re-running with the corrected sender and label-free flags. The VDB stabilization finding may hold (VDB mechanism is unaffected by the label/bias corrections) but the specific alignment traces and crossover numbers are invalid.
+
+4. **Kinetic attention references → harmful at MTFP resolution.** Sections that reference gate bias improving LP divergence should cite the negative MTFP finding (-5.5/80) from the Stratum 1 corrections.
 
 ---
 
