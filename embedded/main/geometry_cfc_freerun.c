@@ -115,7 +115,11 @@ void app_main(void) {
     /* ── Run all tests ── */
     int test_count = 0, pass_count = 0;
 
-#ifdef SKIP_TO_15
+#ifdef SKIP_TO_14
+    printf("[SWEEP] SKIP_TO_14: running Test 11 (enrollment) + Test 14 only\n\n");
+    test_count++; pass_count += run_test_11();
+    test_count++; pass_count += run_test_14();
+#elif defined(SKIP_TO_15)
     printf("[SWEEP] SKIP_TO_15: running Test 11 (enrollment) + Test 15 only\n\n");
     test_count++; pass_count += run_test_11();
     test_count++; pass_count += run_test_15();
