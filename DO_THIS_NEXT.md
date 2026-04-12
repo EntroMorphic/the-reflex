@@ -1,7 +1,7 @@
 # DO THIS NEXT
 
-*Written April 9, 2026. Updated April 11.*
-*Supersedes the April 8 version. Two compounding bugs fixed; multi-seed TEST 14C measurable on silicon; label-free 100% classification achieved after P2 payload redesign; papers need rewriting around the corrected metrics.*
+*Written April 9, 2026. Updated April 11 (final).*
+*Authoritative label-free dataset: `data/apr11_2026/SUMMARY.md`. 14/16 PASS. 100% label-free classification, VDB causally necessary, LP divergence P0-P3=9/16. Kinetic attention (Test 14) and Hebbian learning (Test 15) do not reliably improve under label-free conditions. Papers need rewriting around the honest label-free numbers.*
 
 ---
 
@@ -255,11 +255,11 @@ Unchanged. Replace 16-trit RSSI thermometer with 5-trit MTFP value.
 
 ## COMMIT ORDER FOR NEXT SESSION
 
-1. **Rewrite PAPER_KINETIC_ATTENTION.md** — replace crossover metric with TriX@15 + alignment traces. Cite apr9 SUMMARY.md. Fix the "within 4 steps" language.
-2. **Rewrite PAPER_CLS_ARCHITECTURE.md** — update transition experiment section with corrected alignment data. Seed B becomes quantitative evidence for Pillar 3 necessity.
-3. **Rewrite PRIOR_SIGNAL_SEPARATION.md** — shortest rewrite; check every cited number against apr9 SUMMARY.md.
-4. **Fix test_kinetic.c verdict logic** — replace sentinel crossover with real metric, re-run seed sweep.
-5. **Add DEPRECATED.md to data/apr8_2026/** — historical flag.
+1. **Rewrite PAPER_KINETIC_ATTENTION.md** — cite `data/apr11_2026/SUMMARY.md` as the authoritative dataset. Replace crossover metric with TriX@15 + alignment traces. Fix "within 4 steps" → geometric ×0.9/step. **Note:** Test 14 (kinetic attention) FAILED under label-free conditions — the paper needs to disclose this honestly and investigate whether gate bias helps when GIE hidden is less pattern-specific.
+2. **Rewrite PAPER_CLS_ARCHITECTURE.md** — transition experiment needs re-run with label-free flags. The apr9 data was collected with label in input.
+3. **Rewrite PRIOR_SIGNAL_SEPARATION.md** — check every cited number against apr11 SUMMARY.md.
+4. **Investigate Test 14 failure under label-free conditions** — gate bias may amplify noise when GIE hidden lacks pattern_id structure. Run Test 14 multiple times under label-free flags. If consistently FAIL: the kinetic attention paper claim needs honest revision.
+5. **Multi-seed sweep under label-free conditions** — the apr9 multi-seed data used label-in-input. Re-run with `MASK_PATTERN_ID_INPUT=1` + distinct P2 payload + transition sender.
 6. **UART-only verification** — physical rewiring, separate session.
 7. **RSSI dead zone retry** (RSSI_MARGIN=1) — after papers settle.
 
