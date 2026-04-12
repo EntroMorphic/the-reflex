@@ -255,6 +255,25 @@ Unchanged. Replace 16-trit RSSI thermometer with 5-trit MTFP value.
 
 ## COMMIT ORDER FOR NEXT SESSION
 
+### CRITICAL FINDING: Kinetic attention is consistently HARMFUL at MTFP resolution
+
+The Test 14 data from 3 label-free runs was already computing MTFP divergence alongside sign divergence. The MTFP numbers tell the OPPOSITE story:
+
+| Run | 14A MTFP | 14C MTFP | MTFP improvement |
+|---|---|---|---|
+| 1 | 9.8/80 | 10.2/80 | +0.4 |
+| 2 | 15.5/80 | 8.5/80 | -7.0 |
+| 3 | 15.5/80 | 5.7/80 | -9.8 |
+| **Mean** | **13.6** | **8.1** | **-5.5** |
+
+The sign-space "improvement" (mean +1.3) was an artifact: the bias changed WHICH trits were confident without adding information. In MTFP space, the magnitudes (which carry the actual information) were CRUSHED by the bias. Run 2's sign-space "symmetry breaking" (+4.2) was actually a net loss of 7.0 MTFP Hamming.
+
+**Root cause:** lowering a group's gate threshold → more neurons fire → GIE hidden saturates → LP input becomes more uniform → LP dot magnitudes converge. The bias makes the GIE LESS discriminative for the LP.
+
+**Impact on papers:** The kinetic attention paper (Stratum 1) needs to report this honestly. The mechanism fires (per-group shift >10%) but the effect on LP representation is NEGATIVE when measured at MTFP resolution. The sign-space metric was hiding the damage.
+
+---
+
 ### Identified bottleneck: LP dimensionality (16 sign trits)
 
 The April 12 investigation (3 runs of Test 14 under label-free conditions: +4.2, +0.6, -1.0) revealed the root cause of all mechanism variability. The 16-neuron LP with random ternary weights and sign() quantization is at its ceiling:
