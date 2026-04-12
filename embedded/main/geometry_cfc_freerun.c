@@ -115,7 +115,11 @@ void app_main(void) {
     /* ── Run all tests ── */
     int test_count = 0, pass_count = 0;
 
-#ifdef SKIP_TO_14C
+#ifdef SKIP_TO_15
+    printf("[SWEEP] SKIP_TO_15: running Test 11 (enrollment) + Test 15 only\n\n");
+    test_count++; pass_count += run_test_11();
+    test_count++; pass_count += run_test_15();
+#elif defined(SKIP_TO_14C)
     /* Multi-seed 14C sweep: skip Tests 1-10,12-14. Only run Test 11
      * (signature enrollment — required for classification) and Test 14C. */
     printf("[SWEEP] SKIP_TO_14C: running Test 11 (enrollment) + Test 14C only\n\n");

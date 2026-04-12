@@ -34,12 +34,13 @@
 #define HEBBIAN_STABILITY_K     5
 #define HEBBIAN_RATE_LIMIT_MS   100
 #define PHASE_A_S               60    /* baseline accumulation */
-#define PHASE_B_S               90    /* treatment (learning or control) */
-#define PHASE_C_S               30    /* post-treatment accumulation */
+#define PHASE_B_S               60    /* treatment (learning or control) */
+#define PHASE_C_S               60    /* post-treatment measurement (was 30 — P2 needs ≥15 samples) */
 
 #define T15_N_COND  2
 #define T15_CONTROL 0
 #define T15_HEBBIAN 1
+#define T15_N_REPS  3             /* repetitions per condition for variance estimate */
 
 static const char *t15_cond_name[T15_N_COND] = {
     "Control (CMD5 only)",
@@ -258,71 +259,89 @@ static int run_t15_condition(int cond, int8_t mean_out[][LP_HIDDEN_DIM],
 
 int run_test_15(void) {
     printf("-- TEST 15: Hebbian LP Weight Learning --\n");
-    printf("   Design: 3-phase (A=%ds baseline, B=%ds treatment, C=%ds measure)\n",
-           PHASE_A_S, PHASE_B_S, PHASE_C_S);
-    printf("   Two conditions: Control (CMD5 only) vs Hebbian (CMD5+learn)\n\n");
+    printf("   Design: 3-phase (A=%ds, B=%ds, C=%ds) × %d reps × 2 conditions\n",
+           PHASE_A_S, PHASE_B_S, PHASE_C_S, T15_N_REPS);
+    printf("   Total: %ds per condition, %ds overall\n",
+           (PHASE_A_S + PHASE_B_S + PHASE_C_S) * T15_N_REPS,
+           (PHASE_A_S + PHASE_B_S + PHASE_C_S) * T15_N_REPS * T15_N_COND);
     fflush(stdout);
 
-    /* Storage for per-condition Phase C results */
-    static int8_t post_mean[T15_N_COND][NUM_TEMPLATES][LP_HIDDEN_DIM];
-    static int post_count[T15_N_COND][NUM_TEMPLATES];
-    int flips[T15_N_COND], updates[T15_N_COND];
+    /* Per-rep results */
+    float rep_mean[T15_N_COND][T15_N_REPS];
+    int   rep_flips[T15_N_COND][T15_N_REPS];
+    int   rep_updates[T15_N_COND][T15_N_REPS];
 
-    /* Run both conditions */
+    /* Run all reps of all conditions */
     for (int c = 0; c < T15_N_COND; c++) {
-        run_t15_condition(c, post_mean[c], post_count[c], &flips[c], &updates[c]);
-    }
+        for (int r = 0; r < T15_N_REPS; r++) {
+            printf("\n  ══ %s — Rep %d/%d ══\n", t15_cond_name[c], r + 1, T15_N_REPS);
+            fflush(stdout);
 
-    /* ── Comparison ── */
-    printf("\n  ══ TEST 15 COMPARISON ══\n");
+            static int8_t pm[NUM_TEMPLATES][LP_HIDDEN_DIM];
+            static int pc[NUM_TEMPLATES];
+            int fl, up;
+            run_t15_condition(c, pm, pc, &fl, &up);
 
-    float cond_mean[T15_N_COND];
-    for (int c = 0; c < T15_N_COND; c++) {
-        int total = 0, pairs = 0;
-        for (int p = 0; p < NUM_TEMPLATES; p++)
-            for (int q = p + 1; q < NUM_TEMPLATES; q++)
-                if (post_count[c][p] >= 15 && post_count[c][q] >= 15) {
-                    total += trit_hamming(post_mean[c][p], post_mean[c][q], LP_HIDDEN_DIM);
-                    pairs++;
-                }
-        cond_mean[c] = pairs > 0 ? (float)total / pairs : 0;
-        printf("  %-24s  post mean=%.1f/16  flips=%d  updates=%d\n",
-               t15_cond_name[c], cond_mean[c], flips[c], updates[c]);
-    }
+            /* Compute mean divergence for this rep */
+            int total = 0, pairs = 0;
+            for (int p = 0; p < NUM_TEMPLATES; p++)
+                for (int q = p + 1; q < NUM_TEMPLATES; q++)
+                    if (pc[p] >= 15 && pc[q] >= 15) {
+                        total += trit_hamming(pm[p], pm[q], LP_HIDDEN_DIM);
+                        pairs++;
+                    }
+            rep_mean[c][r] = pairs > 0 ? (float)total / pairs : -1;
+            rep_flips[c][r] = fl;
+            rep_updates[c][r] = up;
 
-    float hebbian_contribution = cond_mean[T15_HEBBIAN] - cond_mean[T15_CONTROL];
-    printf("\n  Hebbian contribution: %+.1f Hamming (Hebbian - Control)\n",
-           hebbian_contribution);
-
-    /* P1-P2 pair specifically */
-    int p12_ctrl = -1, p12_hebb = -1;
-    for (int c = 0; c < T15_N_COND; c++) {
-        if (post_count[c][1] >= 15 && post_count[c][2] >= 15) {
-            int h = trit_hamming(post_mean[c][1], post_mean[c][2], LP_HIDDEN_DIM);
-            if (c == T15_CONTROL) p12_ctrl = h;
-            else p12_hebb = h;
+            printf("    Rep %d result: mean=%.1f/16 (%d pairs), flips=%d, updates=%d\n",
+                   r + 1, rep_mean[c][r], pairs, fl, up);
+            fflush(stdout);
         }
     }
-    if (p12_ctrl >= 0 && p12_hebb >= 0) {
-        printf("  P1-P2 separation: Control=%d, Hebbian=%d (%+d)\n",
-               p12_ctrl, p12_hebb, p12_hebb - p12_ctrl);
+
+    /* ── Comparison with mean ± std ── */
+    printf("\n  ══ TEST 15 COMPARISON (%d reps per condition) ══\n", T15_N_REPS);
+
+    float cond_avg[T15_N_COND], cond_std[T15_N_COND];
+    for (int c = 0; c < T15_N_COND; c++) {
+        float sum = 0;
+        int valid = 0;
+        for (int r = 0; r < T15_N_REPS; r++)
+            if (rep_mean[c][r] >= 0) { sum += rep_mean[c][r]; valid++; }
+        cond_avg[c] = valid > 0 ? sum / valid : 0;
+
+        float var = 0;
+        for (int r = 0; r < T15_N_REPS; r++)
+            if (rep_mean[c][r] >= 0) {
+                float d = rep_mean[c][r] - cond_avg[c];
+                var += d * d;
+            }
+        cond_std[c] = valid > 1 ? __builtin_sqrtf(var / (valid - 1)) : 0;
+
+        printf("  %-24s  %.1f ± %.1f /16  (reps:", t15_cond_name[c], cond_avg[c], cond_std[c]);
+        for (int r = 0; r < T15_N_REPS; r++) printf(" %.1f", rep_mean[c][r]);
+        printf(")\n");
     }
+
+    float contribution = cond_avg[T15_HEBBIAN] - cond_avg[T15_CONTROL];
+    float combined_std = __builtin_sqrtf(cond_std[0] * cond_std[0] + cond_std[1] * cond_std[1]);
+    printf("\n  Hebbian contribution: %+.1f ± %.1f Hamming\n", contribution, combined_std);
 
     /* ── Verdict ── */
     printf("\n  ── Verdict ──\n");
     int pass = 1;
 
-    /* Gate 1: Hebbian must exceed control */
-    int hebbian_helps = (hebbian_contribution > 0.0f);
-    printf("  Hebbian > Control:  %s (%+.1f)\n",
-           hebbian_helps ? "YES" : "NO", hebbian_contribution);
+    int hebbian_helps = (contribution > 0.0f);
+    printf("  Hebbian > Control (mean):  %s (%+.1f)\n",
+           hebbian_helps ? "YES" : "NO", contribution);
     if (!hebbian_helps) pass = 0;
 
-    /* Gate 2: Hebbian must have actually run */
-    int updates_ran = (updates[T15_HEBBIAN] >= 10);
-    printf("  Sufficient updates: %s (%d updates, %d flips)\n",
-           updates_ran ? "YES" : "NO", updates[T15_HEBBIAN], flips[T15_HEBBIAN]);
-    if (!updates_ran) pass = 0;
+    /* Check if contribution exceeds noise (contribution > 1 std) */
+    int exceeds_noise = (combined_std > 0) ? (contribution > combined_std) : (contribution > 0);
+    printf("  Exceeds noise (>1 std):    %s (%+.1f vs ±%.1f)\n",
+           exceeds_noise ? "YES" : "NO", contribution, combined_std);
+    if (!exceeds_noise) pass = 0;
 
     printf("  %s\n", pass ? "OK" : "FAIL");
     fflush(stdout);

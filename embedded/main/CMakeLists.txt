@@ -52,6 +52,10 @@ else()
     if(DEFINED MASK_PATTERN_ID_INPUT AND MASK_PATTERN_ID_INPUT)
         add_compile_definitions(MASK_PATTERN_ID_INPUT=1)
     endif()
+    # Skip to Test 15 (enrollment + Hebbian only)
+    if(DEFINED SKIP_TO_15 AND SKIP_TO_15)
+        add_compile_definitions(SKIP_TO_15=1)
+    endif()
 endif()
 
 idf_component_register(
