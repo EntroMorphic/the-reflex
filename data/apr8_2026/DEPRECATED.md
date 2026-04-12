@@ -14,12 +14,21 @@ All `results_*.log` files in this directory were captured **before** two compoun
 
 The April 8 `DO_THIS_NEXT.md` (pre-rewrite) incorrectly concluded that the VDB-stabilization data from No-bias and Ablation was valid. It was not. Bug #2 was discovered on April 9 after running Seed A against the just-fixed sender and observing enrollment output.
 
-## What may still be partially salvageable
+## What is still valid
 
-- **Alignment traces** (`align_P1` / `align_P2`) are computed from LP MTFP means accumulated *during* TEST 14C, not from `sig[]`. They reflect the dynamic LP state, which is partially independent of the broken TriX classifier. A careful reader could compare alignment-trace patterns across conditions in apr8 logs against apr9 logs to check whether the ablation-regression signal was visible before the fix. But nothing in these logs can be cited as a quantitative TriX accuracy claim.
-- **LP characterization output** (Path A/B regime detection) is independent of TriX classification and should still be valid.
+- **TEST 13 (CMD 4 distillation):** Measures LP hidden-state Hamming between CMD 4 (CfC only) and CMD 5 (CfC + VDB blend). Does not depend on TriX classification. The "VDB causal necessity" finding is independent of both bugs.
+- **LP characterization output** (Path A/B regime detection, dot magnitude probes): Independent of TriX classification.
+- **Alignment traces** (`align_P1` / `align_P2`): Computed from LP MTFP means accumulated during TEST 14C, not from `sig[]`. The dynamic LP state is partially independent of the broken TriX classifier. The QUALITATIVE pattern (ablation regresses, VDB stabilizes) may hold even though the QUANTITATIVE numbers are unreliable.
+- **Tests 1-8** (GIE, LP core, VDB, pipeline, feedback): Independent of TriX classification and enrollment.
 
-Everything else — TriX@15 accuracy, `pred` latency, crossover step, bias release timing — must come from `data/apr9_2026/`.
+## What is invalid
+
+- **All TriX accuracy numbers** (TriX@15, per-pattern accuracy, ISR vs CPU agreement)
+- **Classification-dependent metrics** (`pred` latency, crossover step, bias release timing)
+- **Multi-seed TEST 14C crossover numbers** (0, 22, 2 for Seeds A, B, C)
+- **Anything citing "100% accuracy"** from these runs
+
+For authoritative numbers: `data/apr11_2026/SUMMARY.md`.
 
 ## Files preserved for historical record
 

@@ -8,6 +8,31 @@ Board: ESP32-C6FH4 (QFN32) revision v0.2, built-in USB Serial/JTAG (VID 0x303a, 
 source ~/esp/v5.4/export.sh
 ```
 
+## Reset Synchronization (TEST 14C / Multi-Seed)
+
+When running transition-mode or multi-seed experiments, Board B (sender) must be reset within ~30s of Board A so the sender's 90s enrollment cycling window overlaps Board A's Test 11 Phase 0a (30s, starting ~10s after boot).
+
+**Verification protocol:** After resetting Board B via DTR/RTS toggle, briefly read its serial output and confirm you see the boot line:
+```
+[MODE] TRANSITION: ENROLL cycle (90s) -> P1 (90s) -> P2 (30s) -> repeat
+```
+or (for cycling mode):
+```
+[MODE] CYCLING: P0->P1->P2->P3 at 5s each
+```
+
+If no boot output appears within 5 seconds, the reset failed — the ESP32-C6 USB-CDC DTR/RTS reset is sometimes flaky. Retry, or use `esptool.py run` to force a reset.
+
+**Measured timing (from `data/apr11_2026/full_suite_label_free_final.log`):**
+- Board A boot + init: ~10s
+- Phase 0a (enrollment observation): t=10-40s
+- Phase 0d (TriX Cube): t=40-55s
+- Phase 1 (ensemble): t=55-115s
+- Board B cycling window: t=8-98s
+- Overlap margin: ~28s (Phase 0d ends at t=55, cycling ends at t=98)
+
+---
+
 ## Build Targets
 
 `embedded/main/CMakeLists.txt` defines two targets via `REFLEX_TARGET`:
