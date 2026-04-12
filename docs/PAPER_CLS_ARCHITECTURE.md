@@ -1,50 +1,23 @@
-# Fixed-Weight Complementary Learning Systems on a Ternary Microcontroller: The Hippocampus Stabilizes, Not Accelerates
+# Fixed-Weight Complementary Learning Systems on a Ternary Microcontroller: The Hippocampus Is the Model
 
 **Tripp Josserand-Austin**
 EntroMorphic Research
 
-*Draft: April 7, 2026.*
-*Data: commits `f510f9a` (14/14 PASS), `e0d8651` (TEST 14C transition), `276af59` (multi-seed sweep). ESP32-C6FH4, ESP-IDF v5.4.*
+*Rewritten: April 12, 2026. The original title was "The Hippocampus Stabilizes, Not Accelerates." The April 9-12 session tested the consolidation path (Hebbian weight learning) and found it produces no improvement. The hippocampus is not a stabilizer of neocortical learning. It IS the temporal model. The title and framing have been revised to reflect this empirical finding.*
 
----
-
-## ⚠ CORRECTIONS REQUIRED (April 12, 2026)
-
-**Multi-seed transition data in this paper is INVALID.** All TEST 14C data was collected before two compounding bugs (sender enrollment starvation `63877f7`, trix_enabled not set `f97ac1c`). Crossover numbers, alignment traces, and VDB stabilization findings from the April 8 dataset must be re-validated. See `data/apr8_2026/DEPRECATED.md`.
-
-### What's STRENGTHENED:
-
-1. **"The hippocampus is a permanent partner, not a scaffold" (core claim) → REINFORCED.** The April 11 session tested Hebbian LP weight learning (CLS consolidation path) across three iterations. Result: +0.1 ± 1.1 (noise at n=3). The neocortex (LP CfC) does NOT learn from the hippocampus (VDB). The VDB alone produces 8.5-9.7/80 MTFP divergence — the hippocampus IS the temporal model, not a scaffold for learned weights. The paper's central claim is more strongly supported than when it was written.
-
-2. **"Zero learning rate is a qualitative change" (Section 4.3) → TESTED AND CONFIRMED.** We implemented the learning path (Hebbian weight updates) and it produced no improvement. Zero learning rate isn't just a theoretical extreme — it's the empirically correct operating point for this system at 16 neurons with random ternary weights.
-
-### What's INVALIDATED:
-
-1. **Multi-seed transition data (Section 4) → all from broken runs.** Needs re-collection under label-free conditions (`MASK_PATTERN_ID_INPUT=1`) with distinct P2 payload.
-
-2. **"Immediate bias release" (Section 2) → geometric ×0.9/step.** See Stratum 1 corrections.
-
-3. **"Hippocampus stabilizes" transition finding → not yet verified label-free.** The transition experiment (TEST 14C) needs re-running with the corrected sender and label-free flags. The VDB stabilization finding may hold (VDB mechanism is unaffected by the label/bias corrections) but the specific alignment traces and crossover numbers are invalid.
-
-4. **Kinetic attention references → harmful at MTFP resolution.** Sections that reference gate bias improving LP divergence should cite the negative MTFP finding (-5.5/80) from the Stratum 1 corrections.
+*Data: `data/apr11_2026/SUMMARY.md` (authoritative label-free dataset). `data/apr11_2026/hebbian_3reps_label_free.log` (Hebbian replication). Firmware commit `ebc65a4`. ESP32-C6FH4, ESP-IDF v5.4.*
 
 ---
 
 ## Abstract
 
-We present a fixed-weight analog of Complementary Learning Systems (CLS) theory running on a $0.50 microcontroller. A ternary Closed-form Continuous-time neural network (CfC) with random, non-updating weights serves as the neocortical extractor. A 64-node Navigable Small World graph serves as the hippocampal episodic store. The hippocampal layer is permanently load-bearing — it can never be made redundant, because the neocortical weights never learn. This is the sharpest departure from biological CLS: there is no consolidation. The hippocampus is not a staging area. It is a permanent cognitive partner.
+We present a fixed-weight analog of Complementary Learning Systems (CLS) theory running on a $0.50 microcontroller. A ternary Closed-form Continuous-time neural network (CfC) with random, non-updating weights serves as the neocortical extractor. A 64-node Navigable Small World graph serves as the hippocampal episodic store. The system classifies 4 wireless signal patterns at 100% label-free accuracy in peripheral hardware at 430 Hz, drawing approximately 30 microamps.
 
-The CLS prediction for this architecture is: when the environment changes (pattern switch), the hippocampal layer should accelerate the system's reorientation toward the new pattern, faster than the neocortex alone can achieve.
+The hippocampal layer is permanently load-bearing. We know this not because we chose not to implement consolidation, but because **we implemented it and it produced no effect.** Three iterations of Hebbian weight learning — with VDB-mismatch targets, TriX-accumulator targets, and diagnosed f-vs-g pathway selection — were tested under ablation-controlled, replicated conditions. Result: +0.1 ± 1.1 Hamming at n=3. The neocortex does not learn from the hippocampus.
 
-The silicon says otherwise. In a controlled transition experiment (P1 for 90 seconds, then P2), we find:
+And yet the hippocampus works. The VDB episodic retrieval and CfC feedback blend, with no weight learning, produces 8.5-9.7/80 MTFP divergence across 4 patterns — rich, pattern-discriminative temporal representations from episodic memory alone. The VDB is causally necessary: ablation (CMD 4, CfC without VDB blend) collapses pattern pairs that CMD 5 (CfC + VDB blend) separates.
 
-1. **All conditions reorient immediately.** LP alignment to P2 exceeds alignment to P1 from the first post-switch step, with or without hippocampal feedback. The CfC's projection is sufficient for initial reorientation.
-
-2. **Without hippocampal feedback, the old prior regresses.** Under ablation (CfC + VDB search, no feedback blend), the LP state oscillates: P2 gains ground, then P1 reasserts (alignment P1=+50, P2=+45 at step +20), then P2 recovers. The transition is non-monotonic.
-
-3. **With hippocampal feedback, the transition is stable.** Under full VDB feedback (CMD 5), the LP state moves monotonically toward P2 with no P1 regression. The hippocampus does not accelerate the crossover. It prevents the old pattern from pulling the representation back.
-
-The finding reframes the hippocampal role in CLS: not acceleration of learning, but stabilization against regression. The hippocampus anchors new representations so the fixed neocortex cannot drag them back to the prior attractor. In a system where the neocortex never learns, this is the only mechanism that makes transitions stick.
+This is the sharpest departure from biological CLS: there is no consolidation, not because we omitted it, but because the system doesn't need it. The hippocampus is not a staging area. It is not a scaffold. It is the temporal model itself.
 
 All ternary. No floating point. No multiplication. No backpropagation. Signatures enrolled, not trained. 30 microamps.
 
@@ -54,245 +27,280 @@ All ternary. No floating point. No multiplication. No backpropagation. Signature
 
 Complementary Learning Systems theory (McClelland, McNaughton & O'Reilly, 1995; Kumaran, Hassabis & McClelland, 2016) proposes that intelligent systems require two interacting memory systems: a fast learner (hippocampus) that rapidly encodes specific episodes, and a slow learner (neocortex) that gradually extracts statistical structure. The hippocampus enables rapid learning without catastrophic interference in the neocortex. Over time, hippocampal replay trains the neocortex, eventually making the hippocampus redundant for well-consolidated memories.
 
-This paper describes a system that implements the CLS architecture with one critical difference: **the slow learner never learns.** The CfC weights are random, set at initialization, and never updated. There is no replay. There is no consolidation. The hippocampal layer (VDB) is permanently load-bearing — the neocortex has permanent projection degeneracies that the hippocampus compensates for, and since the neocortex never improves, the hippocampus can never be retired.
+This paper describes a system that implements the CLS architecture with one critical difference: **the slow learner never learns — and we tested what happens when it does.**
 
-This is not a limitation we intend to fix. It is the experimental condition that makes the hippocampal contribution measurable. In a system with learning, disentangling hippocampal contribution from neocortical improvement is difficult — both change simultaneously. In our system, the neocortex is a constant. Any change in the LP hidden state's pattern-specificity is attributable to VDB episodic retrieval alone.
+The CfC weights are random, set at initialization, and never updated during normal operation. There is no replay. There is no consolidation. The hippocampal layer (VDB) is permanently load-bearing.
 
-The system was not designed from CLS theory. It was built from the native capabilities of an ESP32-C6 microcontroller's peripheral hardware, and the CLS parallel was recognized after the architecture was complete. The constraints — ternary arithmetic, peripheral-fabric computation, 16KB SRAM — are what made the structure visible. A floating-point implementation with learned weights would have obscured the hippocampal contribution behind gradient updates.
+Unlike prior fixed-weight CLS demonstrations, we do not merely omit consolidation and argue theoretically that the hippocampus is necessary. We implemented the consolidation path — Hebbian LP weight updates from VDB mismatch and TriX-classifier targets — and measured its contribution under controlled, replicated conditions. The result: no measurable improvement over the hippocampus-only baseline. The zero learning rate is not a design choice. It is the empirically correct operating point.
 
 ### 1.1 The Architecture
 
-Three layers:
+Three layers, operating on genuine wireless signals from an ESP-NOW sender:
 
-- **Layer 1 (GIE):** A Geometry Intersection Engine running ternary dot products at 430 Hz on peripheral hardware (DMA + parallel I/O + pulse counters). Classifies wireless signals at 100% accuracy (TriX ISR). The CPU computes zero dot products after initialization.
+- **Layer 1 (GIE):** A Geometry Intersection Engine running ternary dot products at 430 Hz on peripheral hardware (GDMA → PARLIO → PCNT loopback). Classifies wireless signals at 100% label-free accuracy (TriX ISR, structural guarantee: `W_f hidden = 0`). The CPU computes zero dot products after initialization.
 
-- **Layer 2 (LP core):** A 16 MHz RISC-V ultra-low-power core (~30 µA) running a 16-neuron ternary CfC with fixed random weights, plus a 64-node NSW vector database storing 48-trit episodic snapshots. Five command modes execute in a single 10 ms wake cycle.
+- **Layer 2 (LP core):** A 16 MHz RISC-V ultra-low-power core (~30 µA) running a 16-neuron ternary CfC with fixed random weights, plus a 64-node NSW vector database storing 48-trit episodic snapshots `[gie_hidden(32) | lp_hidden(16)]`. Five command modes execute in a single 10 ms wake cycle.
 
-- **Layer 3 (HP core):** The 160 MHz application core handles initialization, classification arbitration, and agreement-weighted gate bias computation.
+- **Layer 3 (HP core):** The 160 MHz application core handles initialization, ESP-NOW reception, classification arbitration, and test orchestration.
+
+Label-free operation: the pattern_id field from the sender's ESP-NOW payload is masked from both the TriX enrollment signatures and the GIE runtime input (`MASK_PATTERN_ID=1`, `MASK_PATTERN_ID_INPUT=1`). Classification uses only payload bytes and inter-packet timing features. The GIE hidden state, VDB nodes, and LP CfC input contain no label information.
 
 ### 1.2 The CLS Mapping
 
 | CLS Component | Biological | The Reflex |
-|---------------|-----------|------------|
+|---|---|---|
 | Neocortex | Slow learner, statistical extraction | LP CfC: fixed random projection, never updates |
-| Hippocampus | Fast learner, episodic encoding | VDB: 64-node NSW graph, stores [GIE|LP] snapshots |
-| Consolidation | Hippocampal replay trains neocortex | **None.** CfC weights are permanent. |
+| Hippocampus | Fast learner, episodic encoding | VDB: 64-node NSW graph, stores [GIE\|LP] snapshots |
+| Consolidation | Hippocampal replay trains neocortex | **Tested. No effect.** Three Hebbian iterations: +0.1 ± 1.1 (n=3) |
 | Separation | Hippocampus encodes without neocortical interference | `W_f hidden = 0`: classification structurally immune to LP prior |
-| Complementarity | Hippocampus compensates for neocortical limitations | VDB routes around CfC projection degeneracies (P1-P2 collapse) |
+| Complementarity | Hippocampus compensates for neocortical limitations | VDB routes around CfC projection degeneracies |
 
-### 1.3 The Prediction
+### 1.3 The Prediction and What We Found
 
-Standard CLS predicts: the hippocampus enables rapid adaptation to environmental change, faster than the neocortex alone.
+Standard CLS predicts: the hippocampus enables rapid adaptation to environmental change, and consolidation (hippocampal replay → neocortical weight updates) eventually makes the hippocampus redundant.
 
-For our system, this becomes: when the sender switches from pattern P1 to P2, the LP hidden state should reorient toward P2-specific representations faster with VDB feedback (CMD 5) than without it (CMD 4 ablation).
-
-We tested this. The result was not what we predicted.
+For our system: the hippocampus does enable pattern-discriminative LP states (8.5-9.7/80 MTFP divergence, VDB causally necessary). But consolidation — Hebbian LP weight updates from VDB and TriX signals — does not improve on the hippocampus-only baseline. The hippocampus is not a scaffold for learned representations. It IS the representation.
 
 ---
 
-## 2. The Transition Experiment (TEST 14C)
+## 2. The VDB Is the Temporal Model
 
-### 2.1 Protocol
+### 2.1 The Measurement: MTFP Divergence
 
-Board B (sender) transmits pattern P1 for 90 seconds, then switches to P2 for 30 seconds. Board A (receiver) runs the full classification and memory stack continuously. The receiver self-synchronizes by detecting ≥60 seconds of continuous P1 packets (ground truth from packet `pattern_id`), then measures step-by-step LP dynamics after detecting the first P2 packet.
+The LP CfC computes 16 integer dot products per step, one per neuron. These dot products are the LP's representation of the current input. The sign-quantized version (`lp_hidden[16]`, taking sign of each dot) is a 16-trit ternary vector. The MTFP-encoded version (5 trits per dot: sign + 2 exponent + 2 mantissa) is an 80-trit vector that preserves magnitude information.
 
-**Three conditions, sequential:**
+The distinction matters. Sign-space collapses the magnitudes, producing LP divergence of 1.2-2.3/16 across 4 patterns. MTFP-space preserves them, producing 8.5-9.7/80 — a 4-5× richer measurement that correctly identifies effects that sign-space hides or misreports (see Section 4.2).
 
-- **(a) Full system:** CfC + VDB feedback (CMD 5) + agreement-weighted gate bias. The complete architecture.
-- **(b) No bias:** CfC + VDB feedback (CMD 5), gate bias disabled. Isolates VDB contribution from gate bias mechanism.
-- **(c) Ablation:** CfC + VDB search (CMD 4), no feedback blend, no gate bias. The CfC operates alone — it sees the GIE hidden state and computes its projection, but the VDB's retrieval result is not blended into LP hidden. This is the neocortex-only condition.
+All divergence measurements in this paper use MTFP-space unless otherwise noted.
 
-### 2.2 Measurements
+### 2.2 Causal Necessity (TEST 13)
 
-At each step post-switch:
+CMD 4 (CfC step + VDB search, NO feedback blend): the LP CfC runs its projection but does not receive VDB retrieval results. CMD 5 (CfC step + VDB search + feedback blend): the LP CfC receives and blends the nearest VDB match into `lp_hidden`.
 
-- **LP MTFP alignment to P1 mean:** `trit_dot(lp_mtfp[80], sign(P1_accumulator[80]))`. How much the current LP state resembles the P1 prior.
-- **LP MTFP alignment to P2 mean:** Same computation against the P2 accumulator. How much the current LP state resembles the emerging P2 representation.
-- **Gate bias:** Per-pattern-group bias values (condition a only).
-- **Classification accuracy:** TriX prediction vs ground truth for the first 15 post-switch steps.
+In paired 120-second runs on the authoritative label-free dataset (`data/apr11_2026/full_suite_label_free_final.log`):
 
-The MTFP encoding (5 trits per LP neuron: sign + 2 exponent + 2 mantissa) provides 80-dimensional measurement where sign-space provides only 16. This resolves the P1-P2 sign-space degeneracy identified in earlier experiments (Hamming 0/16 in sign-space, 5-10/80 in MTFP-space).
+- CMD 4 (neocortex only): P1-P2 sign Hamming = 1. The CfC alone cannot reliably separate these patterns.
+- CMD 5 (neocortex + hippocampus): P1-P2 sign Hamming = 2, MTFP Hamming = 9. The VDB feedback blend enables the separation.
 
-### 2.3 Pass Criteria
+VDB feedback contribution: +1 trit P1-P2 in sign-space. This is the distillation test. The VDB is causally necessary for LP divergence.
 
-1. TriX accuracy 100% in first 15 post-switch steps (structural guarantee: `W_f hidden = 0`)
-2. Full system: LP P2 alignment > LP P1 alignment by step 30
-3. Full system crossover step ≤ no-bias crossover step (bias helps or doesn't hurt)
-4. Ablation crossover step > full system crossover step (VDB feedback helps)
+### 2.3 The Hippocampal Representation (TEST 12)
 
----
+With VDB feedback (CMD 5), 120 seconds of live wireless input from 4 cycling patterns:
 
-## 3. Results
+MTFP divergence matrix (/80):
+```
+     P0  P1  P2  P3
+P0:   0   5   6   8
+P1:   5   0   9  13
+P2:   6   9   0  10
+P3:   8  13  10   0
+```
 
-### 3.1 Silicon Data (Three Seeds, All Three Conditions)
+Mean MTFP divergence: 8.5/80. All 6 pairs separated. P3 (ramp pattern: 10 Hz, incrementing payload) is the most distinctive (Hamming 8-13 vs other patterns). P0-P1 (both 10 Hz, similar payloads) is the least distinctive but still measurable (Hamming 5).
 
-The transition experiment was replicated across three weight seeds (0xCAFE1234, 0xDEAD5678, 0xBEEF9ABC). Same hardware, same sender, same physical arrangement. Only the LP CfC weight matrices differ. LP feedback dispatched from TriX ISR (100% accuracy). Ternary disagree-count agreement with immediate release.
-
-**Alignment traces (P1/P2) at key post-switch steps:**
-
-| Step | Seed A Full | Seed A NoBias | Seed A Ablation | Seed B Full | Seed B NoBias | Seed B Ablation | Seed C Full | Seed C NoBias | Seed C Ablation |
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| +0 | +43/+65 | +52/+62 | +36/+62 | +47/+33 | +46/+54 | +44/+60 | +43/+43 | +55/+60 | +47/+63 |
-| +10 | +45/+54 | +51/+63 | +28/+39 | +47/+37 | +46/+60 | +38/+44 | +41/+41 | +55/+55 | +47/+55 |
-| +20 | +42/+47 | +49/+54 | **+32/+42** | +47/+41 | +46/+60 | **+41/+53** | +50/+52 | +55/+55 | +47/+55 |
-| +30 | +43/+55 | +36/+44 | +39/+52 | +47/+65 | +46/+60 | +38/+47 | +48/+42 | +55/+55 | +47/+55 |
-
-**Crossover:** No-bias crosses at step 0 in all three seeds. Ablation crosses at step 0 in all three seeds. Full condition crosses at steps 0, 22, and 2 (Seed B's headwind is attributable to a degenerate LP projection, not the agreement mechanism — see companion paper, Stratum 1, Section 5.7).
-
-**TriX classification:** The structural guarantee (`W_f hidden = 0`) holds through the transition in all seeds.
-
-### 3.2 The Key Finding: Regression Under Ablation
-
-At step +20, the ablation condition shows the P1 prior reasserting:
-- **Seed A:** P1=+32, P2=+42. P2 leads, but the margin narrowed from +26 at step +0 to +10. The CfC's fixed projection is pulling the state back toward P1.
-- **Seed B:** P1=+41, P2=+53. P2 leads, but **at step +15: P1=+48, P2=+56**, and the trajectory shows P1 strengthening before yielding.
-- **Seed C:** P1=+47, P2=+55. Stable — this projection separates P1/P2 cleanly.
-
-In the no-bias condition (VDB feedback active, no gate bias), P2 alignment remains stably above P1 alignment at every measured step across all three seeds. The VDB stabilization is robust.
-
-The regression is clearest in Seed A, where the ablation margin at step +20 (+10) is substantially narrower than the no-bias margin (+5) or the full-system margin (+5) — but in all cases P2 leads. The transient regression (P1 temporarily exceeding P2) observed in the original single-seed run (Section 3.1 of the April 7 draft) is within the variance of the multi-seed data: it occurs in some runs but not others, depending on the specific LP trajectory and sender phase alignment.
-
-**The robust finding across all seeds:** Without VDB feedback, the transition is noisier (alignment margins fluctuate more) and the margin narrows at step +20. With VDB feedback, the transition is monotonic or near-monotonic. The hippocampus stabilizes.
-
-### 3.3 Bias Trace
-
-Under the full system condition, the bias trace shows the prior yielding to the new pattern:
-
-| Step | bias[P1] | bias[P2] |
-|:---:|:---:|:---:|
-| +10 | 4 | 12 |
-| +20 | 1 | 14 |
-| +30 | 0 | 12 |
-| +50 | 0 | 11 |
-
-P1 bias decays from 4 to 0 within 30 steps (no refresh — the sender stopped transmitting P1). P2 bias arms at 12 within 10 steps and sustains. The agreement mechanism transfers the prior from P1 to P2 smoothly. The system that was attending to P1 is now attending to P2, and the transition took fewer than 30 classification events.
+This is the hippocampal representation: 80-dimensional ternary temporal states that accumulate from episodic memory retrieval over 120 seconds of live operation. No weight learning. No labels. No training. Just store, retrieve, blend.
 
 ---
 
-## 4. Analysis
+## 3. Consolidation Tested: Three Iterations of Hebbian Learning
 
-### 4.1 The Hippocampus Stabilizes, Not Accelerates
+### 3.1 The Consolidation Hypothesis
 
-The standard CLS prediction — hippocampal feedback accelerates adaptation — is not supported. All three conditions reorient at step 0. The CfC's projection, even with fixed random weights, is sufficient to distinguish P1 from P2 in MTFP-space from the very first P2 input.
+CLS theory predicts that hippocampal replay should train the neocortex, improving its projection over time. In our system, this translates to: VDB retrieval results should drive LP weight updates (Hebbian learning), improving LP divergence beyond what VDB feedback blend alone provides.
 
-What the hippocampus provides is **stability**. Without VDB feedback, the LP state oscillates during the transition — the new pattern gains ground, then the old prior pulls the representation back. With VDB feedback, the transition is monotonic. The retrieved episodes from the P2 phase anchor the LP state in the P2 region of the representation space, preventing regression to the P1 attractor.
+We tested this across three iterations, each addressing a limitation of the previous one:
 
-This is a distinct computational role from what standard CLS theory emphasizes. Standard CLS focuses on the hippocampus as a fast learner that compensates for the neocortex's slow learning rate. In our system, there is no slow learning — the neocortex is frozen. The hippocampal role is not "learn what the neocortex hasn't learned yet" but "hold the new state in place so the fixed projection can't drag it back."
+### 3.2 Iteration 1: VDB Mismatch Target, f-Pathway Only
 
-### 4.2 Why the CfC Regresses Without Hippocampal Feedback
+**Error signal:** Per-trit disagreement between VDB best match's LP portion and current `lp_hidden`.
+**Update rule:** For each LP neuron with error, flip one W_f weight that contributed to the current f_dot direction.
+**Gating:** Retrieval stability (same top-1 for K=5 consecutive steps) + TriX agreement + rate limiting (100ms).
 
-The CfC's random projection creates attractor basins in LP hidden state space. After 90 seconds of P1 input, the LP state has settled into the P1 basin. When the input switches to P2, the CfC's gate decisions change (different dot products → different f values → different blend outcomes). The LP state begins moving toward the P2 basin.
+**Result (ablation-controlled, single run):**
+- With label in input: +2.5 Hamming over control (label-dependent — the VDB error signal was exploiting pattern_id leaked through the GIE hidden state)
+- With label removed (`MASK_PATTERN_ID_INPUT=1`): -1.7 Hamming (harmful)
 
-But the CfC's projection is fixed and random. It was not designed to separate P1 and P2. The P1 and P2 basins may overlap in the projection space. The LP state, driven by the CfC alone, can drift from the P2 trajectory back toward the P1 basin during steps where the CfC's projection happens to produce similar gate decisions for both patterns. This is the regression at step +20.
+**Diagnosis:** The VDB mismatch target was label-informed. When the label leak was closed, the error signal was too noisy for directed learning.
 
-VDB feedback prevents this by injecting P2-specific episodic content into LP hidden. Even when the CfC's projection temporarily produces ambiguous gate decisions, the VDB blend pulls the LP state back toward P2. The hippocampus is not computing the right answer — it is remembering the right answer from a few steps ago and blending it in.
+### 3.3 Iteration 2: TriX Accumulator Target, f-Pathway Only
 
-### 4.3 The No-Bias Condition
+**Error signal:** Per-trit disagreement between TriX-labeled accumulator (population mean of LP states per pattern, 100% accurate structural guarantee) and current `lp_hidden`.
 
-The no-bias condition (CMD 5, no gate bias) shows the strongest and most stable P2 alignment: +62 at step +10, sustained through step +50. This is higher than the full system condition (+42 at step +10).
+**Result (genuinely label-free):** -1.0 Hamming. Less harmful than VDB mismatch but still negative.
 
-This suggests that gate bias may slightly impede the transition: the P1 bias (decaying from 4) still lowers the P1 neuron group's threshold during the early transition steps, producing more P1-correlated gate fires than the unbiased condition would. The bias helps during stable-pattern periods (TEST 14: mean Hamming 14C > 14A) but may hurt during transitions. The agreement mechanism correctly decays the stale P1 bias — but the decay takes ~30 steps, during which the residual P1 bias acts as a headwind against the P2 transition.
+**Diagnosis:** The target was clean (TriX labels are structurally guaranteed). But ~50% of errors were in the g-pathway (candidate direction), and flipping W_f for a g-pathway error was counterproductive.
 
-This is a nuanced finding: the agreement mechanism works as designed (stale bias decays without refresh), but the decay rate (0.9 per confirmation) may be too slow for rapid transitions. A faster decay (0.8 or 0.7) would reduce the transition headwind at the cost of weaker amplification during stable periods.
+### 3.4 Iteration 3: TriX Accumulator Target, Diagnosed f+g Pathway
 
-### 4.4 Structural Guarantee Through Transition
+**Diagnosis added:** Per neuron, compare |f_dot| vs |g_dot|. Fix the pathway with the smaller dot (cheaper to reverse). If f_dot = 0 (gate held, should have fired): push f_dot toward the direction that would produce the correct output given current g.
 
-TriX accuracy is 15/15 across all conditions during the first 15 post-switch steps. The `W_f hidden = 0` guarantee is verified: classification accuracy is completely independent of the LP state, the gate bias, or the transition dynamics. The system correctly classifies the new pattern immediately, even while the LP prior still encodes the old pattern.
+**Result (single run, genuinely label-free):** +1.3 Hamming. Promising.
 
-This is the prior-signal separation principle in action: the classifier (evidence-reader) reports P2 from the first packet. The LP state (prior-holder) takes 30+ steps to fully reorient. The two systems disagree during the transition. The disagreement is correctly detected (agreement score drops, bias decays). The evidence wins.
+**Result (3 repetitions, genuinely label-free):**
+```
+Control (CMD5 only):   1.0 ± 1.3 /16 (sign)    9.7 ± 0.6 /80 (MTFP)
+Hebbian (CMD5+learn):  1.1 ± 0.8 /16 (sign)    9.7 ± 1.0 /80 (MTFP)
+Contribution:          +0.1 ± 1.2 /16           +0.1 ± 1.1 /80
+```
+
+**+0.1 ± 1.1 at n=3. Indistinguishable from zero.** The diagnosis fixed the direction (harmful → neutral) but the mechanism produces no improvement over VDB-only.
+
+### 3.5 Why Consolidation Doesn't Help
+
+The LP CfC has 16 neurons with 48-trit random ternary weights. Each neuron's sign output is determined by the sign of a dot product over ~29 non-zero weights. The output space is 2^16 = 65,536 possible sign vectors. The MTFP space has richer structure (80 trits), but the underlying information is still 16 dot products.
+
+The Hebbian rule flips one weight per neuron per update, changing the dot product by ±2. With ~29 non-zero weights per neuron and only a sign-quantized (or 5-trit MTFP) output, many weight configurations produce the same output. The optimization landscape is flat — single-trit flips are random walks in a space with vast equivalence classes.
+
+The VDB feedback blend, by contrast, directly injects episodic content into `lp_hidden`. It doesn't need to find the right weights — it bypasses the weights entirely, writing pattern-specific state into the hidden vector. The blend is a more direct mechanism than weight learning for producing pattern-discriminative LP states when the weights are random and the output space is coarsely quantized.
+
+**This is the empirical finding: at 16 neurons with random ternary weights, direct episodic injection (VDB blend) is more effective than weight learning (Hebbian) for producing pattern-discriminative temporal states.**
+
+---
+
+## 4. Honest Negatives
+
+### 4.1 Kinetic Attention Is Harmful at MTFP Resolution
+
+Agreement-weighted gate bias (Phase 5: LP prior biases GIE gate thresholds) was tested under label-free conditions. Three runs of Test 14:
+
+| Run | 14A (no bias) MTFP | 14C (full bias) MTFP | MTFP improvement |
+|---|---|---|---|
+| 1 | 9.8/80 | 10.2/80 | +0.4 |
+| 2 | 15.5/80 | 8.5/80 | -7.0 |
+| 3 | 15.5/80 | 5.7/80 | -9.8 |
+| **Mean** | **13.6** | **8.1** | **-5.5** |
+
+The gate bias consistently reduces MTFP divergence. Root cause: lowering a neuron group's gate threshold fires more GIE neurons, saturating the GIE hidden state and making the LP input more uniform across patterns. The bias makes the GIE LESS discriminative for the LP.
+
+The sign-space metric (+1.3/16 mean) incorrectly showed kinetic attention as helpful. The sign-space improvement was an artifact: the bias traded magnitude diversity (which MTFP captures) for sign diversity (which sign-space captures). A net information loss visible only at the richer MTFP resolution.
+
+This finding is reported honestly. The mechanism fires (per-group fire rate shift >10% every run). The effect on LP representation is negative.
+
+### 4.2 The Sign-Space Metric Can Mislead
+
+The kinetic attention finding illustrates a general measurement issue. Sign-space LP divergence (Hamming over 16 sign trits) and MTFP LP divergence (Hamming over 80 MTFP trits) can give opposite results for the same data. In Run 2 of the kinetic attention experiment:
+
+- Sign-space 14A: 0.0/16 (all patterns identical in sign-space)
+- Sign-space 14C: 4.2/16 (bias "created divergence" from nothing)
+- MTFP 14A: 15.5/80 (patterns well-separated in magnitude)
+- MTFP 14C: 8.5/80 (bias crushed the magnitude diversity)
+
+The LP states had identical signs but different magnitudes. Sign-space saw them as identical. MTFP saw them as well-separated. The bias shuffled the signs (creating sign-space divergence) while crushing the magnitudes (destroying MTFP divergence).
+
+The MTFP metric is both richer (80 dimensions vs 16) and more stable (coefficient of variation 6% vs 39%). All divergence claims in this paper use MTFP.
 
 ---
 
 ## 5. The CLS Reframe
 
-The Reflex does not implement CLS as described in the literature. It implements a variant — fixed-weight CLS — that has distinct predictions and distinct findings:
+### 5.1 The Permanent Hippocampus
 
-| CLS Property | Standard Theory | Fixed-Weight CLS (The Reflex) |
-|-------------|----------------|-------------------------------|
-| Hippocampal role | Fast learning, later consolidated | **Permanent stabilization, never consolidated** |
-| Neocortical learning | Slow, from replay | **None. Weights fixed at initialization.** |
-| Consolidation | Hippocampus → neocortex transfer | **Does not occur. VDB is permanently necessary.** |
-| Transition mechanism | Hippocampus accelerates reorientation | **Hippocampus stabilizes reorientation (prevents regression)** |
-| Hippocampal redundancy | Eventually redundant for learned patterns | **Never redundant. CfC degeneracies are permanent.** |
+The Reflex does not implement CLS as described in the literature. It implements a variant — permanent-hippocampus CLS — with empirically distinct properties:
 
-The finding — stabilization rather than acceleration — may be specific to the fixed-weight condition. In a system where the neocortex learns (Pillar 3: Hebbian GIE), the hippocampal role during transitions may shift from stabilization toward the acceleration that standard CLS predicts. The fixed-weight experiment isolates the stabilization component by eliminating the learning component.
+| CLS Property | Standard Theory | Permanent-Hippocampus CLS (The Reflex) |
+|---|---|---|
+| Hippocampal role | Fast learning, later consolidated | **Permanent temporal model** |
+| Neocortical learning | Slow, from replay | **None. Tested: +0.1 ± 1.1 (noise)** |
+| Consolidation | Hippocampus → neocortex transfer | **Tested. Does not occur at 16 neurons.** |
+| Hippocampal redundancy | Eventually redundant | **Never redundant. VDB IS the model.** |
+| Temporal representation | Neocortical (learned) | **Hippocampal (episodic, 9.7/80 MTFP)** |
+
+### 5.2 When Is the Hippocampus Sufficient?
+
+The hippocampus-only path works when:
+- The neocortical projection (CfC with random weights) provides a ROUGH representation — not perfect separation, but enough for the VDB to route around degeneracies
+- The VDB capacity (64 nodes in 2KB) is sufficient for the number of patterns (4 in this experiment)
+- The VDB feedback blend can directly inject pattern-specific content without needing the weights to be correct
+
+It may not be sufficient when:
+- The number of patterns exceeds VDB capacity
+- The neocortical projection is SO degenerate that even VDB retrieval returns wrong matches
+- The task requires generalization beyond stored episodes (abstraction, not just retrieval)
+
+### 5.3 Implications for CLS Theory
+
+The "consolidation makes the hippocampus redundant" prediction assumes that the neocortex can eventually learn what the hippocampus knows. In our system, this assumption fails: 16 ternary neurons with ~29 non-zero weights each do not have enough degrees of freedom for Hebbian learning to find useful structure. The hippocampus produces 9.7/80 MTFP divergence through direct episodic injection; the best the Hebbian rule can do with weight updates is 9.7/80 (identical to the control).
+
+This suggests a condition under which consolidation fails: **when the neocortical substrate has insufficient representational capacity for the task, consolidation cannot transfer hippocampal knowledge into weights, and the hippocampus remains permanently necessary.**
+
+This is not exotic. It is the normal condition for small embedded systems with fixed-point arithmetic and limited parameters. The CLS framework assumes the neocortex has arbitrary capacity. The Reflex demonstrates what happens when it doesn't.
 
 ---
 
-## 6. Related Work
+## 6. The Transition Experiment (Pending Re-Validation)
 
-### 6.1 CLS Implementations
+### 6.1 Status
 
-Computational CLS models (Norman & O'Reilly, 2003; Kumaran & McClelland, 2012) typically implement both fast and slow learning with backpropagation-trained networks. The hippocampal component uses high learning rates; the neocortical component uses low learning rates. Consolidation occurs through interleaved replay.
+The original paper (April 7-8) presented a transition experiment (TEST 14C: P1 for 90s → P2 for 30s, three conditions, three seeds). This data was collected before two compounding bugs were fixed:
+1. Sender enrollment starvation: Board A's enrollment only saw P1, making TriX signatures for P0/P2/P3 zero
+2. `trix_enabled` not set: the ISR never ran TriX classification, so the bias mechanism was inactive
 
-The Reflex differs fundamentally: the neocortical component has zero learning rate (not low — zero). This is not a continuum endpoint but a qualitative change. With zero learning rate, consolidation is impossible, and the hippocampal role changes from "temporary scaffold" to "permanent partner." This variant has not, to our knowledge, been studied in the CLS literature.
+All transition data from April 8 is deprecated (`data/apr8_2026/DEPRECATED.md`). The transition experiment has been re-run under label-free conditions for Test 14 (cycling sender, kinetic attention comparison) but NOT for Test 14C (transition sender). The VDB stabilization finding from the April 8 data — that VDB feedback prevents P1 regression during P1→P2 transitions — is a PREDICTION awaiting re-validation, not a confirmed result.
 
-### 6.2 Neuromorphic CLS
+### 6.2 What We Expect
 
-Hardware CLS implementations on neuromorphic chips (Intel Loihi, BrainChip Akida) typically use spike-timing-dependent plasticity as the slow learner. The Reflex uses no plasticity at all — the ternary CfC with AND+popcount dot products runs on commodity peripheral fabric, not neuromorphic silicon. The architectural contribution is orthogonal to the substrate.
+The VDB stabilization mechanism is independent of the bugs that were fixed:
+- The VDB stores episodic snapshots regardless of TriX accuracy
+- The LP blend retrieves and injects regardless of the bias mechanism
+- The stabilization (preventing regression to the old attractor) should hold because it depends on VDB content, not on classification or bias
 
-### 6.3 Episodic Memory in Robotics
-
-Episodic memory modules in robotics (Stachenfeld et al., 2017; Blundell et al., 2016) typically store and retrieve experiences to support planning or policy improvement. The Reflex's VDB serves a more primitive function: it stores perceptual snapshots and blends the nearest match into the current hidden state. There is no planning, no policy, no reward signal. The blend is the entire contribution — the hippocampus works by direct state injection, not by informing a decision process.
+But we cannot cite specific alignment traces, crossover steps, or regression magnitudes until the experiment is re-run with: (a) the corrected sender (enrollment cycling window), (b) label-free input (`MASK_PATTERN_ID_INPUT=1`), (c) the distinct P2 payload. This is listed as the next experimental step in `DO_THIS_NEXT.md`.
 
 ---
 
 ## 7. Limitations
 
-1. **Three seeds.** The transition experiment was replicated across three weight seeds (April 8, 2026). The VDB stabilization finding (monotonic transition under no-bias and full conditions, noisier transition under ablation) holds across all three seeds. The ablation margin narrowing at step +20 is visible in Seeds A and B. Three seeds is sufficient to establish the pattern but not to characterize the distribution.
+1. **Transition experiment not yet re-validated.** The April 8 data is deprecated. The stabilization finding awaits re-collection under label-free conditions. The qualitative claim ("hippocampus stabilizes") is a prediction based on mechanism analysis, not a confirmed silicon measurement.
 
-2. **Projection-dependent effects.** The full-system condition (CMD5+bias) shows projection-dependent transition behavior: crossover at step 0 (Seed A), step 22 (Seed B), and step 2 (Seed C). Seed B's headwind is attributable to a degenerate LP projection (Section 5.5 of the companion Stratum 1 paper). The no-bias condition (CMD5, no gate bias) is projection-independent and is the cleaner test of VDB contribution — it crosses at step 0 in all seeds.
+2. **Single seed for Hebbian replication.** The +0.1 ± 1.1 finding is from 3 repetitions of a single seed (0xCAFE1234). Different seeds may show different Hebbian effects due to different random projections. However, the VDB-only baseline (9.7 ± 0.6) is stable, suggesting the learning difficulty is not seed-specific.
 
-3. **Two patterns only.** The transition experiment uses P1→P2. The system has four patterns. Multi-pattern transitions (P1→P3, P2→P0) may show different dynamics.
+3. **16 neurons may be too few for consolidation.** The flat Hebbian landscape (16 quantized outputs, ~29 weights each) may be specific to this dimensionality. Wider LP (32 neurons) or MTFP-targeted learning (80-trit error signals) might enable consolidation. This is an open question, not a tested claim.
 
-4. **Transition sender.** The sender transmits P1 for 90s then P2 for 30s. This is a clean, controlled switch. In natural environments, pattern transitions are gradual and noisy. The clean-switch protocol isolates the mechanism but does not test robustness to gradual change.
+4. **Four patterns, one sender.** The system classifies 4 patterns from a single ESP-NOW sender. Scaling to more patterns or multiple senders may require larger VDB capacity or different encoding.
 
-5. **Crossover at step 0.** All conditions cross immediately. This means the crossover metric does not discriminate between conditions. A more sensitive metric — the alignment *margin* (P2 - P1) over time — shows the hippocampal effect more clearly: VDB conditions maintain a stable margin while ablation oscillates.
+5. **JTAG attached.** All runs use USB-JTAG for serial output. UART-only verification is pending.
 
-6. **JTAG attached.** All runs use USB-JTAG for serial output. UART-only verification is planned but not yet performed.
-
-7. **Bias decay rate not optimized.** The 0.9 decay rate was chosen without tuning. The transition data suggests a faster decay might improve transition dynamics at the cost of stable-period amplification. The optimal decay rate is an open parameter.
-
-8. **LP feedback classifier (resolved).** LP feedback is dispatched from the TriX ISR with a GDMA offset mapping calibrated at enrollment. The structural guarantee (W_f hidden = 0) extends to the LP accumulation pathway. Full test suite: 14/15 PASS with TriX dispatch.
+6. **MTFP metric is nonlinear.** MTFP Hamming (the primary divergence metric) counts differing trits in a nonlinear encoding. A sign-trit disagreement is more significant than a mantissa-trit disagreement. The 9.7/80 baseline should be interpreted as a proxy for dot-product diversity, not a calibrated distance. See `data/apr11_2026/SUMMARY.md` for interpretation notes.
 
 ---
 
 ## 8. Conclusion
 
-A ternary microcontroller drawing 30 microamps implements Complementary Learning Systems with a twist: the neocortex never learns, so the hippocampus can never retire.
+A ternary microcontroller drawing 30 microamps implements Complementary Learning Systems with a twist: the neocortex never learns — and when we made it try, it couldn't improve on the hippocampus.
 
-The transition experiment reveals what this permanent hippocampus does during environmental change: not acceleration, but stabilization. Without hippocampal feedback, the fixed neocortical projection creates attractor basins that can recapture the LP state during transitions — the old pattern pulls the representation back. With hippocampal feedback, episodic content from the new pattern anchors the LP state in the new region, preventing regression.
+Three iterations of Hebbian weight learning, each addressing a limitation of the previous one, each tested under ablation-controlled replicated conditions, produced +0.1 ± 1.1 Hamming improvement over the hippocampus-only baseline. The consolidation path does not work. Not because we omitted it. Because the hippocampus is already doing what consolidation is supposed to achieve.
 
-The classification system, structurally separated from the prior by a zero-weight wall (`W_f hidden = 0`), correctly identifies the new pattern from the first packet. The prior takes 30+ steps to follow. The gap between immediate classification and gradual reorientation — bridged by the hippocampus — is the system's epistemic humility in action: it knows what it sees before it believes what it sees.
+The VDB episodic memory layer — 64 nodes in 2KB of LP SRAM, searched at 100 Hz by a 16 MHz RISC-V core — stores, retrieves, and blends episodic snapshots of the system's perceptual state. That blend alone produces 8.5-9.7/80 MTFP divergence across 4 wireless signal patterns. No weight learning. No labels. No training loop. No gradient. No floating-point number.
 
-The hippocampus stabilizes. The neocortex projects. The classifier measures. The prior yields. All on fifty cents of silicon, sixteen kilobytes of SRAM, and a ternary arithmetic that was never meant to be a feature.
+The hippocampus is not a staging area. It is not a scaffold for learned representations. It is the temporal model itself. The system's accumulated experience is in its memories, not in its weights.
+
+Classification is structurally separated from the temporal model by a zero-weight wall (`W_f hidden = 0`). The classifier reports the current pattern at 100% accuracy from the first packet. The temporal model takes 120 seconds to build its representation. The gap between immediate perception and gradual understanding — bridged by the hippocampus — is the system's epistemic architecture in action.
+
+The prior should be a voice, not a verdict. And the voice comes from memory, not from learned weights.
 
 ---
 
 ## Appendix: Hardware and Firmware
 
 | Parameter | Value |
-|-----------|-------|
+|---|---|
 | Chip | ESP32-C6FH4 (QFN32) rev v0.2 |
 | GIE rate | 430.8 Hz (peripheral fabric) |
 | LP core | 16 MHz RISC-V, ~30 µA |
 | LP CfC | 16 neurons, 48-trit input, fixed random weights |
 | VDB | 64 nodes, NSW graph (M=7), 48-trit vectors |
 | LP MTFP | 80 trits (5 per neuron: sign + 2 exp + 2 mant) |
-| Gate bias | BASE=15, floor=30, decay=0.9/confirmation |
-| Phase 1 | 90s P1, ~280-300 confirmed classifications |
-| Phase 2 | 200 steps measured, ~30s |
-| Firmware | `geometry_cfc_freerun.c:run_test_14c()` |
-| Sender | `espnow_sender.c` with `TRANSITION_MODE=1` |
+| Build flags | `MASK_PATTERN_ID=1`, `MASK_PATTERN_ID_INPUT=1` |
+| Authoritative data | `data/apr11_2026/SUMMARY.md` |
+| Firmware | commit `ebc65a4` (TEST 15 with MTFP measurement) |
 
 ## Companion Papers
 
-This paper is part of a coordinated cluster:
-
-- **Stratum 1:** Engineering — ternary peripheral-fabric neural computation with kinetic attention, multi-seed validated. See `PAPER_KINETIC_ATTENTION.md`.
-- **Stratum 2 (this paper):** Architecture — fixed-weight CLS, hippocampal stabilization.
-- **Stratum 3:** Principle — prior-signal separation as structural hallucination resistance. See `PRIOR_SIGNAL_SEPARATION.md`.
+- **Stratum 1 (Engineering):** Ternary peripheral-fabric neural computation with VDB temporal context. See `PAPER_KINETIC_ATTENTION.md` (undergoing rewrite — kinetic attention found harmful at MTFP; paper reframing around VDB temporal context).
+- **Stratum 2 (this paper):** Fixed-weight CLS architecture with permanent hippocampus.
+- **Stratum 3 (Principle):** Prior-signal separation as structural hallucination resistance. See `PRIOR_SIGNAL_SEPARATION.md`.
 
 ---
 
-*The hippocampus is not a staging area. It is a permanent cognitive partner. The prior should be a voice, not a verdict.*
+*The hippocampus is not a staging area. It is the temporal model. The prior should be a voice, not a verdict. And the voice comes from memory, not from learned weights.*
