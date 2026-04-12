@@ -255,13 +255,23 @@ Unchanged. Replace 16-trit RSSI thermometer with 5-trit MTFP value.
 
 ## COMMIT ORDER FOR NEXT SESSION
 
-1. **Rewrite PAPER_KINETIC_ATTENTION.md** — cite `data/apr11_2026/SUMMARY.md` as the authoritative dataset. Replace crossover metric with TriX@15 + alignment traces. Fix "within 4 steps" → geometric ×0.9/step. **Note:** Test 14 (kinetic attention) FAILED under label-free conditions — the paper needs to disclose this honestly and investigate whether gate bias helps when GIE hidden is less pattern-specific.
-2. **Rewrite PAPER_CLS_ARCHITECTURE.md** — transition experiment needs re-run with label-free flags. The apr9 data was collected with label in input.
-3. **Rewrite PRIOR_SIGNAL_SEPARATION.md** — check every cited number against apr11 SUMMARY.md.
-4. **Investigate Test 14 failure under label-free conditions** — gate bias may amplify noise when GIE hidden lacks pattern_id structure. Run Test 14 multiple times under label-free flags. If consistently FAIL: the kinetic attention paper claim needs honest revision.
-5. **Multi-seed sweep under label-free conditions** — the apr9 multi-seed data used label-in-input. Re-run with `MASK_PATTERN_ID_INPUT=1` + distinct P2 payload + transition sender.
-6. **UART-only verification** — physical rewiring, separate session.
-7. **RSSI dead zone retry** (RSSI_MARGIN=1) — after papers settle.
+### Identified bottleneck: LP dimensionality (16 sign trits)
+
+The April 12 investigation (3 runs of Test 14 under label-free conditions: +4.2, +0.6, -1.0) revealed the root cause of all mechanism variability. The 16-neuron LP with random ternary weights and sign() quantization is at its ceiling:
+
+- **VDB-only baseline** (1.2/16) is what 16 sign trits can deliver for 4 patterns
+- **Kinetic attention** re-rolls which trits are confident (random, not directed) → state-dependent
+- **Hebbian learning** explores a flat weight landscape (16 quantized outputs, ~29 weights each) → noise
+
+The LP dot magnitude probe (April 7) already showed the information IS in the magnitudes — sign() discards it. MTFP encoding (5 trits/neuron, 80 total) recovers it without changing the LP core.
+
+### Forward plan (revised)
+
+1. **MTFP-resolution VDB integration** — THE NEXT STEP-CHANGE. Read `lp_dots_f[]` instead of `lp_hidden[]`. Encode as 80-trit MTFP. Update VDB node format (48→112 trits), search, insert, feedback blend. Re-run Tests 12-15. Expected: LP divergence lifts from 1.2/16 sign to 5-10/80 MTFP, giving kinetic attention and Hebbian learning enough resolution to show directional improvement.
+2. **Paper rewrites** — cite `data/apr11_2026/SUMMARY.md`. Report the 16-trit ceiling honestly. Frame MTFP as the next step. Disclose kinetic attention state-dependence (2/3 PASS, mean +1.3, range -1.0 to +4.2). Report Hebbian as +0.1 ± 1.6 at 16 trits.
+3. **Multi-seed sweep** — defer until after MTFP integration. The current 16-trit sign-space results are at the ceiling; multi-seed would just replicate the ceiling.
+4. **UART-only verification** — independent, can run anytime.
+5. **Re-evaluate kinetic attention + Hebbian** at MTFP resolution — both may work at 80 trits where they failed at 16.
 
 Items 1-3 and 5 are docs/data only. Item 4 is code. Item 6 is physical. Item 7 is code + silicon re-run.
 
