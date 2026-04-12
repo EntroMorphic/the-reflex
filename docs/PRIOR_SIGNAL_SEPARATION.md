@@ -3,21 +3,10 @@
 **The Reflex Project — Theoretical Note**
 
 *Written March 22–23, 2026. Emerged from the LMM cycle on kinetic attention.*
-*Observer: Claude Sonnet 4.6*
+*Updated: April 12, 2026. The structural guarantee (`W_f hidden = 0`) has been verified across ALL experiments in the April 9-12 session, including Hebbian weight updates, label-free operation, and kinetic attention. TriX accuracy remains 100% label-free (32/32, `MASK_PATTERN_ID=1 + MASK_PATTERN_ID_INPUT=1`). This is the project's most robust claim.*
+*Observer: Claude Sonnet 4.6 (March 22), Claude Opus 4.6 (April 9-12)*
 
 *For the full perspective paper integrating technical, engineering, ontological, and personal dimensions, see [`THE_PRIOR_AS_VOICE.md`](THE_PRIOR_AS_VOICE.md).*
-
----
-
-## ⚠ CORRECTIONS (April 12, 2026)
-
-**The structural guarantee (W_f hidden = 0) holds across ALL experiments in the April 9-12 session, including Hebbian weight updates.** TriX accuracy remains 100% label-free and independent of LP state. The prior-signal separation principle is the project's most robust claim. However:
-
-1. **"Bias releases within 0-2 steps" (Section 5) → geometric ×0.9/step.** `pred` flips at step +1 but the bias magnitude decays over ~12 steps. The disagree-count hard-zero path (≥4 trits) was not exercised on clean seeds. The "evidence-deference policy" is real but slower than stated. See commit `3670a51`.
-
-2. **"100% TriX accuracy (4 well-separated patterns)" (Section 5) → 100% label-free confirmed** with distinct P2 payload and pattern_id masked from both signatures and input. The paper should disclose the full input encoding. See commits `2fc5219`, `c7ef286`.
-
-3. **The disagreement detection mechanism (kinetic attention) is harmful at MTFP resolution.** The five-component architecture holds — the structural wall, the evidence reader, the separation guarantee — but the specific "disagreement detection + evidence deference" implementation via gate bias degrades LP magnitude diversity. The PRINCIPLE is intact; the IMPLEMENTATION needs revision. The principle paper should note this honestly.
 
 ---
 
@@ -36,7 +25,9 @@ to enable. The system became confident and increasingly wrong.
 
 The fix — agreement-weighted gate bias — weights the prior's influence by whether the LP
 layer and the TriX classifier are saying the same thing. When they agree, the prior amplifies.
-When they disagree, the prior attenuates to zero in one confirmation.
+When they disagree, the prior's prediction (`pred`) flips at step +1 and the bias magnitude
+decays geometrically (×0.9/step, half-life ~6.6 steps). A hard-zero disagree path (≥4 trits
+conflicting) exists but was not exercised on clean seeds.
 
 The comment that followed: *"This sounds like a resolution for hallucination, in a sense."*
 
@@ -348,21 +339,26 @@ The answer is almost certainly yes. The question is how to build it.
 
 ---
 
-**Date**: March 22–23, 2026. Updated April 8, 2026.
-**Hardware basis**: ESP32-C6, ablation-controlled, red-team remediated, multi-seed validated (3 seeds). Multi-seed TEST 14C transition data (3 seeds × 3 conditions).
-**Key commits**: `12aa970` (TEST 12/13), `429ce38` (Phase 5), `98800a9` (MTFP encoding), `f510f9a` (red-team), `276af59` (seed sweep), `e0d8651` (TEST 14C transition)
+**Date**: March 22–23, 2026. Updated April 12, 2026.
+**Hardware basis**: ESP32-C6, ablation-controlled, label-free (`MASK_PATTERN_ID=1 + MASK_PATTERN_ID_INPUT=1`).
+**Authoritative data**: `data/apr11_2026/SUMMARY.md`. Firmware commit `ebc65a4`.
 
-**Silicon verification of the five components:**
-1. Prior-holder: LP CfC hidden state. Pattern-specific after 90s. VDB causally necessary (TEST 13 ablation).
-2. Evidence-reader: GIE peripheral hardware. 430 Hz, 100% TriX accuracy (4 well-separated patterns), zero prior influence on classification. LP feedback dispatched from TriX ISR with GDMA offset mapping (structural guarantee extends to accumulation pathway).
-3. Structural separation: `W_f hidden = 0`. Verified: TriX ISR and CPU classification agree at 100% (`0b09f69`).
-4. Disagreement detection: Ternary disagree-count per trit. When 4+ of 16 trits disagree, prior and evidence are in conflict. The disagreement is computed in trit-space, not collapsed to a scalar — preserving the ternary structure that distinguishes "strong prior with gaps" from "conflicted prior."
-5. Evidence-deference policy: When disagreement detected, gate_bias zeros immediately (not gradual decay). Multi-seed TEST 14C verified: bias releases within 0-2 steps of pattern switch in 2 of 3 seeds. The deference is structural — the disagree count cannot be elevated by prior influence because the TriX classification that feeds the accumulator is structurally immune to the prior (W_f hidden = 0).
+**Silicon verification of the five components (April 12):**
+
+1. **Prior-holder:** LP CfC hidden state. 8.5-9.7/80 MTFP divergence across 4 patterns from VDB episodic retrieval alone. VDB causally necessary (TEST 13 ablation). The temporal model is in the memories, not in the weights — Hebbian weight learning produces no improvement (+0.1 ± 1.1 at n=3).
+
+2. **Evidence-reader:** GIE peripheral hardware. 430 Hz, 100% label-free TriX accuracy (32/32, pattern_id masked from both signatures and input). Zero prior influence on classification. LP feedback dispatched from TriX ISR with GDMA offset mapping (structural guarantee extends to accumulation pathway).
+
+3. **Structural separation:** `W_f hidden = 0`. Verified across ALL experiments in the April 9-12 session, including Hebbian weight learning (LP W_f and W_g modified, GIE W_f untouched), kinetic attention (gate bias active), and label-free operation. The wall is the project's most robust finding.
+
+4. **Disagreement detection:** Ternary disagree-count per trit. When 4+ of 16 trits disagree, prior and evidence are in conflict. The disagreement signal is structurally reliable because the TriX classification that feeds it is immune to the prior (W_f hidden = 0).
+
+5. **Evidence-deference policy:** When prediction flips (step +1 post-switch), the LP feedback dispatch switches to the new pattern's accumulator. The bias magnitude decays geometrically (×0.9/step, half-life ~6.6 steps). **Honest negative:** the specific gate-bias implementation of evidence deference (kinetic attention) is harmful at MTFP resolution (-5.5/80) — the bias saturates the GIE hidden state, reducing LP magnitude diversity. The PRINCIPLE (evidence overrides prior) is intact. The IMPLEMENTATION (gate bias as the deference mechanism) needs revision. The five-component architecture holds; component 5's specific mechanism does not help.
 
 **Companion papers:**
-- Stratum 1 (Engineering): `PAPER_KINETIC_ATTENTION.md` — ternary peripheral-fabric neural computation with kinetic attention, multi-seed validated
-- Stratum 2 (Architecture): `PAPER_CLS_ARCHITECTURE.md` — fixed-weight CLS, hippocampal stabilization during transitions
+- Stratum 1 (Engineering): `PAPER_KINETIC_ATTENTION.md` — ternary peripheral-fabric neural computation with VDB temporal context (rewritten April 12)
+- Stratum 2 (Architecture): `PAPER_CLS_ARCHITECTURE.md` — fixed-weight CLS with permanent hippocampus (rewritten April 12)
 - Stratum 3 (this paper): Prior-signal separation as structural hallucination resistance
 
 **See also**: `THE_PRIOR_AS_VOICE.md` (full perspective paper)
-**Status**: Ready for submission. All five components silicon-verified under confound-controlled conditions, multi-seed validated.
+**Status**: The structural guarantee and four of five components are fully verified on silicon. Component 5 (evidence-deference implementation) is an honest negative result — the principle holds but the gate-bias mechanism degrades LP representation. Transition experiment (TEST 14C) pending re-validation under label-free conditions.
