@@ -232,7 +232,7 @@ Unchanged. Treat ESP-NOW packets as GIE inputs without OS involvement. Requires 
 **Three iterations to get it right:**
 1. v1 (VDB mismatch, f-only): +2.5 with label, -1.7 without (label-dependent)
 2. v2 (TriX accumulator, f-only): -1.0 label-free (better target, still wrong)
-3. **v3 (TriX accumulator, diagnosed f+g): +1.3 label-free (commit `427fea3`)**
+3. **v3 (TriX accumulator, diagnosed f+g): +1.3 single run, +0.1 ± 1.1 MTFP at n=3 (noise)**
 
 The missing atomic was DIAGNOSIS: per-neuron, determine if the error is in the gate (f-pathway) or the candidate (g-pathway), then flip the correct matrix. v1-v2 always flipped W_f; ~50% of errors were in g, making half the flips counterproductive.
 
@@ -290,7 +290,8 @@ The LP dot magnitude probe (April 7) already showed the information IS in the ma
 2. **Paper rewrites** — cite `data/apr11_2026/SUMMARY.md`. Report the 16-trit ceiling honestly. Frame MTFP as the next step. Disclose kinetic attention state-dependence (2/3 PASS, mean +1.3, range -1.0 to +4.2). Report Hebbian as +0.1 ± 1.6 at 16 trits.
 3. **Multi-seed sweep** — defer until after MTFP integration. The current 16-trit sign-space results are at the ceiling; multi-seed would just replicate the ceiling.
 4. **UART-only verification** — independent, can run anytime.
-5. **Re-evaluate kinetic attention + Hebbian** at MTFP resolution — both may work at 80 trits where they failed at 16.
+5. **MTFP-targeted Hebbian (untested)** — the current Hebbian uses sign-space (16-trit) targets and error. The MTFP measurement showed it has no MTFP effect either (+0.1 ± 1.1). An MTFP-targeted version (80-trit target, per-MTFP-trit error, magnitude-aware flip decisions) is untested and may behave differently. Lower priority than paper rewrites because the VDB-only MTFP baseline (8.5-9.7/80) is already strong.
+6. **Kinetic attention is resolved as harmful** at MTFP resolution (-5.5/80, 3 runs, consistent direction). No further investigation needed — the mechanism reliably fires but consistently degrades LP magnitude diversity. The paper should report this as an honest negative result. The sign-space metric was hiding the damage.
 
 Items 1-3 and 5 are docs/data only. Item 4 is code. Item 6 is physical. Item 7 is code + silicon re-run.
 

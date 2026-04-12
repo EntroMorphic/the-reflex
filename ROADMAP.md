@@ -119,7 +119,7 @@ The VDB mismatch error signal is label-informed through the GIE hidden state. Wh
 **Resolved: Diagnosed Hebbian v3 (commit `427fea3`).** Three iterations:
 1. v1 (VDB mismatch, f-only): +2.5 with label, -1.7 without → label-dependent
 2. v2 (TriX accumulator, f-only): -1.0 label-free → better target, wrong pathway
-3. **v3 (TriX accumulator, diagnosed f+g): +1.3 label-free → the diagnosis fixed it**
+3. **v3 (TriX accumulator, diagnosed f+g): +1.3 single run, +0.1 ± 1.1 at n=3 → noise**
 
 The missing atomic was DIAGNOSIS: when the output is wrong, ask "is the error in the gate (f) or the candidate (g)?" before flipping. v1-v2 always flipped W_f. ~50% of errors were in g, making half the flips counterproductive. v3 compares |f_dot| vs |g_dot| and fixes the cheaper pathway.
 
@@ -131,7 +131,7 @@ Result (genuinely label-free, `MASK_PATTERN_ID=1 + MASK_PATTERN_ID_INPUT=1`):
 
 **The biological analog (revised):** The TriX classifier (sensory cortex, structurally guaranteed) provides the label that organizes the LP consolidation. The VDB (hippocampus) stores and retrieves. The LP weights (neocortex) learn to represent each pattern's temporal signature through Hebbian flips gated by TriX confidence + retrieval stability. Both f-pathway (gate) and g-pathway (candidate) weights update, with per-neuron diagnosis selecting the correct target.
 
-**Impact:** The system learns on silicon, without labels, without gradients, without floats. The structural wall is intact. The prior gets wiser through experience. Pillar 3 is operational.
+**Status:** Pillar 3 is IMPLEMENTED but shows no significant effect (sign +0.1 ± 1.2, MTFP +0.1 ± 1.1 at n=3). The diagnosis (f vs g) was the correct architectural fix (moved contribution from -1.0 to neutral) but the mechanism doesn't improve on VDB-only at either resolution. The 16-neuron LP with random weights may not have enough structure for single-trit Hebbian flips to find useful configurations. The structural wall is intact. Weight learning is a solved engineering problem (the code works, the gates work, the flips work) but not yet a demonstrated capability improvement.
 
 ---
 

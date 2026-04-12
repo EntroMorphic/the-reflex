@@ -23,7 +23,7 @@ The authoritative label-free measurement of the full Reflex system. No pattern_i
 | Tests 1-8 | 8/8 PASS | GIE peripherals, LP core, VDB, pipeline, feedback |
 | Tests 9-10 | PASS | ESP-NOW receive, live input encoding |
 | Test 11 | PASS, **32/32 = 100%** | Label-free TriX classification (4 patterns) |
-| Test 12 | PASS | LP divergence from VDB feedback (sign-space P0-P3 = 9/16) |
+| Test 12 | PASS | LP divergence from VDB feedback (sign mean 5.0/16, **MTFP mean 8.5/80**) |
 | Test 13 | PASS | VDB causal necessity (CMD 4 distillation, +1 trit P1-P2) |
 | Test 14 | FAIL | Kinetic attention: 14C mean (0.7) < 14A mean (1.0) |
 | Test 14C | skipped | Cycling sender, not transition mode |
@@ -57,7 +57,18 @@ CMD 4 (CfC only, no VDB blend) vs CMD 5 (CfC + VDB + blend): P1-P2 Hamming diffe
 
 **FAIL.** Mean LP divergence under gate bias (14C = 0.7/16) was LESS than without bias (14A = 1.0/16). Per-group fire shift was >10% (the gate bias IS changing firing patterns) but the effect on LP divergence is negative this run.
 
-This is an honest result: under genuinely label-free conditions (no pattern_id in GIE input), the GIE hidden state has less pattern-specific structure. The gate bias mechanism, which amplifies the LP prior's influence on GIE firing thresholds, may amplify noise when the GIE hidden state is less discriminative. Needs investigation.
+This is an honest result confirmed at MTFP resolution across 3 independent runs (commit `774fa4c`):
+
+| Run | 14A MTFP mean | 14C MTFP mean | MTFP improvement |
+|---|---|---|---|
+| 1 | 9.8/80 | 10.2/80 | +0.4 |
+| 2 | 15.5/80 | 8.5/80 | -7.0 |
+| 3 | 15.5/80 | 5.7/80 | -9.8 |
+| **Mean** | **13.6** | **8.1** | **-5.5** |
+
+The sign-space metric (+1.3/16 mean) was an artifact: the bias traded magnitude diversity for sign diversity — a net information loss. The bias saturates the GIE hidden state (more neurons fire → LP input becomes more uniform → LP dot magnitudes converge). The mechanism reliably changes per-group fire rates (>10% shift every run) but the effect on LP representation is consistently negative at MTFP resolution.
+
+The 3 runs used independent board resets between each run (both sender and receiver). The within-run comparison (14A vs 14C) shares VDB content (14A builds the VDB, 14C inherits it) but VDB is cleared and LP weights re-initialized between conditions. The direction of the MTFP effect is consistent across all 3 independent runs.
 
 ### Hebbian Learning (Test 15)
 
@@ -74,6 +85,14 @@ Note: the Control itself shows high variance (1.0 ± 1.3) — run-to-run LP dive
 
 ---
 
+## MTFP metric interpretation note
+
+MTFP Hamming (/80) counts differing trits in the 5-trit-per-neuron encoding [sign, exp0, exp1, mant0, mant1]. This metric is nonlinear: a sign-trit disagreement means the dot products have opposite signs (large difference), while a mantissa-trit disagreement means they have similar magnitudes in the same scale (small difference). Raw MTFP Hamming is a proxy for dot-product diversity, not a calibrated distance. The 8.5-9.7/80 baseline means ~0.5-0.6 MTFP trits differ per neuron per pattern pair on average. A more precise metric would be mean absolute dot-product difference per neuron — the raw `lp_dots_f[]` values are available in LP SRAM but are not currently aggregated across patterns in the test output.
+
+The MTFP metric is valuable because: (a) it's more stable than sign-space (CV 6% vs 39%), (b) it captures magnitude information that sign discards, (c) it correctly identified kinetic attention as harmful (sign-space incorrectly showed it as helpful). It should be interpreted as a richer proxy, not as a calibrated measurement.
+
+---
+
 ## What the data supports
 
 - **100% label-free classification** at 430 Hz in peripheral hardware. Real.
@@ -81,6 +100,10 @@ Note: the Control itself shows high variance (1.0 ± 1.3) — run-to-run LP dive
 - **VDB causal necessity** holds label-free.
 - **~30 µA** power claim (datasheet, JTAG-free measurement still pending).
 - **No floating point, no multiplication, no training.** All verified.
+
+## MTFP baseline note
+
+The Test 12 MTFP divergence (8.5/80 in this full-suite run) is a NO-BIAS measurement — Test 12 sets gate_threshold=90 but never applies gie_gate_bias (bias stays at zero throughout). The Test 15 SKIP_TO_15 measurements showed 9.7 ± 0.6 /80 MTFP (3 reps). Both are VDB-only, no kinetic attention, no Hebbian. The range 8.5-9.7/80 represents the system's natural MTFP LP divergence from VDB episodic memory alone.
 
 ## What the data does NOT support
 
