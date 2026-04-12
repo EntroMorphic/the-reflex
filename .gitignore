@@ -42,8 +42,8 @@ silicon_grail_deploy.sh
 # Compiled simulation binaries
 sim/test14c
 
-# Claude Code artifacts
-archived/
+# Archive (old captures, logs, session transcripts, dead code)
+archive/
 
 # Working drafts and per-session remediation plans (not project record)
 docs/SUBSTACK_DRAFT_*.md
