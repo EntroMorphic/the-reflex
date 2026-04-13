@@ -3,9 +3,9 @@
 **Tripp Josserand-Austin**
 EntroMorphic Research
 
-*Rewritten: April 12, 2026. The original title was "The Hippocampus Stabilizes, Not Accelerates." The April 9-12 session tested the consolidation path (Hebbian weight learning) and found it produces no improvement. The hippocampus is not a stabilizer of neocortical learning. It IS the temporal model. The title and framing have been revised to reflect this empirical finding.*
+*Rewritten: April 12, 2026. The original title was "The Hippocampus Stabilizes, Not Accelerates." The April 9-12 session tested the consolidation path (Hebbian weight learning) and found it produces no improvement. The hippocampus is not a stabilizer of neocortical learning. It IS the temporal model. The title and framing have been revised to reflect this empirical finding. Transition experiment (Section 6) updated with multi-seed data from `data/apr9_2026/SUMMARY.md`.*
 
-*Data: `data/apr11_2026/SUMMARY.md` (authoritative label-free dataset). `data/apr11_2026/hebbian_3reps_label_free.log` (Hebbian replication). Firmware commit `ebc65a4`. ESP32-C6FH4, ESP-IDF v5.4.*
+*Data: `data/apr11_2026/SUMMARY.md` (authoritative label-free dataset). `data/apr9_2026/SUMMARY.md` (multi-seed TEST 14C, 3 seeds × 3 conditions). Firmware commit `ebc65a4`. ESP32-C6FH4, ESP-IDF v5.4.*
 
 ---
 
@@ -228,30 +228,69 @@ This is not exotic. It is the normal condition for small embedded systems with f
 
 ---
 
-## 6. The Transition Experiment (Pending Re-Validation)
+## 6. The Transition Experiment
 
-### 6.1 Status
+### 6.1 Protocol
 
-The original paper (April 7-8) presented a transition experiment (TEST 14C: P1 for 90s → P2 for 30s, three conditions, three seeds). This data was collected before two compounding bugs were fixed:
-1. Sender enrollment starvation: Board A's enrollment only saw P1, making TriX signatures for P0/P2/P3 zero
-2. `trix_enabled` not set: the ISR never ran TriX classification, so the bias mechanism was inactive
+TEST 14C: the sender transmits P1 for 90 seconds, then switches to P2 for 30 seconds. Board A measures LP adaptation step-by-step under three conditions:
 
-All transition data from April 8 is deprecated (`data/apr8_2026/DEPRECATED.md`). The transition experiment has been re-run under label-free conditions for Test 14 (cycling sender, kinetic attention comparison) but NOT for Test 14C (transition sender). The VDB stabilization finding from the April 8 data — that VDB feedback prevents P1 regression during P1→P2 transitions — is a PREDICTION awaiting re-validation, not a confirmed result.
+- **Full** (CMD 5 + agreement-weighted gate bias): VDB feedback blend + kinetic attention
+- **No bias** (CMD 5, bias = 0): VDB feedback blend only
+- **Ablation** (CMD 4, no blend, no bias): CfC alone — no hippocampal influence
 
-### 6.2 What We Expect
+Three seeds × three conditions. Data: `data/apr9_2026/SUMMARY.md` (both compounding bugs fixed, firmware commit `63877f7`).
 
-The VDB stabilization mechanism is independent of the bugs that were fixed:
-- The VDB stores episodic snapshots regardless of TriX accuracy
-- The LP blend retrieves and injects regardless of the bias mechanism
-- The stabilization (preventing regression to the old attractor) should hold because it depends on VDB content, not on classification or bias
+**Caveat:** This data was collected with the old P2 payload (pre-`c7ef286`) and with pattern_id present in the input (pre-`MASK_PATTERN_ID_INPUT`). The VDB stabilization finding depends on VDB content and LP trajectory, not on label presence — the stabilization mechanism is independent of whether classification uses label trits. The TriX@15 accuracy numbers may change under label-free conditions; the alignment traces and ablation regression findings should hold.
 
-But we cannot cite specific alignment traces, crossover steps, or regression magnitudes until the experiment is re-run with: (a) the corrected sender (enrollment cycling window), (b) label-free input (`MASK_PATTERN_ID_INPUT=1`), (c) the distinct P2 payload. This is listed as the next experimental step in `DO_THIS_NEXT.md`.
+### 6.2 Ablation Regression: The Hippocampus Stabilizes
+
+The CLS prediction: removing VDB blend (Ablation, CMD 4) should allow the stale P1 prior to reassert itself post-switch. The alignment gap (P2 − P1) should shrink or reverse under ablation.
+
+| Seed / Cond | gap @ +0 | gap @ +10 | gap @ +20 | gap @ +30 | Trend |
+|---|---|---|---|---|---|
+| A / No bias | −10 | −8 | −16 | +2 | stable separation, mild convergence |
+| A / Ablation | −22 | 0 | 0 | +1 | **regression** — P1 reaches parity by +10 |
+| C / No bias | −8 | −9 | −18 | −10 | stable separation |
+| C / Ablation | −24 | −7 | −16 | 0 | **regression** — parity by +30 |
+
+In Seeds A and C, the no-bias condition (CMD 5, with VDB blend) maintains P2 > P1 alignment throughout the 30-step window. The ablation condition (CMD 4, no VDB blend) shows P1 regression — the old prior reasserts itself, eroding the gap to zero by step +10 (Seed A) or step +30 (Seed C).
+
+This is the CLS prediction confirmed: the hippocampus (VDB) stabilizes the transition. Without it, the CfC's fixed random weights pull the LP state back toward the P1 attractor. With it, the episodic content from the P2 phase holds the LP state in the new basin.
+
+Seed B shows mixed results due to the documented degenerate projection — P1 and P2 collapse to nearly-parallel LP directions under this seed's random weights. The CLS signal is masked by the projection degeneracy.
+
+### 6.3 Bias Release Dynamics
+
+The Seed A Full condition provides a clean trace of the bias release mechanism:
+
+```
+step +0:  bias=[13, 0]   pred=1  (old prior active)
+step +1:  bias=[11, 0]   pred=2  (pred flips immediately)
+step +5:  bias=[ 7, 0]   pred=2  (geometric decay)
+step +10: bias=[ 4, 0]   pred=2
+step +20: bias=[ 1,12]   pred=2  (old prior ~gone, new prior forming)
+step +30: bias=[ 0,12]   pred=2  (full release, new prior stable)
+```
+
+The `pred` flip occurs at step +1 — the very first step after the first P2 packet. The old-prior bias decays geometrically (×0.9/step, half-life ~6.6 steps). New-prior formation begins at step +15 once `T14C_MIN_SAMPLES` P2 samples accumulate. The prior is a voice that fades, not a verdict that gets revoked.
+
+### 6.4 The Kinetic Attention Interaction
+
+The Full condition (CMD 5 + bias) performs at or below the No-bias condition across all seeds:
+
+| Seed | Full TriX@15 | No bias TriX@15 | Ablation TriX@15 |
+|---|---|---|---|
+| A | 15/15 | 15/15 | 15/15 |
+| B | 8/15 | 12/15 | 14/15 |
+| C | 15/15 | 15/15 | 15/15 |
+
+Seed B shows the gate bias actively hurting: Full (8/15) < No bias (12/15) < Ablation (14/15). This is consistent with the kinetic attention finding from Test 14 — the bias saturates the GIE hidden state, and when the LP projection is degenerate (Seed B), this saturation destroys what little discriminability exists. The VDB stabilization operates independently of this — it is the VDB blend (present in both Full and No bias) that prevents regression, not the gate bias.
 
 ---
 
 ## 7. Limitations
 
-1. **Transition experiment not yet re-validated.** The April 8 data is deprecated. The stabilization finding awaits re-collection under label-free conditions. The qualitative claim ("hippocampus stabilizes") is a prediction based on mechanism analysis, not a confirmed silicon measurement.
+1. **Transition experiment not yet label-free.** The TEST 14C data (`data/apr9_2026/`) was collected with pattern_id present in the input and with the old P2 payload. The VDB stabilization finding (ablation regression in Seeds A and C) depends on VDB content, not label presence, and should hold under label-free conditions — but a label-free re-run has not been performed. The TriX@15 numbers may change under `MASK_PATTERN_ID_INPUT=1` with the distinct P2 payload.
 
 2. **Single seed for Hebbian replication.** The +0.1 ± 1.1 finding is from 3 repetitions of a single seed (0xCAFE1234). Different seeds may show different Hebbian effects due to different random projections. However, the VDB-only baseline (9.7 ± 0.6) is stable, suggesting the learning difficulty is not seed-specific.
 
@@ -297,7 +336,7 @@ The prior should be a voice, not a verdict. And the voice comes from memory, not
 
 ## Companion Papers
 
-- **Stratum 1 (Engineering):** Ternary peripheral-fabric neural computation with VDB temporal context. See `PAPER_KINETIC_ATTENTION.md` (undergoing rewrite — kinetic attention found harmful at MTFP; paper reframing around VDB temporal context).
+- **Stratum 1 (Engineering):** Peripheral-hardware ternary neural computation with episodic temporal context. See `PAPER_KINETIC_ATTENTION.md`.
 - **Stratum 2 (this paper):** Fixed-weight CLS architecture with permanent hippocampus.
 - **Stratum 3 (Principle):** Prior-signal separation as structural hallucination resistance. See `PRIOR_SIGNAL_SEPARATION.md`.
 

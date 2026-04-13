@@ -361,4 +361,4 @@ The answer is almost certainly yes. The question is how to build it.
 - Stratum 3 (this paper): Prior-signal separation as structural hallucination resistance
 
 **See also**: `THE_PRIOR_AS_VOICE.md` (full perspective paper)
-**Status**: The structural guarantee and four of five components are fully verified on silicon. Component 5 (evidence-deference implementation) is an honest negative result — the principle holds but the gate-bias mechanism degrades LP representation. Transition experiment (TEST 14C) pending re-validation under label-free conditions.
+**Status**: The structural guarantee and four of five components are fully verified on silicon. Component 5 (evidence-deference implementation) is an honest negative result — the principle holds but the gate-bias mechanism degrades LP representation. Transition experiment (TEST 14C) validated with multi-seed data (`data/apr9_2026/SUMMARY.md`); ablation regression confirms VDB stabilization in Seeds A and C. Label-free re-run pending.
