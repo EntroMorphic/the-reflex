@@ -1,0 +1,183 @@
+\documentclass[11pt,letterpaper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  citecolor=blue!60!black,
+  urlcolor=blue!60!black,
+}
+
+\title{Prior-Signal Separation:\\A Structural Approach to Hallucination Resistance}
+\author{Tripp Josserand-Austin\\EntroMorphic Research}
+\date{April 12, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We describe a five-component architecture for structural hallucination resistance---resistance that is enforced by design rather than achieved by statistical training. The architecture requires: (1)~a prior-holder, (2)~an evidence-reader that the prior cannot corrupt, (3)~a structural separation guarantee between them, (4)~a mechanism to detect genuine disagreement, and (5)~a policy of evidence deference at the point of conflict. We demonstrate this architecture in silicon on an ESP32-C6 microcontroller drawing $\sim$30\,$\mu$A, where it emerged from a minimum-assumptions experiment rather than deliberate design. The key structural element is $W_f[\text{hidden}] = 0$---a fixed zero in the weight matrix that creates an architectural wall preventing the accumulated prior from entering the classification path. We describe how this wall works, why homogeneous systems (including current large language models) cannot implement an equivalent, and what would need to be true for such a separation to exist at language model scale.
+\end{abstract}
+
+\section{The Observation}
+
+During the design of an agreement-weighted gate bias mechanism, the original design was identified as flawed: it computed gate bias from the LP prior alone, with no release valve. At pattern transitions, the prior suppressed the new signal. The system became confident and increasingly wrong.
+
+The fix---agreement-weighted gate bias---weights the prior's influence by whether the LP layer and the TriX classifier agree. When they agree, the prior amplifies. When they disagree, the prior's prediction flips at step~+1 and the bias magnitude decays geometrically ($\times 0.9$/step, half-life $\sim$6.6 steps).
+
+The comment that followed: \textit{``This sounds like a resolution for hallucination, in a sense.''} It does. Here is why, stated carefully.
+
+\section{What Hallucination Is, Structurally}
+
+LLM hallucination encompasses at least three distinct failure modes: (a)~factual confabulation, (b)~context neglect---ignoring provided information in favor of prior expectations, and (c)~reasoning errors. This note addresses (b): the case where a system's accumulated prior overrides direct evidence.
+
+Context-neglect hallucination is a prior overwhelming a signal. The model's learned distribution dominates what the context is actually providing. The prior wins not because it is stronger in some meaningful sense, but because there is no structural mechanism to let the signal override it. The prior and the classifier are the same weights. When they conflict, there is no independent arbiter.
+
+This is not a bug in any particular model. It is a structural consequence of homogeneous systems where prior and perception share the same substrate.
+
+\section{What the Agreement Mechanism Does}
+
+In the Reflex, the agreement mechanism is: when the LP prior (slow, accumulated) and TriX (fast, immediate, peripheral) agree about what pattern is present---amplify the prior's influence. When they disagree---release. The prior attenuates to zero. The raw signal reaches the sub-conscious layer unmodulated.
+
+This is structurally the opposite of hallucination. Instead of the prior winning when it conflicts with the signal, the prior yields. Confidence is not a global property of the system. It is a local property of the agreement between layers at this moment, for this input.
+
+\section{Why It Works Here: The Architectural Wall}
+
+The agreement mechanism works because of a structural guarantee: $W_f[\text{hidden}] = 0$.
+
+The GIE's $f\_\text{dot}$ computation---the signal that drives TriX classification---is entirely input-driven. The LP prior does not enter the $f\_\text{dot}$ computation. TriX cannot be corrupted by the LP prior.
+
+Two levels of separation must be distinguished:
+
+\textbf{The classification wall (strong).} The wall between prior and \textit{classifier} is architectural. The prior lives in LP SRAM. TriX scores are computed from $W_f \cdot \text{input}$, where $W_f[\text{hidden}] = 0$---the prior cannot reach the classification score through any weight path. This is a fixed zero in the weight matrix.
+
+\textbf{The perception channel (designed).} The prior \textit{does} influence what the GIE computes---that is the purpose of kinetic attention. Gate bias changes which neurons fire, changing the GIE hidden state. What it cannot change is the \textit{classification of that perception}. The wall protects classification. It does not protect perception.
+
+This distinction is critical: the disagreement signal (component~4) compares the structurally-protected classifier output against the prior. Because the classifier cannot be corrupted, the disagreement signal is real information---it cannot be a product of circular reasoning.
+
+\section{Why Homogeneous Systems Cannot Do This}
+
+In a language model, the system that holds priors (the trained weights) and the system that reads evidence (the attention mechanism) are the same weights. This means:
+
+\begin{enumerate}
+\item \textbf{There is no independent signal source.} The model's perception of a context token is mediated by the same weights that encode its prior expectations. The prior shapes what the model sees. The loop is closed at the weight level.
+
+\item \textbf{Disagreement cannot be detected as real information.} If the prior says ``Paris'' and the context token is ``Berlin,'' the model's processing of ``Berlin'' is already shaped by its expectation of ``Paris.'' The conflict is not cleanly surfaced.
+
+\item \textbf{No architectural wall exists.} There is no $W_f[\text{hidden}] = 0$ equivalent. No part of the system is structurally prevented from carrying prior influence.
+\end{enumerate}
+
+The result: when prior and evidence conflict, the resolution is learned, not structural. In most cases, the prior wins---because most training examples were generated by systems where prior knowledge correctly predicted the next token. Hallucination is the uncommon case: the prior is confidently wrong about this specific context.
+
+\section{The Five-Component Architecture}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{p{3cm} p{4cm} p{4cm}}
+\toprule
+Component & Requirement & The Reflex \\
+\midrule
+1. Prior-holder & Accumulated model & LP CfC hidden state \\
+2. Evidence-reader & Cannot be corrupted & GIE peripheral hardware \\
+3. Structural wall & Architectural guarantee & $W_f[\text{hidden}] = 0$ \\
+4. Disagreement detection & Real information & TriX vs LP alignment \\
+5. Evidence deference & Prior yields on conflict & Bias attenuation \\
+\bottomrule
+\end{tabular}
+\caption{The five components of structural hallucination resistance.}
+\end{table}
+
+\subsection{Silicon Verification}
+
+All five components verified on silicon (April 9--12, 2026):
+
+\textbf{Component 1:} LP CfC hidden state. 8.5--9.7/80 MTFP divergence from VDB episodic retrieval alone. VDB causally necessary (TEST~13 ablation).
+
+\textbf{Component 2:} GIE peripheral hardware. 430\,Hz, 100\% label-free TriX accuracy (32/32). Zero prior influence on classification.
+
+\textbf{Component 3:} $W_f[\text{hidden}] = 0$. Verified across all experiments, including Hebbian weight learning, kinetic attention, and label-free operation. The project's most robust finding.
+
+\textbf{Component 4:} Ternary disagree-count per trit. The disagreement signal is structurally reliable because TriX classification is immune to the prior.
+
+\textbf{Component 5:} When prediction flips (step~+1 post-switch), LP feedback dispatch switches to the new pattern's accumulator. Bias decays geometrically. \textbf{Honest negative:} the specific gate-bias implementation (kinetic attention) is harmful at MTFP resolution ($-5.5$/80). The \textit{principle} (evidence overrides prior) is intact. The \textit{implementation} needs revision.
+
+\section{Comparison to Existing Approaches}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lccccc}
+\toprule
+Approach & Prior & Evidence & Wall & Detection & Deference \\
+\midrule
+RAG & Weights & Docs & None & None & None \\
+Chain-of-thought & Weights & Reasoning & None & Implicit & None \\
+Self-consistency & Weights & Samples & None & Voting & Majority \\
+Constitutional AI & Weights & Critique & Partial & Explicit & Revision \\
+Classifier detection & Weights & External & Yes & Explicit & Threshold \\
+\textbf{The Reflex} & \textbf{LP CfC} & \textbf{GIE HW} & \textbf{Yes} & \textbf{Agree.} & \textbf{Attenuate} \\
+\bottomrule
+\end{tabular}
+\caption{Five-component evaluation of hallucination mitigation approaches.}
+\end{table}
+
+Classifier-based detection comes closest to full structural separation, but operates post-hoc. The Reflex's mechanism operates during inference: the agreement signal modulates the prior's influence \textit{before} the output is produced.
+
+RAG provides an external evidence source but lacks the architectural wall: the model's attention can learn to downweight retrieved documents. No existing LLM approach implements all five components.
+
+\section{Open Questions: Prior-Signal Separation at LLM Scale}
+
+A language model with this architecture would need at least two distinct processing paths: a prior path (trained weights) and an evidence path (untrained or lightly-trained encoder). These would converge at a gating layer that computes disagreement and adjusts the output mixture.
+
+\textbf{Component 2 (evidence-reader):} A component whose activations cannot be shaped by weight-encoded prior expectations. Perhaps a frozen encoder or identity-fixed attention heads.
+
+\textbf{Component 3 (structural wall):} Not ``the prior influences this component weakly'' but ``the prior cannot reach this component at all.''
+
+\textbf{Component 4 (disagreement):} A comparison between evidence-reader and prior-holder predictions, measured before the output is generated.
+
+\textbf{Component 5 (deference):} A gating mechanism that reduces prior influence when disagreement is high.
+
+Structural prior-signal separation does not require a separate model, zero prior influence at all times, token-level verification, or hardware changes. What it does require is the structural wall. Without a guarantee that the evidence-reader's measurements cannot be corrupted by the prior, the agreement signal is not reliable information.
+
+\section{What This Does Not Claim}
+
+This is not a claim that the Reflex solves hallucination in language models. The architectures are not directly comparable. The claim is narrower: the Reflex provides a concrete, silicon-verified example of a system where prior-signal conflict is detected structurally and resolved in favor of the signal.
+
+A language model with structural prior-signal separation would resist hallucination by design rather than by statistical training. Whether such an architecture is feasible at the scale of large language models is an open question. Whether it is the right question is not.
+
+\section{Conclusion}
+
+Hallucination in language models is not primarily a training problem or a data problem. It is a structural problem: the system that holds priors and the system that reads evidence are the same weights, and when they conflict, there is no independent arbiter.
+
+The Reflex demonstrates, on fifty cents of hardware drawing thirty microamps, that structural separation is achievable---not by eliminating the prior, but by building the evidence-reader in a different substrate with a fixed architectural wall between them. The wall is what makes the agreement signal real information: when TriX and the LP prior disagree, the disagreement cannot be circular, because TriX cannot access the LP prior.
+
+The five-component architecture is the abstraction: prior-holder, evidence-reader, structural separation guarantee, disagreement detection, evidence-deference policy. The Reflex is one instantiation. The research program is to find others---and to ask whether a language model with structural prior-signal separation would behave differently from one without.
+
+The answer is almost certainly yes. The question is how to build it.
+
+\textit{The prior should be a voice, not a verdict.}
+
+\begin{thebibliography}{9}
+\bibitem{mcclelland1995}
+J.~L.~McClelland, B.~L.~McNaughton, and R.~C.~O'Reilly, ``Why there are complementary learning systems in the hippocampus and neocortex,'' \textit{Psychological Review}, vol.~102, no.~3, pp.~419--457, 1995.
+
+\bibitem{wang2022selfconsistency}
+X.~Wang, J.~Wei, D.~Schuurmans, Q.~Le, E.~Chi, S.~Narang, A.~Chowdhery, and D.~Zhou, ``Self-consistency improves chain of thought reasoning in language models,'' \textit{arXiv:2203.11171}, 2022.
+
+\bibitem{lewis2020rag}
+P.~Lewis, E.~Perez, A.~Piktus, F.~Petroni, V.~Karpukhin, N.~Goyal, H.~K\"{u}ttler, M.~Lewis, W.~Yih, T.~Rockt\"{a}schel, S.~Riedel, and D.~Kiela, ``Retrieval-augmented generation for knowledge-intensive NLP tasks,'' \textit{Advances in Neural Information Processing Systems}, vol.~33, 2020.
+
+\bibitem{bai2022constitutional}
+Y.~Bai et al., ``Constitutional AI: Harmlessness from AI feedback,'' \textit{arXiv:2212.08073}, 2022.
+\end{thebibliography}
+
+\end{document}
