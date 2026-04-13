@@ -199,6 +199,30 @@ step +20: bias=[ 0,14]   pred=2  (old prior gone, new prior stable)
 
 The \texttt{pred} flip occurs at step~+1. Old-prior bias decays geometrically ($\times 0.9$/step, half-life $\sim$6.6 steps). New-prior formation begins at step~+15. The prior is a voice that fades, not a verdict that gets revoked.
 
+\section{Related Work}
+
+\subsection{Complementary Learning Systems}
+
+The CLS framework \cite{mcclelland1995} was formalized around the hippocampal-neocortical distinction. Kumaran et al.\ \cite{kumaran2016} updated the theory to account for prefrontal contributions and schema-based learning. O'Reilly and Frank's PBWM model \cite{oreilly2006} extended CLS into the prefrontal-basal ganglia circuit, showing how working memory gating can complement hippocampal episodic encoding---a different form of fast/slow separation, operating at the level of cognitive control rather than memory consolidation.
+
+Hassabis and Maguire \cite{hassabis2007} demonstrated that hippocampal patients cannot construct novel imagined scenes, suggesting the hippocampus is not merely a memory store but a constructive engine. This resonates with our finding: the VDB is not just storing episodes but actively shaping the LP temporal representation through retrieval-and-blend. The temporal model is constructed from memories, not extracted from weights.
+
+Benna and Fusi \cite{benna2016} analyzed memory consolidation in systems with constrained synaptic complexity, showing that consolidation benefits depend on having sufficient degrees of freedom in the slow pathway. Our Hebbian null result ($+0.1 \pm 1.1$ at $n=3$) is consistent with their framework: 16 neurons with $\sim$29 non-zero ternary weights per neuron do not have enough synaptic complexity for consolidation to improve on direct episodic retrieval.
+
+Lengyel and Dayan \cite{lengyel2007} showed that episodic memory systems can outperform statistical learners for decision-making when episodes are few and informative. Our system operates in exactly this regime: 4 patterns, 64 episodes, 120 seconds of accumulation. The VDB-only baseline (9.7/80 MTFP) demonstrates that episodic injection outperforms weight learning in this low-data, low-dimensional setting.
+
+\subsection{Reservoir Computing}
+
+The LP CfC with fixed random ternary weights is functionally a reservoir \cite{jaeger2001echo,maass2002real}. Echo State Networks \cite{jaeger2001echo} and Liquid State Machines \cite{maass2002real} use fixed random recurrent networks as nonlinear projections, training only a linear readout layer. Our system goes further: the readout is also fixed (TriX signatures are enrolled, not trained), and the temporal modeling comes entirely from the episodic memory layer rather than from the reservoir dynamics themselves.
+
+This connects to recent work on untrained random networks as feature extractors. Rosenfeld and Tsotsos \cite{rosenfeld2019intriguing} showed that random-weight CNNs can serve as surprisingly effective feature extractors when combined with appropriate downstream processing. In our system, the ``downstream processing'' is episodic storage and retrieval---not a trained classifier but a memory that accumulates the reservoir's projections over time.
+
+The distinction from standard reservoir computing is that our system has no trained readout. The VDB replaces the readout layer with episodic retrieval, and the temporal representation lives in the memory content rather than in learned output weights. This makes the system fully weight-free in the learning sense: no weights are updated, ever, during operation.
+
+\subsection{Neuromorphic Memory Systems}
+
+On-chip episodic memory for neuromorphic systems has been explored in content-addressable memory architectures \cite{kanerva1988sparse} and associative memory networks \cite{hopfield1982neural}. Kanerva's Sparse Distributed Memory provides a theoretical framework for high-dimensional binary memory systems with similarity-based retrieval. Our VDB NSW graph implements a related function---approximate nearest-neighbor retrieval over ternary vectors---but in 2\,KB of LP SRAM on a commodity microcontroller rather than dedicated associative memory hardware.
+
 \section{The CLS Reframe}
 
 \subsection{The Permanent Hippocampus}
@@ -221,10 +245,29 @@ Temporal representation & Neocortical (learned) & \textbf{Hippocampal (episodic)
 \end{table}
 
 \subsection{When Is the Hippocampus Sufficient?}
+\label{sec:sufficiency}
 
-The hippocampus-only path works when: (1)~the neocortical projection provides a rough representation sufficient for VDB to route around degeneracies, (2)~the VDB capacity is sufficient for the number of patterns, and (3)~the VDB feedback blend can directly inject pattern-specific content.
+The hippocampus-only path works when three conditions hold:
 
-It may not be sufficient when: the number of patterns exceeds VDB capacity, the neocortical projection is too degenerate for VDB retrieval, or the task requires generalization beyond stored episodes.
+\begin{enumerate}
+\item \textbf{The projection is rough but non-degenerate.} The CfC random projection must separate patterns enough that VDB retrieval returns same-pattern episodes more often than different-pattern episodes. It need not be perfect---the VDB routes around partial degeneracies---but if two patterns project to identical LP trajectories, no amount of episodic content can separate them.
+
+\item \textbf{VDB capacity exceeds the episodic demand.} With 64 nodes and 4 patterns at $\sim$8 inserts per pattern per 90-second run, the VDB fills in $\sim$3 minutes. Each additional pattern requires its own episodic slots. At 8 patterns, the per-pattern allocation drops to $\sim$8 nodes---potentially below the threshold for reliable NSW retrieval ($M=7$ neighbors).
+
+\item \textbf{The task is discriminative, not generative.} The VDB stores and retrieves specific episodes. It does not abstract across them. A task requiring generalization beyond stored states---e.g., classifying a novel pattern not seen during accumulation---would require the weight pathway that our system lacks.
+\end{enumerate}
+
+\textbf{Testable predictions for boundary conditions:}
+
+\begin{itemize}
+\item \textbf{Pattern scaling:} At 4 patterns (current), the system produces 8.5--9.7/80 MTFP divergence. We predict monotonic degradation as patterns increase, with a critical threshold near $N = 64 / 8 = 8$ patterns where per-pattern VDB allocation drops below the retrieval reliability floor. At $N > 16$, the 48-trit VDB vector may lack the dimensionality to distinguish patterns in NSW Hamming space.
+
+\item \textbf{Projection degeneracy:} Seed~B demonstrates this boundary. Its random weights collapse P1 and P2 to near-parallel LP directions, and VDB retrieval for P1 returns P2 episodes. The system still works (96\% classification from the structural wall) but the temporal model conflates P1 and P2. We predict that projection degeneracy frequency increases with pattern count: more patterns in a 16-dimensional sign space means more collisions.
+
+\item \textbf{Consolidation threshold:} If the LP were widened to 32 or 64 neurons, the Hebbian weight landscape would have more degrees of freedom. There may exist a neuron count above which consolidation begins to improve on episodic retrieval alone. The permanent-hippocampus finding is specific to 16 neurons---it is a capacity claim, not an architectural one.
+\end{itemize}
+
+These predictions are currently untested. They define the experimental program that would establish the boundaries of permanent-hippocampus CLS: at what pattern count does it degrade, at what neuron count does consolidation become useful, and what task structure requires generalization beyond episodic retrieval.
 
 \subsection{Implications for CLS Theory}
 
@@ -253,12 +296,39 @@ The VDB episodic memory layer---64 nodes in 2\,KB of LP SRAM, searched at 100\,H
 
 The hippocampus is not a staging area. It is the temporal model itself. The prior should be a voice, not a verdict. And the voice comes from memory, not from learned weights.
 
-\begin{thebibliography}{9}
+\begin{thebibliography}{99}
 \bibitem{mcclelland1995}
 J.~L.~McClelland, B.~L.~McNaughton, and R.~C.~O'Reilly, ``Why there are complementary learning systems in the hippocampus and neocortex,'' \textit{Psychological Review}, vol.~102, no.~3, pp.~419--457, 1995.
 
 \bibitem{kumaran2016}
 D.~Kumaran, D.~Hassabis, and J.~L.~McClelland, ``What learning systems do intelligent agents need? Complementary learning systems theory updated,'' \textit{Trends in Cognitive Sciences}, vol.~20, no.~7, pp.~512--534, 2016.
+
+\bibitem{oreilly2006}
+R.~C.~O'Reilly and M.~J.~Frank, ``Making working memory work: A computational model of learning in the prefrontal cortex and basal ganglia,'' \textit{Neural Computation}, vol.~18, no.~2, pp.~283--328, 2006.
+
+\bibitem{hassabis2007}
+D.~Hassabis and E.~A.~Maguire, ``Deconstructing episodic memory with construction,'' \textit{Trends in Cognitive Sciences}, vol.~11, no.~7, pp.~299--306, 2007.
+
+\bibitem{benna2016}
+M.~K.~Benna and S.~Fusi, ``Computational principles of synaptic memory consolidation,'' \textit{Nature Neuroscience}, vol.~19, no.~12, pp.~1697--1706, 2016.
+
+\bibitem{lengyel2007}
+M.~Lengyel and P.~Dayan, ``Hippocampal contributions to control: The third way,'' \textit{Advances in Neural Information Processing Systems}, vol.~20, 2007.
+
+\bibitem{jaeger2001echo}
+H.~Jaeger, ``The `echo state' approach to analysing and training recurrent neural networks,'' \textit{GMD Technical Report 148}, German National Research Center for Information Technology, 2001.
+
+\bibitem{maass2002real}
+W.~Maass, T.~Natschl\"{a}ger, and H.~Markram, ``Real-time computing without stable states: A new framework for neural computation based on perturbations,'' \textit{Neural Computation}, vol.~14, no.~11, pp.~2531--2560, 2002.
+
+\bibitem{rosenfeld2019intriguing}
+A.~Rosenfeld and J.~K.~Tsotsos, ``Intriguing properties of randomly weighted networks: Generalizing while learning next to nothing,'' \textit{Conference on Robot Learning (CoRL)}, 2019.
+
+\bibitem{kanerva1988sparse}
+P.~Kanerva, \textit{Sparse Distributed Memory}, MIT Press, 1988.
+
+\bibitem{hopfield1982neural}
+J.~J.~Hopfield, ``Neural networks and physical systems with emergent collective computational abilities,'' \textit{Proceedings of the National Academy of Sciences}, vol.~79, no.~8, pp.~2554--2558, 1982.
 
 \bibitem{li2016ternary}
 F.~Li, B.~Zhang, and B.~Liu, ``Ternary weight networks,'' \textit{arXiv:1605.04711}, 2016.
