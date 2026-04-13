@@ -25,7 +25,7 @@
   urlcolor=blue!60!black,
 }
 
-\title{Peripheral-Hardware Ternary Neural Computation\\with Episodic Temporal Context at 30 Microamps}
+\title{Episodic Memory Without Learning:\\Ternary Neural Computation on Peripheral Hardware at 30 Microamps}
 \author{Tripp Josserand-Austin\\EntroMorphic Research\\\texttt{tripp@entromorphic.com}}
 \date{April 12, 2026}
 
@@ -267,15 +267,35 @@ This guarantee enables the honest negative results. We could test kinetic attent
 \section{Related Work}
 
 \subsection{Ternary Neural Networks}
-Ternary weight networks \cite{li2016ternary,zhu2016trained} quantize trained float models to $\{-1, 0, +1\}$. The Reflex does not quantize---its weights are generated ternary and never trained. The computational primitives (AND + popcount) are the native operations, not approximations of multiply-accumulate.
+
+Ternary weight networks \cite{li2016ternary,zhu2016trained} quantize trained floating-point models to $\{-1, 0, +1\}$ for efficient inference. XNOR-Net \cite{rastegari2016xnor} and subsequent binary/ternary quantization methods \cite{zhang2018lqnets} treat ternary arithmetic as a compression technique---the model is designed in float, trained in float, and projected into low-precision weights for deployment. The computation is an approximation of the trained model.
+
+The Reflex inverts this relationship. Its weights are generated ternary and never trained. There is no floating-point model being approximated. The ternary operations (AND, popcount, branch) are the native computation, not a quantized proxy for multiply-accumulate. The architectural consequences are different: ternary CfC has three blend modes (UPDATE/HOLD/INVERT) where binary has two, producing non-gradient dynamics that would not arise from quantizing a trained continuous model.
 
 \subsection{Complementary Learning Systems}
-See companion paper (Stratum~2). The VDB episodic memory layer implements a permanent hippocampal analog. Consolidation (Hebbian weight learning) was tested and found ineffective at this dimensionality.
 
-\subsection{Neuromorphic Computing}
-Hardware neural networks on neuromorphic chips (Intel Loihi, BrainChip Akida) use spike-timing-dependent plasticity on dedicated silicon. The Reflex uses commodity peripheral fabric (DMA, pulse counters, parallel I/O) on a \$0.50 general-purpose microcontroller.
+McClelland, McNaughton, and O'Reilly \cite{mcclelland1995} proposed that intelligent systems require complementary fast (hippocampal) and slow (neocortical) learning systems. Kumaran et al.\ \cite{kumaran2016} updated the theory to emphasize replay-based consolidation. O'Reilly et al.\ \cite{oreilly2014} formalized the computational trade-offs between pattern separation (hippocampus) and pattern completion (neocortex).
+
+The Reflex implements CLS with fixed neocortical weights---the CfC projection is random and never updated. This is closer to Benna and Fusi's \cite{benna2016} analysis of memory capacity in synaptic systems with constrained plasticity, where fixed random projections support episodic retrieval when the memory store has sufficient capacity. In our system, 64 NSW nodes in 2\,KB suffice for 4 patterns; the capacity bound is an open empirical question (see Section~\ref{sec:limitations}).
+
+The VDB feedback blend implements memory-based prediction that parallels Lengyel and Dayan's \cite{lengyel2007} account of hippocampal contributions to decision-making: stored episodes directly inform current state estimation, bypassing learned statistical summaries. Our finding that Hebbian consolidation produces no improvement ($+0.1 \pm 1.1$) is consistent with their prediction that episodic systems outperform statistical learners when episodes are few and representations are low-dimensional.
+
+See companion paper (Stratum~2) for the full CLS analysis, including the transition experiment and the permanent-hippocampus reframe.
+
+\subsection{Neuromorphic and On-Device Computing}
+
+Hardware neural networks on dedicated neuromorphic chips---Intel Loihi \cite{davies2018loihi}, BrainChip Akida \cite{vanschaik2023}, and IBM TrueNorth \cite{merolla2014truenorth}---implement spiking neural networks with on-chip learning rules (typically STDP). These systems achieve remarkable energy efficiency but require custom silicon. The Reflex uses commodity peripheral fabric (DMA, pulse counters, parallel I/O) on a \$0.50 general-purpose microcontroller, repurposing peripherals designed for motor control and communication as a neural substrate.
+
+In the on-device inference space, TinyML frameworks \cite{banbury2021mlperf,warden2019tinyml} deploy quantized models (typically INT8) on microcontrollers using optimized runtimes (TFLite Micro, CMSIS-NN). These systems achieve inference but not temporal modeling---they classify each input independently, without accumulating a representation of what has been perceived over time. The Reflex's VDB episodic memory layer adds this temporal dimension at $\sim$30\,$\mu$A, below the sleep-mode power of most TinyML deployments that duty-cycle a full inference engine.
+
+Approximate nearest-neighbor search on microcontrollers has been explored for resource-constrained retrieval \cite{jegou2011product}, but typically in service of classification or recommendation. The NSW graph in our system serves a different purpose: it provides episodic memory that feeds back into the neural dynamics, creating a recurrent loop between perception and memory that operates without gradient-based learning.
+
+\subsection{Prior-Signal Separation}
+
+The structural wall ($W_f[\text{hidden}] = 0$) that separates classification from temporal modeling relates to recent work on hallucination mitigation in language models. Retrieval-augmented generation \cite{lewis2020rag} provides external evidence but lacks architectural guarantees that the evidence cannot be overridden by the model's prior. See companion paper (Stratum~3) for the full five-component analysis of structural hallucination resistance.
 
 \section{Limitations}
+\label{sec:limitations}
 
 \begin{enumerate}
 \item \textbf{Single seed for most measurements.} The full-suite label-free dataset is one seed (0xCAFE1234). Kinetic attention was measured across 3 runs. Hebbian was replicated at $n=3$.
@@ -329,18 +349,54 @@ Build flags & \texttt{MASK\_PATTERN\_ID=1}, \texttt{MASK\_PATTERN\_ID\_INPUT=1} 
 
 Gate pathway: AND, popcount (byte LUT), add, subtract, branch, shift. Candidate pathway: same operations, different weight matrix. Absent: multiply, divide, floating point, gradients, backpropagation.
 
-\begin{thebibliography}{9}
+\begin{thebibliography}{99}
 \bibitem{li2016ternary}
 F.~Li, B.~Zhang, and B.~Liu, ``Ternary weight networks,'' \textit{arXiv:1605.04711}, 2016.
 
 \bibitem{zhu2016trained}
 C.~Zhu, S.~Han, H.~Mao, and W.~J.~Dally, ``Trained ternary quantization,'' \textit{arXiv:1612.01064}, 2016.
 
+\bibitem{rastegari2016xnor}
+M.~Rastegari, V.~Ordonez, J.~Redmon, and A.~Farhadi, ``XNOR-Net: ImageNet classification using binary convolutional neural networks,'' \textit{ECCV}, pp.~525--542, 2016.
+
+\bibitem{zhang2018lqnets}
+D.~Zhang, J.~Yang, D.~Ye, and G.~Hua, ``LQ-Nets: Learned quantization for highly accurate and compact deep neural networks,'' \textit{ECCV}, pp.~365--382, 2018.
+
 \bibitem{mcclelland1995}
 J.~L.~McClelland, B.~L.~McNaughton, and R.~C.~O'Reilly, ``Why there are complementary learning systems in the hippocampus and neocortex,'' \textit{Psychological Review}, vol.~102, no.~3, pp.~419--457, 1995.
 
-\bibitem{hasselmo2017}
-M.~E.~Hasselmo, ``Inspired by brains: A personal history and perspective on computational models of the hippocampus,'' \textit{Hippocampus}, vol.~27, no.~4, pp.~293--298, 2017.
+\bibitem{kumaran2016}
+D.~Kumaran, D.~Hassabis, and J.~L.~McClelland, ``What learning systems do intelligent agents need? Complementary learning systems theory updated,'' \textit{Trends in Cognitive Sciences}, vol.~20, no.~7, pp.~512--534, 2016.
+
+\bibitem{oreilly2014}
+R.~C.~O'Reilly, R.~Bhatt, S.~Sungkhasettee, and K.~Shimizu, ``How sequential interactive processing within frontostriatal loops supports a continuum of habitual to controlled processing,'' \textit{Frontiers in Psychology}, vol.~5, p.~1541, 2014.
+
+\bibitem{benna2016}
+M.~K.~Benna and S.~Fusi, ``Computational principles of synaptic memory consolidation,'' \textit{Nature Neuroscience}, vol.~19, no.~12, pp.~1697--1706, 2016.
+
+\bibitem{lengyel2007}
+M.~Lengyel and P.~Dayan, ``Hippocampal contributions to control: The third way,'' \textit{Advances in Neural Information Processing Systems}, vol.~20, 2007.
+
+\bibitem{davies2018loihi}
+M.~Davies et al., ``Loihi: A neuromorphic manycore processor with on-chip learning,'' \textit{IEEE Micro}, vol.~38, no.~1, pp.~82--99, 2018.
+
+\bibitem{vanschaik2023}
+A.~van Schaik et al., ``The Akida neuromorphic processor,'' \textit{IEEE International Symposium on Circuits and Systems (ISCAS)}, 2023.
+
+\bibitem{merolla2014truenorth}
+P.~A.~Merolla et al., ``A million spiking-neuron integrated circuit with a scalable communication network and interface,'' \textit{Science}, vol.~345, no.~6197, pp.~668--673, 2014.
+
+\bibitem{banbury2021mlperf}
+C.~Banbury et al., ``MLPerf Tiny benchmark,'' \textit{Advances in Neural Information Processing Systems}, vol.~34, 2021.
+
+\bibitem{warden2019tinyml}
+P.~Warden and D.~Situnayake, \textit{TinyML: Machine Learning with TensorFlow Lite on Arduino and Ultra-Low-Power Microcontrollers}, O'Reilly Media, 2019.
+
+\bibitem{jegou2011product}
+H.~J\'{e}gou, M.~Douze, and C.~Schmid, ``Product quantization for nearest neighbor search,'' \textit{IEEE Trans.\ Pattern Analysis and Machine Intelligence}, vol.~33, no.~1, pp.~117--128, 2011.
+
+\bibitem{lewis2020rag}
+P.~Lewis et al., ``Retrieval-augmented generation for knowledge-intensive NLP tasks,'' \textit{Advances in Neural Information Processing Systems}, vol.~33, 2020.
 \end{thebibliography}
 
 \end{document}
