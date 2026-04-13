@@ -16,7 +16,7 @@
   urlcolor=blue!60!black,
 }
 
-\title{Prior-Signal Separation:\\A Structural Approach to Hallucination Resistance}
+\title{Prior-Signal Separation on a Ternary Microcontroller:\\Toward Structural Hallucination Resistance}
 \author{Tripp Josserand-Austin\\EntroMorphic Research\\\texttt{tripp@entromorphic.com}}
 \date{April 12, 2026}
 
@@ -42,6 +42,8 @@ LLM hallucination encompasses at least three distinct failure modes: (a)~factual
 Context-neglect hallucination is a prior overwhelming a signal. The model's learned distribution dominates what the context is actually providing. The prior wins not because it is stronger in some meaningful sense, but because there is no structural mechanism to let the signal override it. The prior and the classifier are the same weights. When they conflict, there is no independent arbiter.
 
 This is not a bug in any particular model. It is a structural consequence of homogeneous systems where prior and perception share the same substrate.
+
+\textbf{Why only context neglect.} Prior-signal separation is necessary but not sufficient for the other two hallucination modes. Factual confabulation---generating false facts not present in any input---arises from the generative process itself, not from a conflict between prior and evidence. A system with perfect prior-signal separation would still confabulate if its generative model assigns high probability to plausible-sounding falsehoods. Reasoning errors---invalid logical steps---arise from the computational process, not from the perceptual pathway. Prior-signal separation protects the evidence channel; it does not validate the reasoning over that evidence. Addressing all three modes would require at minimum: structural separation (this paper), a grounding mechanism for factual claims, and a verifier for logical validity. Each is a distinct architectural requirement.
 
 \section{What the Agreement Mechanism Does}
 
@@ -119,34 +121,47 @@ All five components verified on silicon (April 9--12, 2026):
 \toprule
 Approach & Prior & Evidence & Wall & Detection & Deference \\
 \midrule
-RAG & Weights & Docs & None & None & None \\
-Chain-of-thought & Weights & Reasoning & None & Implicit & None \\
-Self-consistency & Weights & Samples & None & Voting & Majority \\
-Constitutional AI & Weights & Critique & Partial & Explicit & Revision \\
-Classifier detection & Weights & External & Yes & Explicit & Threshold \\
-\textbf{The Reflex} & \textbf{LP CfC} & \textbf{GIE HW} & \textbf{Yes} & \textbf{Agree.} & \textbf{Attenuate} \\
+RAG \cite{lewis2020rag} & Weights & Docs & None & Partial & Partial \\
+Chain-of-thought & Weights & Reasoning & None & Partial & None \\
+Self-consistency \cite{wang2022selfconsistency} & Weights & Samples & None & Partial & Partial \\
+Constitutional AI \cite{bai2022constitutional} & Weights & Critique & Partial & Full & Partial \\
+Classifier detection & Weights & External & Full & Full & Full \\
+\textbf{The Reflex} & \textbf{LP CfC} & \textbf{GIE HW} & \textbf{Full} & \textbf{Full} & \textbf{Full} \\
 \bottomrule
 \end{tabular}
-\caption{Five-component evaluation of hallucination mitigation approaches.}
+\caption{Five-component evaluation of hallucination mitigation approaches. Scale: None (component absent), Partial (approximated but not architecturally guaranteed), Full (structurally enforced or provably independent).}
+\label{tab:comparison}
 \end{table}
 
-Classifier-based detection comes closest to full structural separation, but operates post-hoc. The Reflex's mechanism operates during inference: the agreement signal modulates the prior's influence \textit{before} the output is produced.
+\textbf{On the ratings:} RAG provides an external evidence source (the retrieved document is outside the model's weights) and some implementations include relevance scoring that functions as crude disagreement detection. We rate its wall as None because the model's attention mechanism can learn to downweight retrieved content when it conflicts with the prior---there is no architectural guarantee that retrieval overrides the prior. Self-consistency detects disagreement through sample variance and defers via majority vote, but the samples are drawn from the same prior-laden model. Constitutional AI implements explicit disagreement detection (the critique step) and a revision mechanism, but the critique model shares the base model's weights, making the wall partial.
 
-RAG provides an external evidence source but lacks the architectural wall: the model's attention can learn to downweight retrieved documents. No existing LLM approach implements all five components.
+Classifier-based detection \cite{azaria2023internal,manakul2023selfcheckgpt} comes closest to full structural separation: a separate model evaluates the output. But it operates post-hoc---it detects hallucination after generation rather than preventing it during inference. The Reflex's mechanism operates during inference: the agreement signal modulates the prior's influence \textit{before} the output is produced.
 
 \section{Open Questions: Prior-Signal Separation at LLM Scale}
 
-A language model with this architecture would need at least two distinct processing paths: a prior path (trained weights) and an evidence path (untrained or lightly-trained encoder). These would converge at a gating layer that computes disagreement and adjusts the output mixture.
+\subsection{The Substrate Question}
 
-\textbf{Component 2 (evidence-reader):} A component whose activations cannot be shaped by weight-encoded prior expectations. Perhaps a frozen encoder or identity-fixed attention heads.
+Section~5 argues that homogeneous systems---where prior and perception share the same weights---cannot implement a structural wall. Section~4 demonstrates the wall on heterogeneous hardware (peripheral fabric vs.\ LP core). The natural question is whether heterogeneous substrates are \textit{necessary} for structural separation, or merely sufficient.
 
-\textbf{Component 3 (structural wall):} Not ``the prior influences this component weakly'' but ``the prior cannot reach this component at all.''
+Our strongest claim is that the Reflex achieves structural separation because the evidence-reader (GIE peripheral hardware) and the prior-holder (LP SRAM) are physically distinct circuits with a provable zero in the weight path between them. This is a hardware fact, not a design choice that could be replicated in software.
 
-\textbf{Component 4 (disagreement):} A comparison between evidence-reader and prior-holder predictions, measured before the output is generated.
+A weaker but more general claim: structural separation requires that the evidence-reader's forward pass be \textit{provably prior-free}---meaning no activation in the evidence path can be a function of the prior state. In the Reflex, this is enforced by physics (different silicon). In a software system, it could in principle be enforced by architecture: a frozen encoder whose weights are never updated and whose inputs are not routed through the prior path. The guarantee would be weaker (software invariants can be violated; hardware zeros cannot) but the structural property---that disagreement between the paths is real information---would hold if the invariant is maintained.
 
-\textbf{Component 5 (deference):} A gating mechanism that reduces prior influence when disagreement is high.
+We do not claim that homogeneous systems can achieve the same \textit{strength} of guarantee. We claim that the \textit{principle}---prior-signal separation---has a structural description, and that the strength of the guarantee exists on a spectrum from statistical (RAG) to architectural (frozen encoder) to physical (the Reflex). The further along this spectrum, the more reliable the disagreement signal.
 
-Structural prior-signal separation does not require a separate model, zero prior influence at all times, token-level verification, or hardware changes. What it does require is the structural wall. Without a guarantee that the evidence-reader's measurements cannot be corrupted by the prior, the agreement signal is not reliable information.
+\subsection{What Would Need to Exist}
+
+A language model implementing prior-signal separation would need two distinct processing paths converging at a gating layer:
+
+\textbf{Component 2 (evidence-reader):} A component whose activations cannot be shaped by weight-encoded prior expectations. Candidates: a frozen encoder that reads input embeddings without passing through trained MLP layers, or attention heads whose query/key matrices are identity-fixed. The guarantee must be verifiable: not ``the prior influences this component weakly'' but ``the prior's influence on this component is bounded by $\epsilon$.''
+
+\textbf{Component 3 (structural wall):} A constraint---enforced at the architecture level, not the training level---that prevents gradients or activations from the prior path from reaching the evidence path during inference.
+
+\textbf{Component 4 (disagreement):} A comparison between evidence-reader and prior-holder predictions, measured before the output is generated. Entropy of their combined distribution or divergence in predicted token probability are candidate signals.
+
+\textbf{Component 5 (deference):} A gating mechanism that reduces prior-path influence on the output distribution when disagreement is high.
+
+The wall need not be absolute to be useful. A ``soft wall''---a regularization penalty that keeps prior-path gradients from reaching the evidence encoder during training---would produce a weaker guarantee than $W_f[\text{hidden}] = 0$ but a stronger one than standard attention, where no separation exists at all.
 
 \section{What This Does Not Claim}
 
@@ -166,7 +181,7 @@ The answer is almost certainly yes. The question is how to build it.
 
 \textit{The prior should be a voice, not a verdict.}
 
-\begin{thebibliography}{9}
+\begin{thebibliography}{99}
 \bibitem{mcclelland1995}
 J.~L.~McClelland, B.~L.~McNaughton, and R.~C.~O'Reilly, ``Why there are complementary learning systems in the hippocampus and neocortex,'' \textit{Psychological Review}, vol.~102, no.~3, pp.~419--457, 1995.
 
@@ -174,10 +189,16 @@ J.~L.~McClelland, B.~L.~McNaughton, and R.~C.~O'Reilly, ``Why there are compleme
 X.~Wang, J.~Wei, D.~Schuurmans, Q.~Le, E.~Chi, S.~Narang, A.~Chowdhery, and D.~Zhou, ``Self-consistency improves chain of thought reasoning in language models,'' \textit{arXiv:2203.11171}, 2022.
 
 \bibitem{lewis2020rag}
-P.~Lewis, E.~Perez, A.~Piktus, F.~Petroni, V.~Karpukhin, N.~Goyal, H.~K\"{u}ttler, M.~Lewis, W.~Yih, T.~Rockt\"{a}schel, S.~Riedel, and D.~Kiela, ``Retrieval-augmented generation for knowledge-intensive NLP tasks,'' \textit{Advances in Neural Information Processing Systems}, vol.~33, 2020.
+P.~Lewis et al., ``Retrieval-augmented generation for knowledge-intensive NLP tasks,'' \textit{Advances in Neural Information Processing Systems}, vol.~33, 2020.
 
 \bibitem{bai2022constitutional}
 Y.~Bai et al., ``Constitutional AI: Harmlessness from AI feedback,'' \textit{arXiv:2212.08073}, 2022.
+
+\bibitem{azaria2023internal}
+A.~Azaria and T.~Mitchell, ``The internal state of an LLM knows when it's lying,'' \textit{Findings of EMNLP}, 2023.
+
+\bibitem{manakul2023selfcheckgpt}
+P.~Manakul, A.~Liusie, and M.~J.~F.~Gales, ``SelfCheckGPT: Zero-resource black-box hallucination detection for generative large language models,'' \textit{arXiv:2303.08896}, 2023.
 \end{thebibliography}
 
 \end{document}
