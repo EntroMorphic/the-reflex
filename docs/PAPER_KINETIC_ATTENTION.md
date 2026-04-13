@@ -265,7 +265,7 @@ See companion paper (Stratum 3): `PRIOR_SIGNAL_SEPARATION.md`. The `W_f hidden =
 
 4. **MTFP metric is nonlinear.** MTFP Hamming counts differing trits in a nonlinear encoding. A sign-trit disagreement is more significant than a mantissa-trit disagreement. The 8.5-9.7/80 baseline should be interpreted as a proxy for dot-product diversity, not a calibrated distance.
 
-5. **Transition experiment not yet label-free.** The P1→P2 transition experiment (TEST 14C) was run under the old configuration (label in input, broken enrollment). It needs re-running under label-free conditions to validate the VDB stabilization finding reported in the companion CLS paper.
+5. **Transition experiment: single seed label-free.** The P1→P2 transition experiment (TEST 14C) has been validated label-free on Seed A (`data/apr11_2026/t14c_labelfree_seed_a.log`): ablation regression confirmed, 15/15 TriX@15 across all conditions. Multi-seed label-free TEST 14C has not been performed.
 
 6. **16 neurons may be a ceiling.** The Hebbian null result may be specific to 16 neurons with 48-trit input. Wider LP (32 neurons) or MTFP-targeted learning (80-trit error signals) might enable weight learning. Untested.
 
