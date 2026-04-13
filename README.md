@@ -10,7 +10,7 @@
 
 The Reflex is a three-layer ternary neural computing system running on an ESP32-C6 microcontroller. It classifies wireless signals at 100% accuracy using only peripheral hardware — no CPU, no floating point, no multiplication. Beneath that classifier, it builds a temporal model of what it has been perceiving, using that model to bias future perception while ensuring the bias can always be overridden by direct measurement.
 
-**The core claim:** Peripheral-hardware ternary dot products at 430.8 Hz. ~30 µA. Pattern-specific LP hidden states after 90 seconds of live operation. VDB episodic memory causally necessary (distillation test: CMD 4 collapses P1=P2; CMD 5 separates them). Agreement-weighted gate bias releases the old prior via geometric decay (×0.9/step, half-life ~6.6 steps) after `pred` flips at step +1 post-switch; new-prior formation begins by step +15 once T14C_MIN_SAMPLES accumulate. The ternary disagree-count (≥4 trits) provides a hard-zero safety release that was not exercised on clean seeds. Multi-seed validated (3 seeds × 3 conditions, `data/apr9_2026/`). LP feedback dispatched from TriX ISR (100% accuracy on 4-pattern set). No floating point anywhere in the mechanism path.
+**The core claim:** Peripheral-hardware ternary dot products at 430.8 Hz. ~30 µA. 100% label-free classification (4 patterns, `MASK_PATTERN_ID=1 + MASK_PATTERN_ID_INPUT=1`). Pattern-specific LP hidden states after 120 seconds of live operation — 8.5-9.7/80 MTFP divergence from VDB episodic memory alone. VDB causally necessary (distillation test: CMD 4 collapses P1=P2; CMD 5 separates them). VDB stabilization confirmed label-free (TEST 14C: ablation regresses, VDB blend maintains separation). Kinetic attention mechanism implemented but harmful at MTFP resolution (-5.5/80). Hebbian weight learning: +0.1 ± 1.1 (noise). The system's power is in its episodic memory, not in learned weights or attentional bias. Structural wall (`W_f hidden = 0`) verified across all experiments. No floating point anywhere in the mechanism path.
 
 The system was not designed toward this architecture. It emerged from a minimum-assumptions experiment — and the constraints (ternary, peripheral, no floating point) are what made the structure visible.
 
@@ -78,12 +78,11 @@ See [`docs/THE_PRIOR_AS_VOICE.md`](docs/THE_PRIOR_AS_VOICE.md) for the full argu
 | VDB causal necessity | CMD 4 collapses P1=P2 (2/3 runs) | TEST 13 |
 | CMD 5 separation | Hamming 1–5 across all runs | TEST 13 |
 | LP feedback steps applied | 97% | TEST 12 |
-| Gate bias LP divergence improvement | +1.0 to +2.5 Hamming (2/3 seeds) | TEST 14, multi-seed |
-| Post-switch pred flip | step +1 (Seeds A, C) | TEST 14C, multi-seed |
+| Post-switch pred flip | step +1 | TEST 14C, label-free |
 | Bias release | geometric ×0.9/step, half-life ~6.6 steps | TEST 14C, traced in Seed A |
 | New prior formation | step +15 (gated on T14C_MIN_SAMPLES) | TEST 14C |
-| TriX@15 post-switch | A=15/15, B=8/15, C=15/15 | TEST 14C, multi-seed |
-| VDB stabilization | No-bias crosses step 0, all seeds | TEST 14C, 3 seeds |
+| TriX@15 post-switch (label-free) | 15/15 all conditions | TEST 14C, Seed A label-free |
+| VDB stabilization (ablation regression) | Ablation gap +22→−6 by step 30 | TEST 14C, label-free |
 | MTFP P1-P2 separation | Hamming 7-9/80 (null ~1) | 3 seeds |
 | Hebbian LP learning (label-free) | +0.1 ± 1.1 MTFP (noise, n=3) | TEST 15, diagnosed v3 |
 | MTFP LP divergence (VDB only) | 9.7 ± 0.6 /80 | TEST 15, 3 reps |
@@ -91,7 +90,7 @@ See [`docs/THE_PRIOR_AS_VOICE.md`](docs/THE_PRIOR_AS_VOICE.md) for the full argu
 
 **TEST 13 (distillation test):** CMD 4 runs CfC + VDB but skips the blend into LP hidden. CMD 5 runs CfC + VDB + blend. In paired 90-second runs, CMD 4 produces P1=P2 (Hamming=0) in 2 of 3 hardware runs. CMD 5 produces Hamming 1–5 for the same pair every time. The VDB feedback is causally necessary, not incidental.
 
-**TEST 14C (transition experiment):** P1 for 90 seconds, then P2 for 30 seconds. Three conditions: full (CMD5+bias), no-bias (CMD5), ablation (CMD4). Multi-seed validated (3 seeds). The VDB stabilization finding — no-bias transitions monotonically at step 0, ablation shows P1 regression at step +20 — holds across all seeds. The hippocampus stabilizes, not accelerates.
+**TEST 14C (transition experiment):** P1 for 90 seconds, then P2 for 30 seconds. Three conditions: full (CMD5+bias), no-bias (CMD5), ablation (CMD4). Label-free on Seed A (`data/apr11_2026/t14c_labelfree_seed_a.log`), multi-seed supporting data (`data/apr9_2026/SUMMARY.md`). Ablation regression confirmed: without VDB blend, the old P1 prior reasserts itself (gap +22→−6 by step 30). With VDB blend, separation maintained. The hippocampus stabilizes, not accelerates.
 
 ---
 
@@ -113,17 +112,13 @@ P0: neurons 0–7, P1: 8–15, P2: 16–23, P3: 24–31.
 
 ---
 
-## Phase 5: Kinetic Attention (Verified)
+## Phase 5: Kinetic Attention (Implemented — Harmful at MTFP Resolution)
 
-The LP hidden state biases GIE gate thresholds, making the peripheral hardware compute differently based on accumulated experience. The bias is agreement-weighted with two release paths: (1) a soft geometric decay (×0.9/step, half-life ~6.6 steps) that runs unconditionally every step, and (2) a hard disagree-count zero (`n_disagree ≥ 4` trits) that sets bias to 0 immediately. The soft path is what runs on clean seeds in TEST 14C; the hard path is a safety gate for cases where the new input is very far from the prior. LP feedback is dispatched from the TriX ISR (100% accuracy on the 4-pattern set). No floating point in the mechanism path — integer bias state, integer decay, integer magnitude.
+The LP hidden state biases GIE gate thresholds, making the peripheral hardware compute differently based on accumulated experience. The bias is agreement-weighted with two release paths: (1) a soft geometric decay (×0.9/step, half-life ~6.6 steps) that runs unconditionally every step, and (2) a hard disagree-count zero (`n_disagree ≥ 4` trits) that sets bias to 0 immediately. LP feedback is dispatched from the TriX ISR (100% accuracy on the 4-pattern set). No floating point in the mechanism path.
 
-**TEST 14 (three conditions, multi-seed validated):**
-- 14A: Baseline (bias = 0)
-- 14C: Full agreement-weighted bias from start
-- 14C-iso: Bias disabled for 60s, then enabled (delayed onset)
+**The mechanism fires but the effect is negative.** At MTFP resolution (80 trits), kinetic attention consistently degrades LP divergence: mean -5.5/80 across 3 label-free runs. The bias saturates the GIE hidden state (more neurons fire → LP input becomes more uniform → LP dot magnitudes converge). The sign-space metric (+1.3/16) incorrectly showed improvement by masking the magnitude damage. Reported as an honest negative result in the Stratum 1 paper.
 
-**TEST 14C (transition experiment, 3 seeds × 3 conditions):**
-VDB stabilization confirmed across Seeds A and C (ablation-regression visible in alignment traces). Seed B shows the documented degenerate-projection headwind (Full 8/15 TriX@15 vs No-bias 12/15 vs Ablation 14/15). Bias releases via geometric ×0.9/step soft decay; the disagree-count hard gate is a safety path and was not exercised on clean seeds. Full multi-seed dataset: `data/apr9_2026/SUMMARY.md`.
+**TEST 14C (transition experiment):** VDB stabilization confirmed label-free (`data/apr11_2026/t14c_labelfree_seed_a.log`). Ablation regression visible: without VDB blend, old P1 prior reasserts (gap +22→−6 by step 30). Bias releases via geometric ×0.9/step; `pred` flips at step +1 post-switch. Multi-seed supporting data: `data/apr9_2026/SUMMARY.md`.
 
 Full design: [`docs/KINETIC_ATTENTION.md`](docs/KINETIC_ATTENTION.md). Paper: [`docs/PAPER_KINETIC_ATTENTION.md`](docs/PAPER_KINETIC_ATTENTION.md). CLS paper: [`docs/PAPER_CLS_ARCHITECTURE.md`](docs/PAPER_CLS_ARCHITECTURE.md).
 
@@ -241,7 +236,7 @@ the-reflex/
 |-------------------|---------|
 | Understand the full system and its implications | [`docs/THE_PRIOR_AS_VOICE.md`](docs/THE_PRIOR_AS_VOICE.md) |
 | See current silicon results | [`docs/CURRENT_STATUS.md`](docs/CURRENT_STATUS.md) |
-| Read the engineering paper (Stratum 1) | [`docs/PAPER_KINETIC_ATTENTION.md`](docs/PAPER_KINETIC_ATTENTION.md) |
+| Read the engineering paper (Stratum 1) | [`docs/PAPER_KINETIC_ATTENTION.md`](docs/PAPER_KINETIC_ATTENTION.md) (VDB temporal context + honest negatives) |
 | Read the CLS paper (Stratum 2) | [`docs/PAPER_CLS_ARCHITECTURE.md`](docs/PAPER_CLS_ARCHITECTURE.md) |
 | Read the prior-signal separation paper (Stratum 3) | [`docs/PRIOR_SIGNAL_SEPARATION.md`](docs/PRIOR_SIGNAL_SEPARATION.md) |
 | Understand Phase 5 design | [`docs/KINETIC_ATTENTION.md`](docs/KINETIC_ATTENTION.md) |

@@ -46,6 +46,7 @@ sim/test14c
 archive/
 
 # Working drafts and per-session remediation plans (not project record)
+DO_THIS_NEXT.md
 docs/SUBSTACK_DRAFT_*.md
 docs/REMEDIATION_PLAN_*.md
 

@@ -1,6 +1,6 @@
 # The Reflex: Strategic Roadmap
 
-*Last updated: April 11, 2026 — Two compounding bugs fixed (trix_enabled, sender enrollment starvation). Multi-seed TEST 14C re-run with corrected sender. Label-free 100% classification achieved (P2 payload redesigned). Bias release correctly described as geometric ×0.9/step. Test harness split into per-area files. 66 inactive C files archived.*
+*Last updated: April 12, 2026 — Papers rewritten around MTFP metrics and honest negative results. Test verdict logic replaced (MTFP-based gates). Label-free TEST 14C validated on silicon (ablation regression confirmed). Repo cleaned (archive consolidated, delta-observer removed, git gc 84→4.7 MB).*
 
 ---
 
@@ -14,7 +14,7 @@ As of commit `c7ef286`, the Reflex architecture has demonstrated:
 - **Memory-modulated priors**: LP hidden state develops pattern-specific representations after 90s of live operation. VDB feedback is causally necessary — ablation (CMD 4) collapses P1 and P2 to Hamming=0 in 2 of 3 runs. Multi-seed validated (3 seeds, `data/apr9_2026/SUMMARY.md`).
 - **Kinetic attention (Phase 5)**: Agreement-weighted gate bias with two release paths: soft geometric decay (×0.9/step, half-life ~6.6 steps) and hard disagree-count zero (≥4 trits, not exercised on clean seeds). LP feedback dispatched from TriX ISR. Integer bias state — no floating point in the mechanism path. `pred` flips at step +1 post-switch; bias fully released by ~step 20; new prior forms by ~step 15. Multi-seed TEST 14C verified (3 seeds × 3 conditions, `data/apr9_2026/`).
 - **CLS stabilization**: VDB stabilization confirmed across Seeds A and C — ablation regression visible in alignment traces. Seed B shows a TriX@15 headwind (Full 8/15 < No-bias 12/15 < Ablation 14/15) that may be seed-intrinsic or procedural (single run, not yet replicated).
-- **Three papers drafted**: Stratum 1 (engineering), Stratum 2 (CLS architecture), Stratum 3 (prior-signal separation). **Need rewriting** — cite crossover-step numbers from pre-April-9 broken data. See `DO_THIS_NEXT.md`.
+- **Three papers rewritten** (April 12): Stratum 1 (VDB temporal context + honest negatives), Stratum 2 (CLS architecture with label-free transition data), Stratum 3 (prior-signal separation, structural wall verified). All cite MTFP metrics from `data/apr11_2026/SUMMARY.md`.
 
 The modulation loop is closed. The three pillars are next.
 
@@ -24,15 +24,17 @@ The modulation loop is closed. The three pillars are next.
 
 1. **UART-only verification.** Re-route console to GPIO 16/17, power from battery/dumb USB, direct current measurement. All runs to date use USB-JTAG. The "peripheral-autonomous" and "~30 µA" claims require this data.
 
-2. **Full test suite validation.** 14/14 PASS achieved with `MASK_PATTERN_ID=1` and distinct P2 payload (commit `c7ef286`, `data/apr11_2026/r3a_p2_distinct_payload.log`). Tests 1-13 also pass post-refactor (test harness split validated). **Remaining:** multi-seed TEST 14C needs re-running with the new P2 payload to update the transition-experiment numbers in the papers.
+2. **Full test suite validation.** 14/16 PASS label-free (`data/apr11_2026/SUMMARY.md`). Tests 1-13 PASS. Test 14 FAIL (kinetic attention harmful — honest negative). Test 15 FAIL (Hebbian noise — honest negative). TEST 14C validated label-free on Seed A (`data/apr11_2026/t14c_labelfree_seed_a.log`): ablation regression confirmed, 15/15 TriX@15. Multi-seed label-free TEST 14C not yet performed.
 
 ---
 
-## Phase 5: Kinetic Attention (Verified)
+## Phase 5: Kinetic Attention (Implemented — Harmful at MTFP Resolution)
 
-**Claim verified:** LP hidden state biases GIE gate thresholds via agreement-weighted gate bias. Two release paths: soft geometric decay (×0.9/step, half-life ~6.6 steps, runs unconditionally) and hard disagree-count zero (≥4 trits, safety gate, not exercised on clean seeds). LP feedback dispatched from TriX ISR. No float in the mechanism path.
+**Mechanism implemented and verified:** LP hidden state biases GIE gate thresholds via agreement-weighted gate bias. The mechanism reliably fires (per-group fire rate shift >10% every run). LP feedback dispatched from TriX ISR. No float in the mechanism path.
 
-**Multi-seed TEST 14C results (3 seeds × 3 conditions, `data/apr9_2026/SUMMARY.md`):** TriX@15 accuracy: A=15/15, B=8/15, C=15/15. VDB stabilization (alignment traces) holds across Seeds A and C; Seed B shows a headwind that may be seed-intrinsic or procedural (n=1, not yet replicated — see `DO_THIS_NEXT.md` R1/R2). `pred` flips at step +1 for clean seeds. Bias decays geometrically, fully released by ~step 20. **Note:** apr9 multi-seed data was collected with the OLD P2 payload (0xAA). The distinct P2 payload (commit `c7ef286`) improves label-free accuracy to 100% but has not yet been used for a multi-seed TEST 14C sweep.
+**Honest negative result:** At MTFP resolution, kinetic attention consistently degrades LP divergence: mean -5.5/80 across 3 label-free runs. The bias saturates the GIE hidden state, reducing LP dot magnitude diversity. The sign-space metric (+1.3/16) incorrectly showed improvement. Reported in the Stratum 1 paper as a negative finding.
+
+**TEST 14C (transition experiment):** VDB stabilization confirmed label-free on Seed A (`data/apr11_2026/t14c_labelfree_seed_a.log`): 15/15 TriX@15, ablation regression visible (gap +22→−6 by step 30). `pred` flips at step +1. Bias decays geometrically (×0.9/step). Multi-seed supporting data: `data/apr9_2026/SUMMARY.md` (3 seeds × 3 conditions, pre-label-free).
 
 **Why this was first:** Kinetic attention provides the behavioral measure that all three pillars require. It is now the foundation for forward work.
 
@@ -202,9 +204,9 @@ Before coordinating submissions: write one internal unified framework memo mappi
 
 ## Blocking Prerequisites (Must Complete Before Any Paper Submission)
 
-1. **UART Falsification:** Re-route console to GPIO 16/17, power from battery/dumb USB, run full test suite without JTAG. The "peripheral-autonomous" claim requires this data, not inference from JTAG-attached runs.
+1. **UART Falsification:** Re-route console to GPIO 16/17, power from battery/dumb USB, run full test suite without JTAG. The "peripheral-autonomous" claim requires this data, not inference from JTAG-attached runs. Disclosed as a limitation in all three papers.
 
-2. **Firmware refactor:** Separate core layer (stable GIE, VDB, LP, CMD dispatch) from test layer (condition flags, parameters, logging) before Phase 5 code lands. Reviewers must be able to find the difference between TEST 14A and 14B in under 10 lines.
+2. ~~**Firmware refactor:**~~ **DONE** (April 9, commit `5657e92`). Test harness split into per-area files. 66 inactive C files archived.
 
 ---
 

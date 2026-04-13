@@ -1,6 +1,6 @@
 # The Reflex: Current Status
 
-**Last Updated:** April 11, 2026 — Two compounding bugs fixed (trix_enabled `f97ac1c`, sender enrollment starvation `63877f7`). All prior multi-seed TEST 14C data invalidated and re-collected (`data/apr9_2026/`). Label-free classification experiment (R3a): 100% accuracy achieved after P2 payload redesign (`c7ef286`) — pattern_id trits masked from signatures, classifier uses only payload and timing features. Bias release mechanism correctly described as geometric ×0.9/step (not "within 4 steps"). Test harness split into per-area files (`5657e92`). 66 inactive C files archived. Red-team self-audit produced 12 items, 3 resolved (R3, R3a, R8 partial).
+**Last Updated:** April 12, 2026 — Three papers rewritten around MTFP metrics and honest negative results (kinetic attention harmful at -5.5/80, Hebbian noise at +0.1 ± 1.1). Test verdict logic replaced with MTFP-based gates (`f327470`). Label-free TEST 14C validated on silicon: ablation regression confirmed, 15/15 TriX@15 (`data/apr11_2026/t14c_labelfree_seed_a.log`). Repo cleaned: archive consolidated, delta-observer gitlink removed, deprecated apr8 logs untracked, git gc 84→4.7 MB (`f4dbec8`). Remaining blocker: UART-only verification.
 
 ---
 
@@ -10,9 +10,9 @@ The Reflex is a three-layer ternary neural computing system built from commodity
 
 **The reframe (March 23, 2026):** The Reflex is not building a better classifier. It is building a temporal context layer beneath a perfect classifier. Every downstream contribution — kinetic attention, multi-agent coordination, Hebbian learning — earns its meaning from the quality and independence of that temporal model.
 
-**Current state: 14/14 PASS (label-free).** Phase 5 kinetic attention verified on silicon at both 100% and 71% label-free accuracy — the mechanism survives 29% classifier error. Classification is 100% label-free on 4 well-separated patterns with distinct payloads (commit `c7ef286`). Prior P1-P2 confusion (71%) was a test-design artifact: old P2 payload shared 48/64 payload trits with P1. MTFP21 gap history encoding provides timing discrimination. LP dot magnitude diagnostic identifies the `sign()` quantization bottleneck; MTFP dot encoding (5 trits/neuron) spec ready for implementation.
+**Current state: 14/16 PASS (label-free).** 100% label-free classification on 4 well-separated patterns (commit `c7ef286`). VDB episodic memory produces 8.5-9.7/80 MTFP divergence — causally necessary (TEST 13 ablation). TEST 14 FAIL: kinetic attention harmful at MTFP resolution (-5.5/80, 3 runs). TEST 15 FAIL: Hebbian +0.1 ± 1.1 (noise). Both are honest negative results reported in the papers. VDB stabilization confirmed label-free (TEST 14C: ablation regression, 15/15 TriX@15). Structural wall verified across all experiments.
 
-**The complete loop:** perceive → classify → remember → retrieve → modulate (potential modulation verified). Phase 5 makes it kinetic: the temporal model actively biases what the perceptual layer fires on next. Bias decays geometrically (×0.9/step, half-life ~6.6 steps); `pred` flips at step +1 post-switch; new prior forms by step +15.
+**The finding:** The system's power is in its episodic memory, not in learned weights or attentional bias. VDB-only produces the temporal context. Kinetic attention and Hebbian were hypothesized to improve on this baseline. They didn't. The VDB baseline IS the finding.
 
 All ternary. No floating point. No multiplication. No training.
 
@@ -35,12 +35,12 @@ All ternary. No floating point. No multiplication. No training.
 - `docs/SESSION_APR08_2026.md`: April 8 session — red-team, multi-seed 14C, TriX dispatch, ternary agreement, three bug fixes.
 - `docs/MEMORY_MODULATED_ATTENTION.md`: Paper-quality writeup of TEST 12 — experimental design, silicon results, analysis.
 - `docs/KINETIC_ATTENTION.md`: Phase 5 design spec — agreement-weighted gate bias, TEST 14 three conditions.
-- `docs/PAPER_KINETIC_ATTENTION.md`: Paper draft — kinetic attention results with confusion matrices.
+- `docs/PAPER_KINETIC_ATTENTION.md`: Stratum 1 paper — VDB temporal context + honest negatives (rewritten April 12).
 - `docs/THE_PRIOR_AS_VOICE.md`: Perspective paper — technical, engineering, ontological, and personal dimensions.
 - `docs/PRIOR_SIGNAL_SEPARATION.md`: Theoretical note — structural hallucination resistance, five-component architecture.
 - `data/apr9_2026/SUMMARY.md`: Authoritative multi-seed TEST 14C digest — TriX@15, alignment traces, bias release trace, Seed B analysis, metric caveats.
 - `data/apr8_2026/DEPRECATED.md`: Deprecation flag — all TriX-accuracy claims from apr8 data are invalid (two compounding bugs).
-- `DO_THIS_NEXT.md`: Forward todo list — paper rewrites, verdict logic fix, UART verification, mechanism corrections.
+- `DO_THIS_NEXT.md`: Historical forward plan (April 9-11). Most items resolved. Gitignored — see papers and ROADMAP for current state.
 - `docs/LCACHE_REFLEX_OPCODES.md`: L-Cache opcode spec — 12 AVX2 opcodes, 1:1 with firmware, ~2.8 MHz.
 - `docs/HARDWARE_TOPOLOGY.md`: Nucleo ↔ C6 wiring spec for APU-expanded mode (SPI2 at 40 MHz).
 - `docs/MTFP21_TIMING_ENCODING.md`: MTFP21 gap history encoding — 80% → 96% classification.
