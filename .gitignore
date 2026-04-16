@@ -48,7 +48,6 @@ papers/*.log
 papers/*.out
 papers/*.bbl
 papers/*.blg
-papers/*.pdf
 
 # Archive (old captures, logs, session transcripts, dead code)
 archive/
