@@ -243,6 +243,56 @@ int run_test_11(void) {
         printf("  Ring drops: %d\n", (int)espnow_ring_drops());
         fflush(stdout);
 
+#ifdef USE_TRIX_WEIGHTS
+        /* ── TriX integration override ──
+         *
+         * Replace the sign-of-mean signatures with the TriX-trained
+         * (gradient-quantized) signatures from trix_signatures.h. The
+         * baseline computation above still ran (it determines sig_count
+         * and the diagnostic cross-dots), but the on-silicon classifier
+         * will use these substituted signatures instead.
+         *
+         * Masking applies AFTER the override: sequence trits [104..127]
+         * and (optionally) pattern_id [16..23] / RSSI [0..15] get zeroed
+         * post-substitution so the masked feature space matches the
+         * trainer's input.
+         *
+         * Falsification protocol: trixV/journal/reflex_trix_integration_protocol.md
+         */
+#include "trix_signatures.h"
+        _Static_assert(TRIX_INPUT_DIM == CFC_INPUT_DIM,
+                       "trix_signatures.h INPUT_DIM mismatch with CFC_INPUT_DIM");
+        _Static_assert(TRIX_NUM_CLASSES == NUM_TEMPLATES,
+                       "trix_signatures.h NUM_CLASSES mismatch with NUM_TEMPLATES");
+        printf("\n  [TRIX] Overriding sig[] with TriX-trained signatures\n");
+        printf("  [TRIX] sha256: %s\n", TRIX_SIGNATURES_SHA256);
+        for (int p = 0; p < NUM_TEMPLATES; p++) {
+            for (int i = 0; i < CFC_INPUT_DIM; i++) {
+                sig[p][i] = TRIX_SIGNATURES[p][i];
+            }
+        }
+        /* Re-apply the same maskings the sign-of-mean path applies, so
+         * TriX-S and TriX-Q comparisons are apples-to-apples. */
+        for (int p = 0; p < NUM_TEMPLATES; p++) {
+            for (int i = 104; i < CFC_INPUT_DIM; i++) sig[p][i] = T_ZERO;
+#ifdef MASK_PATTERN_ID
+            for (int i = 16; i < 24; i++) sig[p][i] = T_ZERO;
+#endif
+#ifdef MASK_RSSI
+            for (int i = 0; i < 16; i++) sig[p][i] = T_ZERO;
+#endif
+        }
+        /* Report final installed density per class. */
+        for (int p = 0; p < NUM_TEMPLATES; p++) {
+            int nz = 0;
+            for (int i = 0; i < CFC_INPUT_DIM; i++)
+                if (sig[p][i] != T_ZERO) nz++;
+            printf("  [TRIX] sig[%d] density after masking: %d/%d trits\n",
+                   p, nz, CFC_INPUT_DIM);
+        }
+        fflush(stdout);
+#endif
+
         /* ── Phase 0c: Install signatures as W_f weights ──
          * TriX insight: signatures ARE the optimal gate weights.
          * Neuron n assigned to pattern (n/8). W_f input portion = sig[p].
