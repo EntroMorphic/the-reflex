@@ -27,9 +27,22 @@
 #include "esp_mac.h"
 #include "esp_timer.h"
 
-/* ── Board A MAC address (the GIE receiver) ── */
+/* ── Board A MAC address (the GIE receiver) ──
+ *
+ * Originally targeted ESP32-C6 #1 (b4:3a:45:8a:c4:d4) per docs/
+ * HARDWARE_INVENTORY.md. On the TriX-integration bench (May 2026),
+ * that board is not connected — the active receiver is C6 #3
+ * (b4:3a:45:8a:c8:24, on /dev/ttyACM1).
+ *
+ * Build-time override available via -DREFLEX_PEER_MAC_HEX=0xB4...
+ * (define expansion below). See `journal/reflex_trix_integration_protocol.md`
+ * in trixV for the PEER_MAC fragility audit.
+ */
+#ifndef REFLEX_PEER_MAC_BYTES
+#define REFLEX_PEER_MAC_BYTES 0xB4, 0x3A, 0x45, 0x8A, 0xC8, 0x24
+#endif
 static const uint8_t PEER_MAC[ESP_NOW_ETH_ALEN] = {
-    0xB4, 0x3A, 0x45, 0x8A, 0xC4, 0xD4
+    REFLEX_PEER_MAC_BYTES
 };
 
 /* ── Packet format ── */
