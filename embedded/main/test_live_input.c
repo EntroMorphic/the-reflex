@@ -131,6 +131,24 @@ int run_test_11(void) {
                         }
                         sig_count[obs_cur_pattern]++;
                     }
+
+#ifdef TRIX_DUMP_TRAINING
+                    /* TriX integration: dump each (pattern_id, input_vector)
+                     * for offline training. One line per packet, prefix
+                     * "TRAIN" so the Python parser can grep cleanly.
+                     * Format: TRAIN p=<id> v=<128 chars from {+,-,0}>
+                     * Cost: ~200 bytes printed per packet; at ~6 pps this is
+                     * ~1.2 KB/s — well within 115200 baud UART. */
+                    if (obs_cur_pattern >= 0 && obs_cur_pattern < 4) {
+                        char vbuf[CFC_INPUT_DIM + 1];
+                        for (int j = 0; j < CFC_INPUT_DIM; j++) {
+                            vbuf[j] = (cfc.input[j] == T_POS) ? '+' :
+                                      (cfc.input[j] == T_NEG) ? '-' : '0';
+                        }
+                        vbuf[CFC_INPUT_DIM] = '\0';
+                        printf("TRAIN p=%d v=%s\n", obs_cur_pattern, vbuf);
+                    }
+#endif
                 }
             }
         }

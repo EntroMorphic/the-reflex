@@ -60,6 +60,13 @@ else()
     if(DEFINED SKIP_TO_15 AND SKIP_TO_15)
         add_compile_definitions(SKIP_TO_15=1)
     endif()
+    # TriX integration: dump each (pattern_id, 128-trit input) during the
+    # 30s Phase 0a observation as "TRAIN p=<id> v=<128 chars +/-/0>" lines
+    # over UART. Used by tools/reflex_signature_train.py in trixV to build
+    # a training dataset for QAT comparison against sign-of-mean.
+    if(DEFINED TRIX_DUMP_TRAINING AND TRIX_DUMP_TRAINING)
+        add_compile_definitions(TRIX_DUMP_TRAINING=1)
+    endif()
 endif()
 
 idf_component_register(
