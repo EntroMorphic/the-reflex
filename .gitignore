@@ -63,3 +63,8 @@ journal/lp_enrollment_*.md
 # Separate git repos (local-only)
 pulse-arithmetic-lab/
 delta-observer/
+
+# TriX integration: trix_signatures.h is a per-training-run artifact swapped
+# in from trixV's tools/reflex_signature_train.py output. Build flag
+# USE_TRIX_WEIGHTS=1 includes it; default builds don't reference it.
+embedded/main/trix_signatures.h
