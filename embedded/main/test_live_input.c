@@ -822,7 +822,7 @@ int run_test_11(void) {
                                 }
                             }
                         }
-                        next_pkt:
+                        next_pkt: __attribute__((unused));
                         if (drain_buf[i].pkt.pattern_id < 4)
                             test_votes[drain_buf[i].pkt.pattern_id]++;
                         test_packets++;
