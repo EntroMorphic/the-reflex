@@ -718,11 +718,32 @@ int run_test_11(void) {
                             }
 
                             /* Novelty gate on core */
+#ifdef TRIX_DISABLE_NOVELTY
+                            /* Integration-experiment mode: skip the novelty
+                             * gate so per-packet classification accuracy is
+                             * measured on the full input stream regardless of
+                             * absolute score magnitude. The default-density
+                             * sign-of-mean baseline and the (intentionally
+                             * sparser) TriX-Q gradient-trained signatures
+                             * produce different absolute score ranges; the
+                             * fixed NOVELTY_THRESHOLD=60 was calibrated for
+                             * the baseline density and confounds the
+                             * comparison. With novelty disabled, accuracy
+                             * isolates "argmax over class scores" — exactly
+                             * the variable the integration protocol measures.
+                             *
+                             * Side effects: total_novel will read 0; "Novel
+                             * packets" diagnostic loses its meaning under
+                             * this flag. Falsification protocol notes this
+                             * in trixV journal/reflex_trix_integration_protocol.md. */
+                            (void)0;
+#else
                             if (core_best < NOVELTY_THRESHOLD) {
                                 novel_in_window++;
                                 total_novel++;
                                 goto next_pkt;
                             }
+#endif
 
                             core_votes[core_pred]++;
                             total_classified++;

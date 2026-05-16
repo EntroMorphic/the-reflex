@@ -75,6 +75,16 @@ else()
     if(DEFINED USE_TRIX_WEIGHTS AND USE_TRIX_WEIGHTS)
         add_compile_definitions(USE_TRIX_WEIGHTS=1)
     endif()
+    # TriX integration: disable the per-packet novelty gate in Phase 1.
+    # The fixed NOVELTY_THRESHOLD=60 is calibrated for sign-of-mean
+    # signature density; QAT-trained signatures may be sparser and
+    # produce smaller absolute scores. For the falsification protocol
+    # comparison, classification accuracy is the variable of interest —
+    # novelty is an orthogonal mechanism. Both baseline and TriX runs
+    # should use the same flag to be apples-to-apples.
+    if(DEFINED TRIX_DISABLE_NOVELTY AND TRIX_DISABLE_NOVELTY)
+        add_compile_definitions(TRIX_DISABLE_NOVELTY=1)
+    endif()
 endif()
 
 idf_component_register(
