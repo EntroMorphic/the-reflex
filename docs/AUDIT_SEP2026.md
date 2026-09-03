@@ -124,6 +124,7 @@ packets.
 | R5 | Secondary live docs never remediated | **Fixed** | `THE_PRIOR_AS_VOICE.md`, `KINETIC_ATTENTION.md`, `MEMORY_MODULATED_ATTENTION.md`, `PERIPHERALS-ONLY-COMPUTE.md`, `LCACHE_TEST14C_SIM.md` + a missed line in `PAPER_CLS_ARCHITECTURE.md` |
 | R6 | Withdrawn ISR rate figures (705/711 Hz) still cited | **Fixed** | Same root cause as R1; withdrawn in live docs, correction headers cover in-body labels |
 | R7 | Classification-mode rate now measured | **Fixed** | 490 Hz (97% of the 503 Hz PARLIO ceiling). The withdrawn 664 Hz exceeded the hardware ceiling by 32% — physically impossible |
+| R12 | Insert maximises connectivity at the cost of navigability; search compensates with a near-exhaustive beam | **OPEN** | Plain top-M by score, diversity heuristic deliberately rejected. With R10 this means the graph does no navigational work at N=64 |
 | R11 | The episodic memory saturates mid-measurement and never forgets | **OPEN** | Every insert site gates on `vdb_count() < 64`; no eviction. TEST 12 reaches `vdb=64`; TEST 15 saturates early in Phase B, so Phase C measures against a frozen store. Retention is first-come-first-served |
 | R10 | The NSW graph provides no measurable search reduction at N=64 | **OPEN** | Visits 60/64 nodes every run; `EF_SEARCH=32`, `CAND_MAX=64` on a 64-node graph. Costs ~1.1 KB of LP SRAM and 5% recall versus a linear scan |
 | R9 | Every ± in the papers is a within-session SD; between-session spread is several times larger | **OPEN — paper-blocking** | Same config, two sessions: sign 3.6±0.4 vs 0.6±0.4 (t=9.9), MTFP 11.3±3.4 vs 6.2±2.0. Discrepancy ≈7× the within-session SD |
@@ -167,6 +168,64 @@ The project had already found and documented this. The April 12 paper rewrites
 then published "100% label-free accuracy" anyway. The finding did not need to be
 discovered; it needed to survive the trip from the session record into the paper,
 and it did not. Worth noting as a process failure distinct from a measurement one.
+
+### R12. The insert and the search are two halves of one decision
+
+Reading the CMD 3 insert path completes R10. The insert is:
+
+1. Brute-force score every existing node (up to 63 dot products over 48 trits,
+   on the 16 MHz LP core), keeping a bubble-sorted top-14 pool (`2 x M`).
+2. Select the top **7** as neighbours — **plain top-M by score**.
+3. Write forward edges; then reverse edges, replacing a neighbour's weakest edge
+   if it is already full.
+
+Step 2 is a deliberate, documented choice:
+
+> *"For N=64 with M=4 and 48-trit vectors, plain top-M selection produces better
+> connectivity than diversity heuristic. The small vector dimension means many
+> nodes have similar dot products, causing diversity to reject too aggressively
+> and create sparse graphs. Top-M ensures maximum connectivity."*
+
+That is an honest engineering response to a real problem — at 48 trits, dot
+products bunch, and HNSW's `SELECT-NEIGHBORS-HEURISTIC` would prune too hard.
+
+**But the diversity heuristic is what makes an NSW graph navigable.** Plain
+top-M is the textbook route to hub formation: a few nodes accumulate most
+in-edges, clusters connect only through them, and greedy descent stalls. The
+standard fix is exactly the heuristic that was rejected.
+
+**So the two findings are one story.** The graph is built to maximise
+connectivity at the expense of navigability, and is then searched with a beam
+wide enough to compensate — `EF_SEARCH=32`, `CAND_MAX=64` on 64 nodes, visiting
+60/64 (R10). Neither choice is wrong on its own; together they mean **the graph
+structure performs no navigational work at this scale.** What runs is a densely
+connected neighbour list searched almost exhaustively.
+
+The cost is still paid: 8 bytes per node of edge metadata, a 608-byte search
+frame, and up to 63 dot products per insert on a 16 MHz core, 64 times a run.
+
+**Where this touches the papers.** Stratum 2 describes "approximate
+nearest-neighbor retrieval over ternary vectors... in 2 KB of LP SRAM." The
+retrieval is closer to exact-and-exhaustive than approximate, and the "NSW"
+label implies a navigability property the construction deliberately trades away.
+
+### Comment drift in `ulp/main.S` — how R10 stayed invisible
+
+Four constants in the comments of the most correctness-critical file disagree
+with the code, all in the same direction — the comments describe a smaller,
+tighter configuration than what runs:
+
+| Comment says | Code says |
+|---|---|
+| `CAND_MAX = 32` | `#define CAND_MAX 64` |
+| `EF_SEARCH = 8` | `#define EF_SEARCH 32` |
+| "Collect top-12 candidates (2 x M)" | `#define INS_CAND_MAX 14` |
+| "For N=64 with **M=4**" | `#define VDB_M 7` |
+
+A reader of the comments pictures a narrow beam over a small-M graph. The code
+runs roughly 4x wider on both. This is a plausible reason the near-exhaustive
+search went unexamined for months: the documentation described the design that
+would have been sub-linear.
 
 ### R11. The episodic memory stops accumulating during the measurement
 
