@@ -1,6 +1,8 @@
-# R8 IMPACT A/B — FIXED binning (default): T12 and T13 both by ground truth.
-# Same session, same sender boot as r8_bin_by_pred.log.
-# Captured 2026-09-02 23:59:30
+# R8 IMPACT A/B — FIXED binning (default): Tests 12 and 13 both by ground truth.
+# Paired against r8_bin_by_pred.log (old mixed binning, same board pair).
+# NOTE: sender was power-cycled between the two arms, so per R9 this is a
+#       BETWEEN-session comparison, not a matched pair. Read accordingly.
+# Captured 2026-09-03 05:02:15
 W (206) spi_flash: Detected size(4096k) larger than the size in the binary image header(2048k). Using the size in the binary image header.
 
 ============================================================
@@ -24,21 +26,21 @@ W (206) spi_flash: Detected size(4096k) larger than the size in the binary image
 [INIT] LP seed: 0xCAFE1234
 [LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
 [INIT] ESP-NOW receiver...
-W (8380) wifi:ACK_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
-W (8380) wifi:CTS_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
-W (8381) wifi:(agc)0x600a7128:0xd2031800, min.avgNF:0xce->0xd2(dB), RCalCount:0x30, min.RRssi:0x800(-128.00)
-W (8381) wifi:(TB)WDEV_PWR_TB_MCS0:19
-W (8381) wifi:(TB)WDEV_PWR_TB_MCS1:19
-W (8381) wifi:(TB)WDEV_PWR_TB_MCS2:19
-W (8381) wifi:(TB)WDEV_PWR_TB_MCS3:19
-W (8382) wifi:(TB)WDEV_PWR_TB_MCS4:19
-W (8382) wifi:(TB)WDEV_PWR_TB_MCS5:19
-W (8382) wifi:(TB)WDEV_PWR_TB_MCS6:18
-W (8382) wifi:(TB)WDEV_PWR_TB_MCS7:18
-W (8382) wifi:(TB)WDEV_PWR_TB_MCS8:17
-W (8382) wifi:(TB)WDEV_PWR_TB_MCS9:15
-W (8382) wifi:(TB)WDEV_PWR_TB_MCS10:15
-W (8382) wifi:(TB)WDEV_PWR_TB_MCS11:15
+W (8379) wifi:ACK_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
+W (8379) wifi:CTS_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
+W (8379) wifi:(agc)0x600a7128:0xd212e800, min.avgNF:0xce->0xd2(dB), RCalCount:0x12e, min.RRssi:0x800(-128.00)
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS0:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS1:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS2:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS3:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS4:19
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS5:19
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS6:18
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS7:18
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS8:17
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS9:15
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS10:15
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS11:15
 [ESPNOW] Listening on channel 1 (no AP connection)
 [INIT] Done.
 
@@ -53,10 +55,671 @@ W (8382) wifi:(TB)WDEV_PWR_TB_MCS11:15
 [DIAG] gdma2: fifo=0x61 state=0x2e75a8(dscr_st=3 out_st=2) eof_addr=0x40827584
 [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x1(eof=0 rempty=1)
   Phase 0a: Observing input signatures (30s)...
+  Observed: 179 packets, 179 encoded, 12872 GIE loops
+  Per-pattern counts: P0=51 P1=32 P2=22 P3=74
+  Phase 0b: Computing TriX signatures...
+  sig[0]: [+++++++++-------00000000--------...] nz=96/128 (from 51 samples, seq trits masked)
+  sig[1]: [+++++++++-------00000000++++++++...] nz=96/128 (from 32 samples, seq trits masked)
+  sig[2]: [+++++++++-------00000000+-+-+-+-...] nz=94/128 (from 22 samples, seq trits masked)
+  sig[3]: [+++++++++-------00000000++++0---...] nz=95/128 (from 74 samples, seq trits masked)
+  Signature pattern-ID trits [16..23]:
+    sig[0][16..23]: 00000000
+    sig[1][16..23]: 00000000
+    sig[2][16..23]: 00000000
+    sig[3][16..23]: 00000000
+  Signature cross-dots:
+    sig[0] vs: s0=96 s1=72 s2=20 s3=87 
+    sig[1] vs: s0=72 s1=96 s2=26 s3=81 
+    sig[2] vs: s0=20 s1=26 s2=94 s3=21 
+    sig[3] vs: s0=87 s1=81 s2=21 s3=95 
+  Ring drops: 0
 
-# ===================================================================
-# RUN INTERRUPTED — stopped after 55 lines, before Tests 12/13 ran.
-# NO RESULT. This file is retained only to record that the arm was
-# attempted; it contains no measurement and must not be cited.
-# The paired old-binning arm (r8_bin_by_pred.log) DID complete.
-# ===================================================================
+  Phase 0c: Installing signatures as W_f gate weights...
+  W_f weights set from signatures (8 neurons/pattern)
+  Gate threshold: 2147483647 (Phase 3: blend DISABLED, all neurons HOLD)
+  Neurons 0-7 → pattern 0
+  Neurons 8-15 → pattern 1
+  Neurons 16-23 → pattern 2
+  Neurons 24-31 → pattern 3
+  Gate selectivity: 0 fires / 64 steps = 0%
+
+  GDMA offset calibration...
+  GDMA offset mapping: G0→P0 G1→P1 G2→P2 G3→P3
+  ISR groups:  [37, 33, 15, 40]
+  CPU patterns: [37, 33, 15, 40]
+
+  Phase 0d: TriX Cube face observation (15s)...
+  TriX Cube face signatures:
+    +x:recent: 114 samples [P0=51 P1=24 P2=3 P3=36]
+    -x:prior: 80 samples [P0=13 P1=4 P2=0 P3=63]
+    +y:stable: 27 samples [P0=11 P1=4 P2=0 P3=12]
+    -y:transient: 24 samples [P0=10 P1=6 P2=1 P3=7]
+    +z:confident: 0 samples [P0=0 P1=0 P2=0 P3=0]
+    -z:uncertain: 34 samples [P0=0 P1=0 P2=0 P3=34]
+  Face divergence from core (avg Hamming across patterns):
+    +x:recent: 19 avg (4 patterns with data)
+    -x:prior: 33 avg (3 patterns with data)
+    +y:stable: 31 avg (3 patterns with data)
+    -y:transient: 21 avg (4 patterns with data)
+    +z:confident: 0 avg (0 patterns with data)
+    -z:uncertain: 46 avg (1 patterns with data)
+  Ring drops: 0
+
+  Phase 1: TriX Cube ensemble (up to 32 samples, 60s)...
+    s01: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[17,-,-,25,-,-]
+    s02: truth=2 core=2 isr=2 | cv=[0,1,2,0] iv=[0,1,2,0] xor=[16,79,68,22,-,94]
+    s03: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[17,94,94,25,-,94]
+    s04: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[17,94,94,25,-,94]
+    s05: truth=0 core=0 isr=0 | cv=[8,0,0,0] iv=[8,0,2,0] xor=[16,29,16,13,-,96]
+    s06: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[11,24,11,11,-,104]
+    s07: truth=0 core=0 isr=0 | cv=[10,0,0,1] iv=[10,0,0,1] xor=[9,7,11,10,-,104]
+    s08: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[7,3,3,4,-,45]
+    s09: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[6,3,3,4,-,2]
+    s10: truth=1 core=1 isr=1 | cv=[3,4,0,0] iv=[3,4,0,0] xor=[10,30,12,11,-,48]
+    s11: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[15,50,18,17,-,96]
+    s12: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[13,47,17,15,-,101]
+    s13: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[9,41,15,11,-,111]
+    s14: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[9,41,15,11,-,111]
+    s15: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[12,100,100,20,-,100]
+    s16: truth=2 core=2 isr=2 | cv=[0,1,2,0] iv=[0,1,2,0] xor=[8,84,75,11,-,107]
+    s17: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[8,106,106,15,-,106]
+    s18: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[8,106,106,15,-,106]
+    s19: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[8,106,106,15,-,106]
+    s20: truth=0 core=0 isr=0 | cv=[10,0,0,1] iv=[10,0,0,1] xor=[6,6,9,5,-,5]
+    s21: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[3,2,2,3,-,2]
+    s22: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[2,3,3,4,-,3]
+    s23: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[0,1,2,4,-,4]
+    s24: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[1,1,2,3,-,3]
+    s25: truth=1 core=1 isr=1 | cv=[1,7,0,0] iv=[1,7,0,0] xor=[8,8,6,4,-,69]
+    s26: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[9,3,4,3,-,1]
+    s27: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[7,3,4,3,-,1]
+    s28: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[5,3,4,3,-,1]
+    s29: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[4,2,3,2,-,1]
+    s30: truth=2 core=2 isr=2 | cv=[0,1,2,0] iv=[0,1,2,0] xor=[6,71,71,10,-,71]
+    s31: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[8,106,106,15,-,106]
+    s32: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[8,106,106,15,-,106]
+
+  ═══ CLASSIFICATION RESULTS (TriX Cube) ═══
+  Window: 43206 ms
+  GIE loops in window: 21219 (491 Hz) — classification mode,
+    CfC blend disabled (gate_threshold = INT32_MAX)
+  TriX classifications in window: 21219 (491 Hz, 100% of loops clean)
+  Total GIE loops since start_freerun: 41538 (spans Phase 0a-0c too;
+    not a rate denominator)
+  Test samples: 32
+  Ring drops: 0
+  Core (CPU per-pkt vote):   32/32 = 100%
+  ISR  (HW 430 Hz TriX):     32/32 = 100% (all samples)
+  ISR  (windows w/ data):    32/32 = 100% (286 pkts clean, 0 pkts timeout)
+  TriX channel signals:      28645 (seq=28645)
+  Baseline (packet-rate):    26/32 = 81%
+
+  ── Novelty Detection ──
+  Novel packets: 101 / 286 (35%)
+  Novel windows: 10
+
+  ── Online Maintenance ──
+  Core re-signs: 10
+  Core drift (Hamming):
+    sig[0]: 13/128 trits
+    sig[1]: 17/128 trits
+    sig[2]: 12/128 trits
+    sig[3]: 0/128 trits
+
+  ── XOR Masks (temporal displacement per face) ──
+    Face              avg  | rssi patid payload timing
+    +x:recent            7/128 |  0/16  0/8   0/64    7/40
+    -x:prior            24/128 |  1/16  0/8  13/64    8/40
+    +y:stable           19/128 |  1/16  0/8   8/64    8/40
+    -y:transient         8/128 |  0/16  0/8   0/64    8/40
+    +z:confident         -     | (no data)
+    -z:uncertain        50/128 |  7/16  0/8  30/64   12/40
+    ── Signal distribution ──
+    RSSI:    10% of mask weight
+    PatID:   0% of mask weight
+    Payload: 47% of mask weight
+    Timing:  41% of mask weight
+
+  ── TriX Cube Geometry ──
+    +x:recent: 299 samples, 10 avg hamming from core
+    -x:prior: 265 samples, 32 avg hamming from core
+    +y:stable: 212 samples, 43 avg hamming from core
+    -y:transient: 209 samples, 12 avg hamming from core
+    +z:confident: 0 samples, 0 avg hamming from core
+    -z:uncertain: 219 samples, 39 avg hamming from core
+  Gate firing: 0%
+
+  Architecture:
+  - TriX ISR: HW classifies at 430 Hz (CfC blend DISABLED — Phase 3)
+  - 7-voxel TriX Cube: core + 6 temporal faces
+  - Faces: recent, prior, stable, transient, confident, uncertain
+  - Core classifies alone. Faces compute XOR masks (intervention sensors)
+  - XOR mask = trit positions where face sig != core sig
+  - Online maintenance + novelty detection
+  - Gate threshold=2147483647, novelty=60
+  OK
+
+-- TEST 12: Memory-Modulated Adaptive Attention --
+[DIAG] 500us: agree=776 disagree=546 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11039348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273c8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75a8(dscr_st=3 out_st=2) eof_addr=0x40827584
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  blend re-enabled (threshold=90), VDB cleared, LP reset
+  running 120s: classify → insert snapshot → LP feedback
+
+  ── LP Hidden State by Pattern ──
+    P0: 306 samples, sign=16/16, mtfp=80/80 [-+-+++-+++-++-+-]
+    P1: 132 samples, sign=16/16, mtfp=80/80 [-+--++-+++-++-+-]
+    P2: 60 samples, sign=16/16, mtfp=79/80 [-+--++-+++-++-+-]
+    P3: 25 samples, sign=16/16, mtfp=80/80 [-+-+++-+++-++-+-]
+
+  ── LP Divergence Matrix — sign-space (Hamming, /16) ──
+       P0  P1  P2  P3
+  P0:   0   1   1   0
+  P1:   1   0   0   1
+  P2:   1   0   0   1
+  P3:   0   1   1   0
+
+  ── LP Divergence Matrix — MTFP-space (Hamming, /80) ──
+       P0  P1  P2  P3
+  P0:   0   4   6   7
+  P1:   4   0   7   5
+  P2:   6   7   0   6
+  P3:   7   5   6   0
+  P1 vs P3: sign=1/16, mtfp=5/80
+  P1 vs P2: sign=0/16, mtfp=7/80
+
+  ── Summary ──
+  Confirmed: P0=319 P1=142 P2=60 P3=2 (total=523)
+  VDB inserts: 64 (VDB count: 64/64)
+  LP feedback steps: 523, feedback applied: 515
+  Gate firing: 7%
+  P1 vs P3 Hamming: DIVERGED (memory modulated)
+  Cross-pattern LP divergence: YES — sub-conscious state reflects pattern history
+
+  Architecture note:
+  - TriX classification unchanged (W_f hidden=0, ISR step 3b
+    runs before blend step 4 — scores are always input-driven)
+  - LP hidden = episodic memory of pattern exposure
+  - VDB retrieval shapes LP trajectory via ternary blend
+  - This closes the loop: perceive → classify → remember
+    → retrieve → modulate — without CPU or multiplication
+
+  ── Split-Half Null Test (P0, n=306) ──
+  Analytical null bound: ~1/80 MTFP trits (at n=306)
+  Cross-pattern P1-P2 MTFP: 7/80
+  SIGNAL > NULL: MTFP separation exceeds noise floor
+  WARNING: P0 vs P3 Hamming=0 (need >=1)
+  Sufficient patterns: 4/4 (need >=3 with >=15 samples each)
+  FAIL
+
+-- TEST 13: CMD 4 Ablation (CfC only, no VDB blend) --
+[DIAG] 500us: agree=1119 disagree=178 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273c8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75a8(dscr_st=3 out_st=2) eof_addr=0x40827584
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  CMD 4 (no VDB blend), VDB cleared, LP reset
+  running 120s: classify → feed LP → CfC step only
+
+  ── LP Hidden State by Pattern (CMD 4, no blend) ──
+    P0: 278 samples, energy=16/16 [-+-++--++--++---]
+    P1: 132 samples, energy=14/16 [--+++--0+--+0-+-]
+    P2: 66 samples, energy=16/16 [---++--++-----+-]
+    P3: 47 samples, energy=16/16 [---++--++---+---]
+
+  ── LP Divergence Matrix (CMD 4 — ablation) ──
+       P0  P1  P2  P3
+  P0:   0   5   4   2
+  P1:   5   0   4   5
+  P2:   4   4   0   2
+  P3:   2   5   2   0
+
+  ── Attribution Analysis (P1 vs P2 primary pair) ──
+  CMD 5 (TEST 12) P1 vs P2 Hamming: 0
+  CMD 4 (TEST 13) P1 vs P2 Hamming: 4
+  CMD 5 (TEST 12) P1 vs P3 Hamming: 1
+  CMD 4 (TEST 13) P1 vs P3 Hamming: 5
+  VDB feedback contribution (P1 vs P2): -4 trits
+  Sufficient patterns: 4/4 (need >=3)
+  OK
+
+============================================================
+  RESULTS: 2 / 3 PASSED
+============================================================
+
+  SOME TESTS FAILED — see details above.
+
+-- LP CHAR: LP Dynamics Characterization --
+   (diagnostic — not counted in pass/fail)
+  Rep 1/3:
+    P1 step   0: fires=13 blend= 0 score=  0 vdb=1
+    P1 step 100: fires=15 blend= 1 score= 31 vdb=5
+    P1 step 200: fires=15 blend= 1 score= 31 vdb=9
+    P1 step 300: fires=15 blend= 1 score= 31 vdb=13
+    P1 step 400: fires=15 blend= 1 score= 31 vdb=17
+    P1 done: vdb_nodes=20
+    P2 step  0: fires=15 blend=10 score= 15 applied=1
+    P2 step  1: fires=15 blend=10 score=  7 applied=1
+    P2 step  2: fires=12 blend=11 score=  7 applied=1
+    P2 step  3: fires=14 blend=10 score=  6 applied=1
+    P2 step  4: fires=15 blend=10 score=  7 applied=1
+    P2 step  5: fires=15 blend= 9 score=  5 applied=1
+    P2 step  6: fires=16 blend=10 score=  6 applied=1
+    P2 step  7: fires=16 blend=10 score=  6 applied=1
+    P2 step  8: fires=16 blend=10 score=  6 applied=1
+    P2 step  9: fires=16 blend=10 score=  6 applied=1
+    P2 step 10: fires=16 blend=10 score=  6 applied=1
+    P2 step 11: fires=16 blend=10 score=  6 applied=1
+    P2 step 12: fires=16 blend=10 score=  6 applied=1
+    P2 step 13: fires=16 blend=10 score=  6 applied=1
+    P2 step 14: fires=16 blend=10 score=  6 applied=1
+    P2 step 15: fires=16 blend=10 score=  6 applied=1
+    P2 step 16: fires=16 blend=10 score=  6 applied=1
+    P2 step 17: fires=16 blend=10 score=  6 applied=1
+    P2 step 18: fires=16 blend=10 score=  6 applied=1
+    P2 step 19: fires=16 blend=10 score=  6 applied=1
+    P2 step 20: fires=16 blend=10 score=  6 applied=1
+    P2 step 21: fires=16 blend=10 score=  6 applied=1
+    P2 step 22: fires=16 blend=10 score=  6 applied=1
+    P2 step 23: fires=16 blend=10 score=  6 applied=1
+    P2 step 24: fires=16 blend=10 score=  6 applied=1
+    P2 step 25: fires=16 blend=10 score=  6 applied=1
+    P2 step 26: fires=16 blend=10 score=  6 applied=1
+    P2 step 27: fires=16 blend=10 score=  6 applied=1
+    P2 step 28: fires=16 blend=10 score=  6 applied=1
+    P2 step 29: fires=16 blend=10 score=  6 applied=1
+    P2 step 30: fires=16 blend=10 score=  6 applied=1
+    P2 step 31: fires=16 blend=10 score=  6 applied=1
+    P2 step 32: fires=16 blend=10 score=  6 applied=1
+    P2 step 33: fires=16 blend=10 score=  6 applied=1
+    P2 step 34: fires=16 blend=10 score=  6 applied=1
+    P2 step 35: fires=16 blend=10 score=  6 applied=1
+    P2 step 36: fires=16 blend=10 score=  6 applied=1
+    P2 step 37: fires=16 blend=10 score=  6 applied=1
+    P2 step 38: fires=16 blend=10 score=  6 applied=1
+    P2 step 39: fires=16 blend=10 score=  6 applied=1
+    P2 step 40: fires=16 blend=10 score=  6 applied=1
+    P2 step 41: fires=16 blend=10 score=  6 applied=1
+    P2 step 42: fires=16 blend=10 score=  6 applied=1
+    P2 step 43: fires=16 blend=10 score=  6 applied=1
+    P2 step 44: fires=16 blend=10 score=  6 applied=1
+    P2 step 45: fires=16 blend=10 score=  6 applied=1
+    P2 step 46: fires=16 blend=10 score=  6 applied=1
+    P2 step 47: fires=16 blend=10 score=  6 applied=1
+    P2 step 48: fires=16 blend=10 score=  6 applied=1
+    P2 step 49: fires=16 blend=10 score=  6 applied=1
+    P2 step 50: fires=16 blend=10 score=  6 applied=1
+    P2 step 51: fires=16 blend=10 score=  6 applied=1
+    P2 step 52: fires=16 blend=10 score=  6 applied=1
+    P2 step 53: fires=16 blend=10 score=  6 applied=1
+    P2 step 54: fires=16 blend=10 score=  6 applied=1
+    P2 step 55: fires=16 blend=10 score=  6 applied=1
+    P2 step 56: fires=16 blend=10 score=  6 applied=1
+    P2 step 57: fires=16 blend=10 score=  6 applied=1
+    P2 step 58: fires=16 blend=10 score=  6 applied=1
+    P2 step 59: fires=16 blend=10 score=  6 applied=1
+    P2 step 60: fires=16 blend=10 score=  6 applied=1
+    P2 step 61: fires=16 blend=10 score=  6 applied=1
+    P2 step 62: fires=16 blend=10 score=  6 applied=1
+    P2 step 63: fires=16 blend=10 score=  6 applied=1
+    P2 step 64: fires=16 blend=10 score=  6 applied=1
+    P2 step 65: fires=16 blend=10 score=  6 applied=1
+    P2 step 66: fires=16 blend=10 score=  6 applied=1
+    P2 step 67: fires=16 blend=10 score=  6 applied=1
+    P2 step 68: fires=16 blend=10 score=  6 applied=1
+    P2 step 69: fires=16 blend=10 score=  6 applied=1
+    P2 step 70: fires=16 blend=10 score=  6 applied=1
+    P2 step 71: fires=16 blend=10 score=  6 applied=1
+    P2 step 72: fires=16 blend=10 score=  6 applied=1
+    P2 step 73: fires=16 blend=10 score=  6 applied=1
+    P2 step 74: fires=16 blend=10 score=  6 applied=1
+    P2 step 75: fires=16 blend=10 score=  6 applied=1
+    P2 step 76: fires=16 blend=10 score=  6 applied=1
+    P2 step 77: fires=16 blend=10 score=  6 applied=1
+    P2 step 78: fires=16 blend=10 score=  6 applied=1
+    P2 step 79: fires=16 blend=10 score=  6 applied=1
+    P2 step 80: fires=16 blend=10 score=  6 applied=1
+    P2 step 81: fires=16 blend=10 score=  6 applied=1
+    P2 step 82: fires=16 blend=10 score=  6 applied=1
+    P2 step 83: fires=16 blend=10 score=  6 applied=1
+    P2 step 84: fires=16 blend=10 score=  6 applied=1
+    P2 step 85: fires=16 blend=10 score=  6 applied=1
+    P2 step 86: fires=16 blend=10 score=  6 applied=1
+    P2 step 87: fires=16 blend=10 score=  6 applied=1
+    P2 step 88: fires=16 blend=10 score=  6 applied=1
+    P2 step 89: fires=16 blend=10 score=  6 applied=1
+    P2 step 90: fires=16 blend=10 score=  6 applied=1
+    P2 step 91: fires=16 blend=10 score=  6 applied=1
+    P2 step 92: fires=16 blend=10 score=  6 applied=1
+    P2 step 93: fires=16 blend=10 score=  6 applied=1
+    P2 step 94: fires=16 blend=10 score=  6 applied=1
+    P2 step 95: fires=16 blend=10 score=  6 applied=1
+    P2 step 96: fires=16 blend=10 score=  6 applied=1
+    P2 step 97: fires=16 blend=10 score=  6 applied=1
+    P2 step 98: fires=16 blend=10 score=  6 applied=1
+    P2 step 99: fires=16 blend=10 score=  6 applied=1
+    P1 mean: fires/step=14.9  blend/step=1.3  implied_alpha=0.082
+    P2 mean: fires/step=15.9  blend/step=10.0  implied_alpha=0.625
+
+  Rep 2/3:
+    P1 step   0: fires=13 blend= 0 score=  0 vdb=1
+    P1 step 100: fires=15 blend= 1 score= 31 vdb=5
+    P1 step 200: fires=15 blend= 1 score= 31 vdb=9
+    P1 step 300: fires=15 blend= 1 score= 31 vdb=13
+    P1 step 400: fires=15 blend= 1 score= 31 vdb=17
+    P1 done: vdb_nodes=20
+    P2 step  0: fires=15 blend=10 score= 15 applied=1
+    P2 step  1: fires=15 blend=10 score=  7 applied=1
+    P2 step  2: fires=12 blend=11 score=  7 applied=1
+    P2 step  3: fires=14 blend=10 score=  6 applied=1
+    P2 step  4: fires=15 blend=10 score=  7 applied=1
+    P2 step  5: fires=15 blend= 9 score=  5 applied=1
+    P2 step  6: fires=16 blend=10 score=  6 applied=1
+    P2 step  7: fires=16 blend=10 score=  6 applied=1
+    P2 step  8: fires=16 blend=10 score=  6 applied=1
+    P2 step  9: fires=16 blend=10 score=  6 applied=1
+    P2 step 10: fires=16 blend=10 score=  6 applied=1
+    P2 step 11: fires=16 blend=10 score=  6 applied=1
+    P2 step 12: fires=16 blend=10 score=  6 applied=1
+    P2 step 13: fires=16 blend=10 score=  6 applied=1
+    P2 step 14: fires=16 blend=10 score=  6 applied=1
+    P2 step 15: fires=16 blend=10 score=  6 applied=1
+    P2 step 16: fires=16 blend=10 score=  6 applied=1
+    P2 step 17: fires=16 blend=10 score=  6 applied=1
+    P2 step 18: fires=16 blend=10 score=  6 applied=1
+    P2 step 19: fires=16 blend=10 score=  6 applied=1
+    P2 step 20: fires=16 blend=10 score=  6 applied=1
+    P2 step 21: fires=16 blend=10 score=  6 applied=1
+    P2 step 22: fires=16 blend=10 score=  6 applied=1
+    P2 step 23: fires=16 blend=10 score=  6 applied=1
+    P2 step 24: fires=16 blend=10 score=  6 applied=1
+    P2 step 25: fires=16 blend=10 score=  6 applied=1
+    P2 step 26: fires=16 blend=10 score=  6 applied=1
+    P2 step 27: fires=16 blend=10 score=  6 applied=1
+    P2 step 28: fires=16 blend=10 score=  6 applied=1
+    P2 step 29: fires=16 blend=10 score=  6 applied=1
+    P2 step 30: fires=16 blend=10 score=  6 applied=1
+    P2 step 31: fires=16 blend=10 score=  6 applied=1
+    P2 step 32: fires=16 blend=10 score=  6 applied=1
+    P2 step 33: fires=16 blend=10 score=  6 applied=1
+    P2 step 34: fires=16 blend=10 score=  6 applied=1
+    P2 step 35: fires=16 blend=10 score=  6 applied=1
+    P2 step 36: fires=16 blend=10 score=  6 applied=1
+    P2 step 37: fires=16 blend=10 score=  6 applied=1
+    P2 step 38: fires=16 blend=10 score=  6 applied=1
+    P2 step 39: fires=16 blend=10 score=  6 applied=1
+    P2 step 40: fires=16 blend=10 score=  6 applied=1
+    P2 step 41: fires=16 blend=10 score=  6 applied=1
+    P2 step 42: fires=16 blend=10 score=  6 applied=1
+    P2 step 43: fires=16 blend=10 score=  6 applied=1
+    P2 step 44: fires=16 blend=10 score=  6 applied=1
+    P2 step 45: fires=16 blend=10 score=  6 applied=1
+    P2 step 46: fires=16 blend=10 score=  6 applied=1
+    P2 step 47: fires=16 blend=10 score=  6 applied=1
+    P2 step 48: fires=16 blend=10 score=  6 applied=1
+    P2 step 49: fires=16 blend=10 score=  6 applied=1
+    P2 step 50: fires=16 blend=10 score=  6 applied=1
+    P2 step 51: fires=16 blend=10 score=  6 applied=1
+    P2 step 52: fires=16 blend=10 score=  6 applied=1
+    P2 step 53: fires=16 blend=10 score=  6 applied=1
+    P2 step 54: fires=16 blend=10 score=  6 applied=1
+    P2 step 55: fires=16 blend=10 score=  6 applied=1
+    P2 step 56: fires=16 blend=10 score=  6 applied=1
+    P2 step 57: fires=16 blend=10 score=  6 applied=1
+    P2 step 58: fires=16 blend=10 score=  6 applied=1
+    P2 step 59: fires=16 blend=10 score=  6 applied=1
+    P2 step 60: fires=16 blend=10 score=  6 applied=1
+    P2 step 61: fires=16 blend=10 score=  6 applied=1
+    P2 step 62: fires=16 blend=10 score=  6 applied=1
+    P2 step 63: fires=16 blend=10 score=  6 applied=1
+    P2 step 64: fires=16 blend=10 score=  6 applied=1
+    P2 step 65: fires=16 blend=10 score=  6 applied=1
+    P2 step 66: fires=16 blend=10 score=  6 applied=1
+    P2 step 67: fires=16 blend=10 score=  6 applied=1
+    P2 step 68: fires=16 blend=10 score=  6 applied=1
+    P2 step 69: fires=16 blend=10 score=  6 applied=1
+    P2 step 70: fires=16 blend=10 score=  6 applied=1
+    P2 step 71: fires=16 blend=10 score=  6 applied=1
+    P2 step 72: fires=16 blend=10 score=  6 applied=1
+    P2 step 73: fires=16 blend=10 score=  6 applied=1
+    P2 step 74: fires=16 blend=10 score=  6 applied=1
+    P2 step 75: fires=16 blend=10 score=  6 applied=1
+    P2 step 76: fires=16 blend=10 score=  6 applied=1
+    P2 step 77: fires=16 blend=10 score=  6 applied=1
+    P2 step 78: fires=16 blend=10 score=  6 applied=1
+    P2 step 79: fires=16 blend=10 score=  6 applied=1
+    P2 step 80: fires=16 blend=10 score=  6 applied=1
+    P2 step 81: fires=16 blend=10 score=  6 applied=1
+    P2 step 82: fires=16 blend=10 score=  6 applied=1
+    P2 step 83: fires=16 blend=10 score=  6 applied=1
+    P2 step 84: fires=16 blend=10 score=  6 applied=1
+    P2 step 85: fires=16 blend=10 score=  6 applied=1
+    P2 step 86: fires=16 blend=10 score=  6 applied=1
+    P2 step 87: fires=16 blend=10 score=  6 applied=1
+    P2 step 88: fires=16 blend=10 score=  6 applied=1
+    P2 step 89: fires=16 blend=10 score=  6 applied=1
+    P2 step 90: fires=16 blend=10 score=  6 applied=1
+    P2 step 91: fires=16 blend=10 score=  6 applied=1
+    P2 step 92: fires=16 blend=10 score=  6 applied=1
+    P2 step 93: fires=16 blend=10 score=  6 applied=1
+    P2 step 94: fires=16 blend=10 score=  6 applied=1
+    P2 step 95: fires=16 blend=10 score=  6 applied=1
+    P2 step 96: fires=16 blend=10 score=  6 applied=1
+    P2 step 97: fires=16 blend=10 score=  6 applied=1
+    P2 step 98: fires=16 blend=10 score=  6 applied=1
+    P2 step 99: fires=16 blend=10 score=  6 applied=1
+    P1 mean: fires/step=14.9  blend/step=1.3  implied_alpha=0.082
+    P2 mean: fires/step=15.9  blend/step=10.0  implied_alpha=0.625
+
+  Rep 3/3:
+    P1 step   0: fires=13 blend= 0 score=  0 vdb=1
+    P1 step 100: fires=15 blend= 1 score= 31 vdb=5
+    P1 step 200: fires=15 blend= 1 score= 31 vdb=9
+    P1 step 300: fires=15 blend= 1 score= 31 vdb=13
+    P1 step 400: fires=15 blend= 1 score= 31 vdb=17
+    P1 done: vdb_nodes=20
+    P2 step  0: fires=15 blend=10 score= 15 applied=1
+    P2 step  1: fires=15 blend=10 score=  7 applied=1
+    P2 step  2: fires=12 blend=11 score=  7 applied=1
+    P2 step  3: fires=14 blend=10 score=  6 applied=1
+    P2 step  4: fires=15 blend=10 score=  7 applied=1
+    P2 step  5: fires=15 blend= 9 score=  5 applied=1
+    P2 step  6: fires=16 blend=10 score=  6 applied=1
+    P2 step  7: fires=16 blend=10 score=  6 applied=1
+    P2 step  8: fires=16 blend=10 score=  6 applied=1
+    P2 step  9: fires=16 blend=10 score=  6 applied=1
+    P2 step 10: fires=16 blend=10 score=  6 applied=1
+    P2 step 11: fires=16 blend=10 score=  6 applied=1
+    P2 step 12: fires=16 blend=10 score=  6 applied=1
+    P2 step 13: fires=16 blend=10 score=  6 applied=1
+    P2 step 14: fires=16 blend=10 score=  6 applied=1
+    P2 step 15: fires=16 blend=10 score=  6 applied=1
+    P2 step 16: fires=16 blend=10 score=  6 applied=1
+    P2 step 17: fires=16 blend=10 score=  6 applied=1
+    P2 step 18: fires=16 blend=10 score=  6 applied=1
+    P2 step 19: fires=16 blend=10 score=  6 applied=1
+    P2 step 20: fires=16 blend=10 score=  6 applied=1
+    P2 step 21: fires=16 blend=10 score=  6 applied=1
+    P2 step 22: fires=16 blend=10 score=  6 applied=1
+    P2 step 23: fires=16 blend=10 score=  6 applied=1
+    P2 step 24: fires=16 blend=10 score=  6 applied=1
+    P2 step 25: fires=16 blend=10 score=  6 applied=1
+    P2 step 26: fires=16 blend=10 score=  6 applied=1
+    P2 step 27: fires=16 blend=10 score=  6 applied=1
+    P2 step 28: fires=16 blend=10 score=  6 applied=1
+    P2 step 29: fires=16 blend=10 score=  6 applied=1
+    P2 step 30: fires=16 blend=10 score=  6 applied=1
+    P2 step 31: fires=16 blend=10 score=  6 applied=1
+    P2 step 32: fires=16 blend=10 score=  6 applied=1
+    P2 step 33: fires=16 blend=10 score=  6 applied=1
+    P2 step 34: fires=16 blend=10 score=  6 applied=1
+    P2 step 35: fires=16 blend=10 score=  6 applied=1
+    P2 step 36: fires=16 blend=10 score=  6 applied=1
+    P2 step 37: fires=16 blend=10 score=  6 applied=1
+    P2 step 38: fires=16 blend=10 score=  6 applied=1
+    P2 step 39: fires=16 blend=10 score=  6 applied=1
+    P2 step 40: fires=16 blend=10 score=  6 applied=1
+    P2 step 41: fires=16 blend=10 score=  6 applied=1
+    P2 step 42: fires=16 blend=10 score=  6 applied=1
+    P2 step 43: fires=16 blend=10 score=  6 applied=1
+    P2 step 44: fires=16 blend=10 score=  6 applied=1
+    P2 step 45: fires=16 blend=10 score=  6 applied=1
+    P2 step 46: fires=16 blend=10 score=  6 applied=1
+    P2 step 47: fires=16 blend=10 score=  6 applied=1
+    P2 step 48: fires=16 blend=10 score=  6 applied=1
+    P2 step 49: fires=16 blend=10 score=  6 applied=1
+    P2 step 50: fires=16 blend=10 score=  6 applied=1
+    P2 step 51: fires=16 blend=10 score=  6 applied=1
+    P2 step 52: fires=16 blend=10 score=  6 applied=1
+    P2 step 53: fires=16 blend=10 score=  6 applied=1
+    P2 step 54: fires=16 blend=10 score=  6 applied=1
+    P2 step 55: fires=16 blend=10 score=  6 applied=1
+    P2 step 56: fires=16 blend=10 score=  6 applied=1
+    P2 step 57: fires=16 blend=10 score=  6 applied=1
+    P2 step 58: fires=16 blend=10 score=  6 applied=1
+    P2 step 59: fires=16 blend=10 score=  6 applied=1
+    P2 step 60: fires=16 blend=10 score=  6 applied=1
+    P2 step 61: fires=16 blend=10 score=  6 applied=1
+    P2 step 62: fires=16 blend=10 score=  6 applied=1
+    P2 step 63: fires=16 blend=10 score=  6 applied=1
+    P2 step 64: fires=16 blend=10 score=  6 applied=1
+    P2 step 65: fires=16 blend=10 score=  6 applied=1
+    P2 step 66: fires=16 blend=10 score=  6 applied=1
+    P2 step 67: fires=16 blend=10 score=  6 applied=1
+    P2 step 68: fires=16 blend=10 score=  6 applied=1
+    P2 step 69: fires=16 blend=10 score=  6 applied=1
+    P2 step 70: fires=16 blend=10 score=  6 applied=1
+    P2 step 71: fires=16 blend=10 score=  6 applied=1
+    P2 step 72: fires=16 blend=10 score=  6 applied=1
+    P2 step 73: fires=16 blend=10 score=  6 applied=1
+    P2 step 74: fires=16 blend=10 score=  6 applied=1
+    P2 step 75: fires=16 blend=10 score=  6 applied=1
+    P2 step 76: fires=16 blend=10 score=  6 applied=1
+    P2 step 77: fires=16 blend=10 score=  6 applied=1
+    P2 step 78: fires=16 blend=10 score=  6 applied=1
+    P2 step 79: fires=16 blend=10 score=  6 applied=1
+    P2 step 80: fires=16 blend=10 score=  6 applied=1
+    P2 step 81: fires=16 blend=10 score=  6 applied=1
+    P2 step 82: fires=16 blend=10 score=  6 applied=1
+    P2 step 83: fires=16 blend=10 score=  6 applied=1
+    P2 step 84: fires=16 blend=10 score=  6 applied=1
+    P2 step 85: fires=16 blend=10 score=  6 applied=1
+    P2 step 86: fires=16 blend=10 score=  6 applied=1
+    P2 step 87: fires=16 blend=10 score=  6 applied=1
+    P2 step 88: fires=16 blend=10 score=  6 applied=1
+    P2 step 89: fires=16 blend=10 score=  6 applied=1
+    P2 step 90: fires=16 blend=10 score=  6 applied=1
+    P2 step 91: fires=16 blend=10 score=  6 applied=1
+    P2 step 92: fires=16 blend=10 score=  6 applied=1
+    P2 step 93: fires=16 blend=10 score=  6 applied=1
+    P2 step 94: fires=16 blend=10 score=  6 applied=1
+    P2 step 95: fires=16 blend=10 score=  6 applied=1
+    P2 step 96: fires=16 blend=10 score=  6 applied=1
+    P2 step 97: fires=16 blend=10 score=  6 applied=1
+    P2 step 98: fires=16 blend=10 score=  6 applied=1
+    P2 step 99: fires=16 blend=10 score=  6 applied=1
+    P1 mean: fires/step=14.9  blend/step=1.3  implied_alpha=0.081
+    P2 mean: fires/step=15.9  blend/step=10.0  implied_alpha=0.625
+
+  Switch window (rep 3, last 20 P1 → first 30 P2):
+  step | fires | blend | score | appl | lp_hidden
+  -----|-------|-------|-------|------|----------
+   -20 |    15 |     1 |    31 |    1 | --++------0--++-
+   -19 |    15 |     1 |    31 |    1 | --++------0--++-
+   -18 |    15 |     1 |    31 |    1 | --++------0--++-
+   -17 |    15 |     1 |    31 |    1 | --++------0--++-
+   -16 |    15 |     1 |    31 |    1 | --++------0--++-
+   -15 |    15 |     1 |    31 |    1 | --++------0--++-
+   -14 |    15 |     1 |    31 |    1 | --++------0--++-
+   -13 |    15 |     1 |    31 |    1 | --++------0--++-
+   -12 |    15 |     1 |    31 |    1 | --++------0--++-
+   -11 |    15 |     1 |    31 |    1 | --++------0--++-
+   -10 |    15 |     1 |    31 |    1 | --++------0--++-
+    -9 |    15 |     1 |    31 |    1 | --++------0--++-
+    -8 |    15 |     1 |    31 |    1 | --++------0--++-
+    -7 |    15 |     1 |    31 |    1 | --++------0--++-
+    -6 |    15 |     1 |    31 |    1 | --++------0--++-
+    -5 |    15 |     1 |    31 |    1 | --++------0--++-
+    -4 |    15 |     1 |    31 |    1 | --++------0--++-
+    -3 |    15 |     1 |    31 |    1 | --++------0--++-
+    -2 |    15 |     1 |    31 |    1 | --++------0--++-
+    -1 |    15 |     1 |    31 |    1 | --++------0--++-
+    +0 |    15 |    10 |    15 |    1 | 00+0000---+--+00
+    +1 |    15 |    10 |     7 |    1 | 000+000--0---++0
+    +2 |    12 |    11 |     7 |    1 | 0-0000-0-0---+00
+    +3 |    14 |    10 |     6 |    1 | 0-+00000-0---++0
+    +4 |    15 |    10 |     7 |    1 | 0-000000-0---+00
+    +5 |    15 |     9 |     5 |    1 | 0-000000-0---++0
+    +6 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+    +7 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+    +8 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+    +9 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +10 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +11 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +12 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +13 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +14 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +15 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +16 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +17 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +18 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +19 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +20 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +21 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +22 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +23 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +24 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +25 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +26 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +27 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +28 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+   +29 |    16 |    10 |     6 |    1 | 0-000000-0---++0
+
+  SUMMARY (3 reps, P1=500 steps, P2=100 steps):
+  P1 steady: fires/step=14.9  blend/step=1.3  implied_alpha=0.081
+  P2 phase:  fires/step=15.9  blend/step=10.0  implied_alpha=0.625
+  REGIME: Path A dominant (CfC fires > 2/step)
+  Sim calibration: LP_SIM_THRESHOLD should match Path A threshold; BLEND_ALPHA = 0.081
+
+
+── LP DOT MAGNITUDE DIAGNOSTIC ──
+  (CPU reference, not LP core)
+
+  LP f-pathway dots (per neuron, 4 patterns):
+        n00 n01 n02 n03 n04 n05 n06 n07 n08 n09 n10 n11 n12 n13 n14 n15
+  P0:   -7  -2  -5  +0  +4 +12  +2  +1  -8  -2  -3  -1  +5  +0  -1  +2
+  P1:   +1  -6  -1  +4  +8  +8  +8  -1 -14  +2  +3  +3  +1  -8  +1  -2
+  P2:   -5  -4  -3  +0  +4  +8  +6  +1 -10  +2  +1  -1  +3  -8  +3  +0
+  P3:   -4  -6  -2  +4  +4  +7  +3  +2 -14  -2  +0  +0  +1  -5  -1  -1
+
+  LP f-pathway SIGNS:
+         n00  n01  n02  n03  n04  n05  n06  n07  n08  n09  n10  n11  n12  n13  n14  n15
+  P0:    -    -    -    0    +    +    +    +    -    -    -    -    +    0    -    + 
+  P1:    +    -    -    +    +    +    +    -    -    +    +    +    +    -    +    - 
+  P2:    -    -    -    0    +    +    +    +    -    +    +    -    +    -    +    0 
+  P3:    -    -    -    +    +    +    +    +    -    -    0    0    +    -    -    - 
+
+  P1 vs P2 comparison (f-pathway):
+    n00: P1= +1 P2= -5  sign=DIFF  |mag_diff|=4
+    n01: P1= -6 P2= -4  sign=SAME  |mag_diff|=2
+    n02: P1= -1 P2= -3  sign=SAME  |mag_diff|=2
+    n03: P1= +4 P2= +0  sign=DIFF  |mag_diff|=4
+    n04: P1= +8 P2= +4  sign=SAME  |mag_diff|=4
+    n05: P1= +8 P2= +8  sign=SAME  |mag_diff|=0
+    n06: P1= +8 P2= +6  sign=SAME  |mag_diff|=2
+    n07: P1= -1 P2= +1  sign=DIFF  |mag_diff|=0
+    n08: P1=-14 P2=-10  sign=SAME  |mag_diff|=4
+    n09: P1= +2 P2= +2  sign=SAME  |mag_diff|=0
+    n10: P1= +3 P2= +1  sign=SAME  |mag_diff|=2
+    n11: P1= +3 P2= -1  sign=DIFF  |mag_diff|=2
+    n12: P1= +1 P2= +3  sign=SAME  |mag_diff|=2
+    n13: P1= -8 P2= -8  sign=SAME  |mag_diff|=0
+    n14: P1= +1 P2= +3  sign=SAME  |mag_diff|=2
+    n15: P1= -2 P2= +0  sign=DIFF  |mag_diff|=2
+  Signs: 11 same, 5 different
+  Mean |magnitude difference|: 2.0
+  If signs are mostly SAME but magnitudes differ:
+    → 5-trit MTFP per neuron would resolve the degeneracy
+  If signs AND magnitudes are similar:
+    → need more projection directions (wider LP)
+

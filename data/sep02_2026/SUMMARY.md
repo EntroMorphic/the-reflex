@@ -286,7 +286,50 @@ CMD 4 (TEST 13) P1 vs P2 Hamming: 2
 VDB feedback contribution:        +1 trits
 ```
 
-**Fixed binning** (both by ground truth) — not measured.
+**Fixed binning** (both by ground truth) — `r8_bin_by_gt.log`, re-run
+2026-09-03:
+
+```
+CMD 5 (TEST 12) P1 vs P2 Hamming: 0
+CMD 4 (TEST 13) P1 vs P2 Hamming: 4
+CMD 5 (TEST 12) P1 vs P3 Hamming: 1
+CMD 4 (TEST 13) P1 vs P3 Hamming: 5
+VDB feedback contribution (P1 vs P2): -4 trits
+```
+
+**Under correct binning the VDB contribution is negative.** CMD 5 — with the
+episodic blend fully active — collapses P1 and P2 to Hamming 0, while CMD 4,
+with no blend at all, preserves 4 trits of separation. P1 vs P3 inverts the same
+way (1 with blend, 5 without). Both pairs move in the same direction.
+
+### Every TEST 12/13 run measured this session
+
+| Binning | Sequence | CMD 5 | CMD 4 | VDB contribution |
+|---|---|---|---|---|
+| mixed (old) | present | 4 | 1 | **+3** |
+| mixed (old) | masked | 0 | 2 | **-2** |
+| mixed (old) | present | 3 | 2 | **+1** |
+| **gt (fixed)** | present | 0 | 4 | **-4** |
+
+Published claim: "+1 trit, VDB causally necessary."
+
+Four runs span **+3 to -4**, crossing zero, with no run replicating another —
+and the only run under *correct* binning is the most negative.
+
+### What this does and does not establish
+
+**Does:** no run under consistent ground-truth binning supports Claim 3, and the
+one that exists contradicts it on both pattern pairs.
+
+**Does not:** settle the claim. n=1 per configuration; the arms are
+between-session (the sender was power-cycled between them), which R9 shows is
+the dominant variance term; and Hamming values of 0-7 over 16 trits are a coarse
+instrument. Two pairs inverting together is more than one coin flip, but it is
+not replication.
+
+**The defensible statement today is that Claim 3 is unsupported, not that it is
+false.** Settling it requires the R9 treatment: >=3 independent sessions per
+arm, sender power-cycled between, ground-truth binning throughout.
 
 ### What the single arm already shows
 
