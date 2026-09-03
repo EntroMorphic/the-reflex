@@ -1,7 +1,7 @@
-# R9 CAMPAIGN — Claim 3 (VDB causal necessity), session 1 of 3.
+# R9 CAMPAIGN — Claim 3 (VDB causal necessity), session 3 of 3.
 # Tests 12/13, ground-truth binning (R8 fixed), label-free.
 # Sender hard-reset immediately before this run.
-# Captured 2026-09-03 05:21:50
+# Captured 2026-09-03 05:43:29
 W (206) spi_flash: Detected size(4096k) larger than the size in the binary image header(2048k). Using the size in the binary image header.
 
 ============================================================
@@ -25,21 +25,21 @@ W (206) spi_flash: Detected size(4096k) larger than the size in the binary image
 [INIT] LP seed: 0xCAFE1234
 [LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
 [INIT] ESP-NOW receiver...
-W (8379) wifi:ACK_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
-W (8380) wifi:CTS_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
-W (8380) wifi:(agc)0x600a7128:0xd20e4800, min.avgNF:0xce->0xd2(dB), RCalCount:0xe4, min.RRssi:0x800(-128.00)
-W (8381) wifi:(TB)WDEV_PWR_TB_MCS0:19
-W (8381) wifi:(TB)WDEV_PWR_TB_MCS1:19
-W (8381) wifi:(TB)WDEV_PWR_TB_MCS2:19
-W (8381) wifi:(TB)WDEV_PWR_TB_MCS3:19
-W (8381) wifi:(TB)WDEV_PWR_TB_MCS4:19
-W (8381) wifi:(TB)WDEV_PWR_TB_MCS5:19
-W (8381) wifi:(TB)WDEV_PWR_TB_MCS6:18
-W (8382) wifi:(TB)WDEV_PWR_TB_MCS7:18
-W (8382) wifi:(TB)WDEV_PWR_TB_MCS8:17
-W (8382) wifi:(TB)WDEV_PWR_TB_MCS9:15
-W (8382) wifi:(TB)WDEV_PWR_TB_MCS10:15
-W (8382) wifi:(TB)WDEV_PWR_TB_MCS11:15
+W (8378) wifi:ACK_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
+W (8379) wifi:CTS_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
+W (8379) wifi:(agc)0x600a7128:0xd20c1800, min.avgNF:0xce->0xd2(dB), RCalCount:0xc1, min.RRssi:0x800(-128.00)
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS0:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS1:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS2:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS3:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS4:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS5:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS6:18
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS7:18
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS8:17
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS9:15
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS10:15
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS11:15
 [ESPNOW] Listening on channel 1 (no AP connection)
 [INIT] Done.
 
@@ -54,23 +54,23 @@ W (8382) wifi:(TB)WDEV_PWR_TB_MCS11:15
 [DIAG] gdma2: fifo=0x61 state=0x2e75a8(dscr_st=3 out_st=2) eof_addr=0x40827584
 [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x1(eof=0 rempty=1)
   Phase 0a: Observing input signatures (30s)...
-  Observed: 207 packets, 207 encoded, 12869 GIE loops
-  Per-pattern counts: P0=58 P1=24 P2=17 P3=108
+  Observed: 173 packets, 173 encoded, 12871 GIE loops
+  Per-pattern counts: P0=51 P1=45 P2=20 P3=57
   Phase 0b: Computing TriX signatures...
-  sig[0]: [+++++++++-------00000000--------...] nz=96/128 (from 58 samples, seq trits masked)
-  sig[1]: [+++++++++-------00000000++++++++...] nz=96/128 (from 24 samples, seq trits masked)
-  sig[2]: [+++++++++-------00000000+-+-+-+-...] nz=95/128 (from 17 samples, seq trits masked)
-  sig[3]: [+++++++++-------00000000++++-++-...] nz=95/128 (from 108 samples, seq trits masked)
+  sig[0]: [++++++++++------00000000--------...] nz=96/128 (from 51 samples, seq trits masked)
+  sig[1]: [+++++++++-------00000000++++++++...] nz=96/128 (from 45 samples, seq trits masked)
+  sig[2]: [++++++++++------00000000+-+-+-+-...] nz=95/128 (from 20 samples, seq trits masked)
+  sig[3]: [++++++++++------00000000++++-++-...] nz=96/128 (from 57 samples, seq trits masked)
   Signature pattern-ID trits [16..23]:
     sig[0][16..23]: 00000000
     sig[1][16..23]: 00000000
     sig[2][16..23]: 00000000
     sig[3][16..23]: 00000000
   Signature cross-dots:
-    sig[0] vs: s0=96 s1=68 s2=29 s3=55 
-    sig[1] vs: s0=68 s1=96 s2=23 s3=51 
-    sig[2] vs: s0=29 s1=23 s2=95 s3=28 
-    sig[3] vs: s0=55 s1=51 s2=28 s3=95 
+    sig[0] vs: s0=96 s1=66 s2=19 s3=56 
+    sig[1] vs: s0=66 s1=96 s2=29 s3=50 
+    sig[2] vs: s0=19 s1=29 s2=95 s3=19 
+    sig[3] vs: s0=56 s1=50 s2=19 s3=96 
   Ring drops: 0
 
   Phase 0c: Installing signatures as W_f gate weights...
@@ -84,108 +84,108 @@ W (8382) wifi:(TB)WDEV_PWR_TB_MCS11:15
 
   GDMA offset calibration...
   GDMA offset mapping: G0→P0 G1→P1 G2→P2 G3→P3
-  ISR groups:  [94, 70, 28, 53]
-  CPU patterns: [94, 70, 28, 53]
+  ISR groups:  [17, 19, 81, 17]
+  CPU patterns: [17, 19, 81, 17]
 
   Phase 0d: TriX Cube face observation (15s)...
   TriX Cube face signatures:
-    +x:recent: 81 samples [P0=43 P1=24 P2=11 P3=3]
-    -x:prior: 54 samples [P0=19 P1=8 P2=1 P3=26]
-    +y:stable: 18 samples [P0=7 P1=8 P2=3 P3=0]
-    -y:transient: 21 samples [P0=10 P1=6 P2=2 P3=3]
+    +x:recent: 124 samples [P0=51 P1=18 P2=1 P3=54]
+    -x:prior: 123 samples [P0=10 P1=1 P2=52 P3=60]
+    +y:stable: 45 samples [P0=14 P1=0 P2=0 P3=31]
+    -y:transient: 24 samples [P0=10 P1=6 P2=1 P3=7]
     +z:confident: 0 samples [P0=0 P1=0 P2=0 P3=0]
-    -z:uncertain: 3 samples [P0=0 P1=0 P2=0 P3=3]
+    -z:uncertain: 54 samples [P0=0 P1=0 P2=0 P3=54]
   Face divergence from core (avg Hamming across patterns):
-    +x:recent: 22 avg (4 patterns with data)
-    -x:prior: 42 avg (4 patterns with data)
-    +y:stable: 18 avg (3 patterns with data)
-    -y:transient: 21 avg (4 patterns with data)
+    +x:recent: 21 avg (4 patterns with data)
+    -x:prior: 38 avg (4 patterns with data)
+    +y:stable: 30 avg (2 patterns with data)
+    -y:transient: 22 avg (4 patterns with data)
     +z:confident: 0 avg (0 patterns with data)
-    -z:uncertain: 37 avg (1 patterns with data)
+    -z:uncertain: 29 avg (1 patterns with data)
   Ring drops: 0
 
   Phase 1: TriX Cube ensemble (up to 32 samples, 60s)...
-    s01: truth=0 core=0 isr=0 | cv=[9,0,0,0] iv=[9,0,1,0] xor=[11,26,12,10,-,104]
-    s02: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[6,19,8,7,-,110]
-    s03: truth=0 core=0 isr=0 | cv=[10,1,0,0] iv=[10,1,0,0] xor=[5,19,6,6,-,110]
-    s04: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[5,17,2,4,-,34]
-    s05: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[8,11,4,4,-,1]
-    s06: truth=1 core=1 isr=1 | cv=[2,6,0,0] iv=[2,6,0,0] xor=[11,33,10,13,-,74]
-    s07: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[4,39,7,10,-,111]
-    s08: truth=1 core=1 isr=1 | cv=[0,7,0,0] iv=[0,7,0,0] xor=[4,39,7,10,-,111]
-    s09: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[4,39,7,10,-,111]
-    s10: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[4,20,4,9,-,111]
-    s11: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[22,62,26,16,-,-]
-    s12: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[22,62,26,16,-,95]
-    s13: truth=2 core=2 isr=2 | cv=[0,1,2,0] iv=[0,1,2,0] xor=[16,41,17,10,-,100]
-    s14: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[22,62,26,16,-,95]
-    s15: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[22,62,26,16,-,95]
-    s16: truth=3 core=0 isr=0 | cv=[6,2,0,0] iv=[7,4,0,0] xor=[3,2,2,2,-,30]
-    s17: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[1,3,1,2,-,3]
-    s18: truth=0 core=0 isr=0 | cv=[10,1,0,0] iv=[10,1,0,0] xor=[3,3,3,4,-,13]
-    s19: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[3,0,4,4,-,4]
-    s20: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[2,1,2,2,-,4]
-    s21: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[3,3,3,3,-,3]
-    s22: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[5,1,1,0,-,20]
-    s23: truth=1 core=1 isr=1 | cv=[0,4,0,0] iv=[0,4,0,0] xor=[4,1,1,0,-,2]
-    s24: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[0,2,2,1,-,3]
-    s25: truth=1 core=1 isr=1 | cv=[0,5,0,0] iv=[0,5,0,0] xor=[0,2,2,1,-,3]
-    s26: truth=1 core=1 isr=1 | cv=[0,4,0,0] iv=[0,4,0,0] xor=[1,3,3,2,-,4]
-    s27: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[22,62,26,16,-,95]
-    s28: truth=2 core=2 isr=2 | cv=[0,1,2,0] iv=[0,1,2,0] xor=[14,38,16,12,-,70]
-    s29: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[14,50,21,17,-,110]
-    s30: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[14,50,21,17,-,110]
-    s31: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[14,50,21,17,-,110]
-    s32: truth=0 core=0 isr=0 | cv=[10,1,0,0] iv=[10,1,0,0] xor=[4,3,4,3,-,4]
+    s01: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[9,24,108,14,-,108]
+    s02: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[26,64,-,26,-,-]
+    s03: truth=2 core=2 isr=2 | cv=[0,1,2,0] iv=[0,1,2,0] xor=[19,50,99,21,-,99]
+    s04: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[26,64,95,26,-,95]
+    s05: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[26,64,95,26,-,95]
+    s06: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[26,64,95,26,-,95]
+    s07: truth=0 core=0 isr=0 | cv=[10,1,0,0] iv=[10,1,0,0] xor=[15,24,21,12,-,97]
+    s08: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[7,22,7,10,-,108]
+    s09: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[6,7,6,4,-,110]
+    s10: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[6,6,6,4,-,13]
+    s11: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[4,5,4,4,-,0]
+    s12: truth=1 core=1 isr=1 | cv=[0,7,0,0] iv=[0,7,0,0] xor=[6,23,108,11,-,108]
+    s13: truth=1 core=1 isr=1 | cv=[0,5,0,0] iv=[0,5,0,0] xor=[5,19,110,11,-,110]
+    s14: truth=1 core=1 isr=1 | cv=[0,4,0,0] iv=[0,4,0,0] xor=[3,17,112,11,-,112]
+    s15: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[3,17,112,3,-,112]
+    s16: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[3,3,39,2,-,39]
+    s17: truth=2 core=2 isr=2 | cv=[0,1,2,0] iv=[0,1,2,0] xor=[14,24,73,13,-,73]
+    s18: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[19,17,110,19,-,110]
+    s19: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[19,17,110,19,-,110]
+    s20: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[19,17,110,19,-,110]
+    s21: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[19,17,110,19,-,110]
+    s22: truth=3 core=0 isr=0 | cv=[6,1,0,0] iv=[9,1,0,0] xor=[4,4,2,3,-,0]
+    s23: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[4,1,4,2,-,2]
+    s24: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[3,2,4,2,-,1]
+    s25: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[0,3,1,2,-,3]
+    s26: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[0,2,0,1,-,1]
+    s27: truth=0 core=0 isr=0 | cv=[8,4,0,0] iv=[8,4,0,0] xor=[1,1,0,1,-,0]
+    s28: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[5,1,1,2,-,1]
+    s29: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[2,1,1,2,-,1]
+    s30: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[3,3,3,3,-,3]
+    s31: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[3,3,3,3,-,3]
+    s32: truth=1 core=1 isr=1 | cv=[0,4,1,0] iv=[0,4,1,0] xor=[6,6,24,7,-,24]
 
   ═══ CLASSIFICATION RESULTS (TriX Cube) ═══
-  Window: 48204 ms
-  GIE loops in window: 23655 (490 Hz) — classification mode,
+  Window: 43191 ms
+  GIE loops in window: 21209 (491 Hz) — classification mode,
     CfC blend disabled (gate_threshold = INT32_MAX)
-  TriX classifications in window: 23655 (490 Hz, 100% of loops clean)
-  Total GIE loops since start_freerun: 43969 (spans Phase 0a-0c too;
+  TriX classifications in window: 21209 (491 Hz, 100% of loops clean)
+  Total GIE loops since start_freerun: 41695 (spans Phase 0a-0c too;
     not a rate denominator)
   Test samples: 32
   Ring drops: 0
   Core (CPU per-pkt vote):   31/32 = 96%
   ISR  (HW 430 Hz TriX):     31/32 = 96% (all samples)
-  ISR  (windows w/ data):    31/32 = 96% (348 pkts clean, 0 pkts timeout)
-  TriX channel signals:      31084 (seq=31084)
+  ISR  (windows w/ data):    31/32 = 96% (290 pkts clean, 0 pkts timeout)
+  TriX channel signals:      28792 (seq=28791)
   Baseline (packet-rate):    25/32 = 78%
 
   ── Novelty Detection ──
-  Novel packets: 145 / 348 (41%)
-  Novel windows: 16
+  Novel packets: 94 / 290 (32%)
+  Novel windows: 11
 
   ── Online Maintenance ──
-  Core re-signs: 13
+  Core re-signs: 11
   Core drift (Hamming):
-    sig[0]: 13/128 trits
-    sig[1]: 16/128 trits
-    sig[2]: 17/128 trits
+    sig[0]: 14/128 trits
+    sig[1]: 18/128 trits
+    sig[2]: 15/128 trits
     sig[3]: 0/128 trits
 
   ── XOR Masks (temporal displacement per face) ──
     Face              avg  | rssi patid payload timing
     +x:recent            6/128 |  0/16  0/8   0/64    6/40
-    -x:prior            16/128 |  0/16  0/8   8/64    7/40
-    +y:stable            6/128 |  0/16  0/8   0/64    6/40
-    -y:transient         6/128 |  0/16  0/8   0/64    6/40
+    -x:prior            12/128 |  0/16  0/8   4/64    8/40
+    +y:stable           31/128 |  4/16  0/8  16/64   10/40
+    -y:transient         7/128 |  0/16  0/8   0/64    6/40
     +z:confident         -     | (no data)
-    -z:uncertain        46/128 |  6/16  0/8  26/64   13/40
+    -z:uncertain        46/128 |  6/16  0/8  27/64   12/40
     ── Signal distribution ──
-    RSSI:    8% of mask weight
+    RSSI:    11% of mask weight
     PatID:   0% of mask weight
-    Payload: 43% of mask weight
-    Timing:  48% of mask weight
+    Payload: 46% of mask weight
+    Timing:  42% of mask weight
 
   ── TriX Cube Geometry ──
-    +x:recent: 284 samples, 14 avg hamming from core
-    -x:prior: 257 samples, 23 avg hamming from core
-    +y:stable: 221 samples, 30 avg hamming from core
-    -y:transient: 224 samples, 15 avg hamming from core
+    +x:recent: 320 samples, 12 avg hamming from core
+    -x:prior: 319 samples, 14 avg hamming from core
+    +y:stable: 241 samples, 42 avg hamming from core
+    -y:transient: 220 samples, 13 avg hamming from core
     +z:confident: 0 samples, 0 avg hamming from core
-    -z:uncertain: 206 samples, 39 avg hamming from core
+    -z:uncertain: 250 samples, 35 avg hamming from core
   Gate firing: 0%
 
   Architecture:
@@ -199,7 +199,7 @@ W (8382) wifi:(TB)WDEV_PWR_TB_MCS11:15
   OK
 
 -- TEST 12: Memory-Modulated Adaptive Attention --
-[DIAG] 500us: agree=1250 disagree=128 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] 500us: agree=813 disagree=529 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
 [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273c8(park=0) peri=9
 [DIAG] gdma2: fifo=0x61 state=0x2e75a8(dscr_st=3 out_st=2) eof_addr=0x40827584
 [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
@@ -207,32 +207,32 @@ W (8382) wifi:(TB)WDEV_PWR_TB_MCS11:15
   running 120s: classify → insert snapshot → LP feedback
 
   ── LP Hidden State by Pattern ──
-    P0: 293 samples, sign=16/16, mtfp=80/80 [-++----+++--++--]
-    P1: 144 samples, sign=16/16, mtfp=80/80 [+++---++++--++--]
-    P2: 66 samples, sign=16/16, mtfp=80/80 [+++-+-++++--++--]
-    P3: 27 samples, sign=16/16, mtfp=79/80 [++++---+++--++--]
+    P0: 305 samples, sign=16/16, mtfp=79/80 [--+--++-++---+-+]
+    P1: 120 samples, sign=16/16, mtfp=80/80 [+-+--++-++-+-+-+]
+    P2: 65 samples, sign=16/16, mtfp=79/80 [+-+--++-++---+-+]
+    P3: 37 samples, sign=16/16, mtfp=80/80 [+-++-++-++---+-+]
 
   ── LP Divergence Matrix — sign-space (Hamming, /16) ──
        P0  P1  P2  P3
-  P0:   0   2   3   2
+  P0:   0   2   1   2
   P1:   2   0   1   2
-  P2:   3   1   0   3
-  P3:   2   2   3   0
+  P2:   1   1   0   1
+  P3:   2   2   1   0
 
   ── LP Divergence Matrix — MTFP-space (Hamming, /80) ──
        P0  P1  P2  P3
-  P0:   0   7   6   7
-  P1:   7   0   5   8
-  P2:   6   5   0   8
-  P3:   7   8   8   0
-  P1 vs P3: sign=2/16, mtfp=8/80
-  P1 vs P2: sign=1/16, mtfp=5/80
+  P0:   0   9  13  15
+  P1:   9   0   9  14
+  P2:  13   9   0  10
+  P3:  15  14  10   0
+  P1 vs P3: sign=2/16, mtfp=14/80
+  P1 vs P2: sign=1/16, mtfp=9/80
 
   ── Summary ──
-  Confirmed: P0=296 P1=168 P2=66 P3=0 (total=530)
+  Confirmed: P0=320 P1=142 P2=65 P3=0 (total=527)
   VDB inserts: 64 (VDB count: 64/64)
-  LP feedback steps: 530, feedback applied: 522
-  Gate firing: 7%
+  LP feedback steps: 527, feedback applied: 519
+  Gate firing: 8%
   P1 vs P3 Hamming: DIVERGED (memory modulated)
   Cross-pattern LP divergence: YES — sub-conscious state reflects pattern history
 
@@ -244,15 +244,15 @@ W (8382) wifi:(TB)WDEV_PWR_TB_MCS11:15
   - This closes the loop: perceive → classify → remember
     → retrieve → modulate — without CPU or multiplication
 
-  ── Split-Half Null Test (P0, n=293) ──
-  Analytical null bound: ~1/80 MTFP trits (at n=293)
-  Cross-pattern P1-P2 MTFP: 5/80
+  ── Split-Half Null Test (P0, n=305) ──
+  Analytical null bound: ~1/80 MTFP trits (at n=305)
+  Cross-pattern P1-P2 MTFP: 9/80
   SIGNAL > NULL: MTFP separation exceeds noise floor
   Sufficient patterns: 4/4 (need >=3 with >=15 samples each)
   OK
 
 -- TEST 13: CMD 4 Ablation (CfC only, no VDB blend) --
-[DIAG] 500us: agree=762 disagree=629 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] 500us: agree=1246 disagree=140 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
 [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273c8(park=0) peri=9
 [DIAG] gdma2: fifo=0x61 state=0x2e75a8(dscr_st=3 out_st=2) eof_addr=0x40827584
 [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
@@ -260,24 +260,28 @@ W (8382) wifi:(TB)WDEV_PWR_TB_MCS11:15
   running 120s: classify → feed LP → CfC step only
 
   ── LP Hidden State by Pattern (CMD 4, no blend) ──
-    P0: 306 samples, energy=16/16 [+++---++++--++--]
-    P1: 144 samples, energy=16/16 [+++---++++--++--]
-    P2: 58 samples, energy=16/16 [+-+-+-++++--++--]
-    P3: 48 samples, energy=16/16 [-+++--++++--++--]
+    P0: 256 samples, energy=16/16 [+++---++++---+++]
+    P1: 144 samples, energy=16/16 [+-----++++---+-+]
+    P2: 66 samples, energy=16/16 [+-----++++---+-+]
+    P3: 53 samples, energy=16/16 [+++---++++---+++]
 
   ── LP Divergence Matrix (CMD 4 — ablation) ──
        P0  P1  P2  P3
-  P0:   0   0   2   2
-  P1:   0   0   2   2
-  P2:   2   2   0   4
-  P3:   2   2   4   0
+  P0:   0   3   3   0
+  P1:   3   0   0   3
+  P2:   3   0   0   3
+  P3:   0   3   3   0
 
   ── Attribution Analysis (P1 vs P2 primary pair) ──
   CMD 5 (TEST 12) P1 vs P2 Hamming: 1
-  CMD 4 (TEST 13) P1 vs P2 Hamming: 2
+  CMD 4 (TEST 13) P1 vs P2 Hamming: 0
   CMD 5 (TEST 12) P1 vs P3 Hamming: 2
-  CMD 4 (TEST 13) P1 vs P3 Hamming: 2
-  VDB feedback contribution (P1 vs P2): -1 trits
+  CMD 4 (TEST 13) P1 vs P3 Hamming: 3
+  VDB feedback contribution (P1 vs P2): +1 trits
+  RESULT: P1=P2 without VDB blend (CMD 4).
+          P1≠P2 with VDB blend (CMD 5, Hamming 1).
+          VDB feedback is causally necessary for LP separation.
+          Memory-modulated attention: CONFIRMED with control.
   Sufficient patterns: 4/4 (need >=3)
   OK
 
@@ -697,37 +701,37 @@ W (8382) wifi:(TB)WDEV_PWR_TB_MCS11:15
 
   LP f-pathway dots (per neuron, 4 patterns):
         n00 n01 n02 n03 n04 n05 n06 n07 n08 n09 n10 n11 n12 n13 n14 n15
-  P0:   -7  -2  -5  +0  +4 +12  +2  +1  -8  -2  -3  -1  +5  +0  -1  +2
-  P1:   +1  -6  -1  +4  +8  +8  +8  -1 -14  +2  +3  +3  +1  -8  +1  -2
-  P2:   -5  -4  -3  +0  +4  +8  +6  +1 -10  +2  +1  -1  +3  -8  +3  +0
-  P3:   -3  -6  +1  +4  +6  +8  +6  -3 -12  +0  +3  -1  +1  -6  +3  -6
+  P0:   -5  +0  -3  +0  +4 +12  +0  -1  -6  +0  -3  -1  +5  +2  -3  +2
+  P1:   +3  -4  +1  +4  +8  +8  +6  -3 -12  +4  +3  +3  +1  -6  -1  -2
+  P2:   -3  -2  -1  +0  +4  +8  +4  -1  -8  +4  +1  -1  +3  -6  +1  +0
+  P3:   -1  -4  +3  +4  +6  +8  +4  -5 -10  +2  +3  -1  +1  -4  +1  -6
 
   LP f-pathway SIGNS:
          n00  n01  n02  n03  n04  n05  n06  n07  n08  n09  n10  n11  n12  n13  n14  n15
-  P0:    -    -    -    0    +    +    +    +    -    -    -    -    +    0    -    + 
-  P1:    +    -    -    +    +    +    +    -    -    +    +    +    +    -    +    - 
-  P2:    -    -    -    0    +    +    +    +    -    +    +    -    +    -    +    0 
-  P3:    -    -    +    +    +    +    +    -    -    0    +    -    +    -    +    - 
+  P0:    -    0    -    0    +    +    0    -    -    0    -    -    +    +    -    + 
+  P1:    +    -    +    +    +    +    +    -    -    +    +    +    +    -    -    - 
+  P2:    -    -    -    0    +    +    +    -    -    +    +    -    +    -    +    0 
+  P3:    -    -    +    +    +    +    +    -    -    +    +    -    +    -    +    - 
 
   P1 vs P2 comparison (f-pathway):
-    n00: P1= +1 P2= -5  sign=DIFF  |mag_diff|=4
-    n01: P1= -6 P2= -4  sign=SAME  |mag_diff|=2
-    n02: P1= -1 P2= -3  sign=SAME  |mag_diff|=2
+    n00: P1= +3 P2= -3  sign=DIFF  |mag_diff|=0
+    n01: P1= -4 P2= -2  sign=SAME  |mag_diff|=2
+    n02: P1= +1 P2= -1  sign=DIFF  |mag_diff|=0
     n03: P1= +4 P2= +0  sign=DIFF  |mag_diff|=4
     n04: P1= +8 P2= +4  sign=SAME  |mag_diff|=4
     n05: P1= +8 P2= +8  sign=SAME  |mag_diff|=0
-    n06: P1= +8 P2= +6  sign=SAME  |mag_diff|=2
-    n07: P1= -1 P2= +1  sign=DIFF  |mag_diff|=0
-    n08: P1=-14 P2=-10  sign=SAME  |mag_diff|=4
-    n09: P1= +2 P2= +2  sign=SAME  |mag_diff|=0
+    n06: P1= +6 P2= +4  sign=SAME  |mag_diff|=2
+    n07: P1= -3 P2= -1  sign=SAME  |mag_diff|=2
+    n08: P1=-12 P2= -8  sign=SAME  |mag_diff|=4
+    n09: P1= +4 P2= +4  sign=SAME  |mag_diff|=0
     n10: P1= +3 P2= +1  sign=SAME  |mag_diff|=2
     n11: P1= +3 P2= -1  sign=DIFF  |mag_diff|=2
     n12: P1= +1 P2= +3  sign=SAME  |mag_diff|=2
-    n13: P1= -8 P2= -8  sign=SAME  |mag_diff|=0
-    n14: P1= +1 P2= +3  sign=SAME  |mag_diff|=2
+    n13: P1= -6 P2= -6  sign=SAME  |mag_diff|=0
+    n14: P1= -1 P2= +1  sign=DIFF  |mag_diff|=0
     n15: P1= -2 P2= +0  sign=DIFF  |mag_diff|=2
-  Signs: 11 same, 5 different
-  Mean |magnitude difference|: 2.0
+  Signs: 10 same, 6 different
+  Mean |magnitude difference|: 1.6
   If signs are mostly SAME but magnitudes differ:
     → 5-trit MTFP per neuron would resolve the degeneracy
   If signs AND magnitudes are similar:
