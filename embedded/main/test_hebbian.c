@@ -40,7 +40,9 @@
 #define T15_N_COND  2
 #define T15_CONTROL 0
 #define T15_HEBBIAN 1
+#ifndef T15_N_REPS
 #define T15_N_REPS  3             /* repetitions per condition for variance estimate */
+#endif                            /* override: -DT15_N_REPS=5 (audit: n=3 underpowered) */
 
 static const char *t15_cond_name[T15_N_COND] = {
     "Control (CMD5 only)",

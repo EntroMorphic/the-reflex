@@ -1372,11 +1372,18 @@ int espnow_encode_rx_entry(const espnow_rx_entry_t *entry,
 
     const espnow_packet_t *pkt = &entry->pkt;
 
-    /* [0..15] RSSI thermometer */
+    /* [0..15] RSSI thermometer.
+     * MASK_RSSI_INPUT (audit Sep 2026): RSSI varies per packet but is
+     * pattern-agnostic (fixed sender, fixed distance). It is therefore a second
+     * candidate source of the per-packet input variation that the B5 random
+     * control showed drives MTFP divergence. Note MASK_RSSI is a DIFFERENT and
+     * pre-existing flag that masks RSSI from the signatures only. */
+#ifndef MASK_RSSI_INPUT
     for (int i = 0; i < 16; i++) {
         int threshold = -80 + i * 4;
         new_input[i] = (entry->rssi >= threshold) ? T_POS : T_NEG;
     }
+#endif
 
     /* [16..23] Pattern ID one-hot */
 #ifndef MASK_PATTERN_ID_INPUT
@@ -1411,7 +1418,12 @@ int espnow_encode_rx_entry(const espnow_rx_entry_t *entry,
     espnow_last_rx_us = entry->rx_timestamp_us;
     if (out_gap_ms) *out_gap_ms = gap_ms;
 
+    /* MASK_GAP_INPUT (audit Sep 2026): the MTFP21 gap history [88..103] is
+     * both per-packet-varying AND partly pattern-specific (patterns differ in
+     * cadence), so masking it tests variation and information together. */
+#ifndef MASK_GAP_INPUT
     encode_gap_history((int)gap_ms, new_input);
+#endif
 
     /* ── [104..119] Sequence features ──
      *

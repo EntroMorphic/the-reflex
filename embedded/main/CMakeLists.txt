@@ -80,6 +80,21 @@ else()
     if(DEFINED NULL_SHUFFLE_BINS AND NULL_SHUFFLE_BINS)
         add_compile_definitions(NULL_SHUFFLE_BINS=1)
     endif()
+    # Audit Sep 2026: input-level masks for the other per-packet-varying
+    # fields, to test whether MTFP divergence is driven by input variation
+    # regardless of its source. MASK_RSSI_INPUT is distinct from MASK_RSSI,
+    # which masks RSSI from signatures only.
+    if(DEFINED MASK_RSSI_INPUT AND MASK_RSSI_INPUT)
+        add_compile_definitions(MASK_RSSI_INPUT=1)
+    endif()
+    if(DEFINED MASK_GAP_INPUT AND MASK_GAP_INPUT)
+        add_compile_definitions(MASK_GAP_INPUT=1)
+    endif()
+    # Override TEST 15 repetitions per condition (default 3; audit says n=3
+    # is underpowered against a measured null floor of 4.3/80).
+    if(DEFINED T15_N_REPS)
+        add_compile_definitions(T15_N_REPS=${T15_N_REPS})
+    endif()
     # Skip to Test 14 (enrollment + kinetic attention only)
     if(DEFINED SKIP_TO_14 AND SKIP_TO_14)
         add_compile_definitions(SKIP_TO_14=1)

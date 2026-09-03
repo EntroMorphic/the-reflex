@@ -1,0 +1,212 @@
+# REMEDIATION 1/5: n=5 MTFP resolution, sequence PRESENT (published config).
+# Resolves t=3.15 vs crit 3.18 at n=3. Build: SKIP_TO_15=1 MASK_PATTERN_ID=1
+#   MASK_PATTERN_ID_INPUT=1 T15_N_REPS=5
+# Captured 2026-09-02 21:44:49
+W (206) spi_flash: Detected size(4096k) larger than the size in the binary image header(2048k). Using the size in the binary image header.
+
+============================================================
+  FREE-RUNNING SUB-CPU NEURAL NETWORK
+  + LP CORE GEOMETRIC PROCESSOR
+  GIE (441 Hz HW) → LP core (100 Hz, 16MHz RISC-V, ~30uA)
+  Three-layer hierarchy: peripheral → geometric → CPU
+============================================================
+
+[INIT] GPIO 4-7...
+[INIT] ETM clock...
+[INIT] PARLIO TX (2-bit, 20MHz, loopback)...
+[INIT] PCNT (2 units)...
+[INIT] Timer...
+[INIT] GDMA channel detection...
+[GDMA] PARLIO owns CH0
+[INIT] GDMA ISR (free-running mode)...
+[GDMA ISR] OK — CH0 (source=69), LEVEL3
+[INIT] LP core binary (16320 bytes)...
+[INIT] LP core weights (after binary load)...
+[INIT] LP seed: 0xCAFE1234
+[LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
+[INIT] ESP-NOW receiver...
+W (8379) wifi:ACK_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
+W (8379) wifi:CTS_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
+W (8380) wifi:(agc)0x600a7128:0xd201c800, min.avgNF:0xce->0xd2(dB), RCalCount:0x1c, min.RRssi:0x800(-128.00)
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS0:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS1:19
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS2:19
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS3:19
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS4:19
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS5:19
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS6:18
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS7:18
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS8:17
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS9:15
+W (8382) wifi:(TB)WDEV_PWR_TB_MCS10:15
+W (8382) wifi:(TB)WDEV_PWR_TB_MCS11:15
+[ESPNOW] Listening on channel 1 (no AP connection)
+[INIT] Done.
+
+[PRIME] Warming pipeline...
+[PRIME] Done.
+
+[SWEEP] SKIP_TO_15: running Test 11 (enrollment) + Test 15 only
+
+-- TEST 11: Pattern Classification (Stream CfC) --
+[DIAG] 500us: agree=256 disagree=294 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x66039348 cpu_agree=21 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27448(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7628(dscr_st=3 out_st=2) eof_addr=0x40827604
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x1(eof=0 rempty=1)
+  Phase 0a: Observing input signatures (30s)...
+  Observed: 179 packets, 179 encoded, 12872 GIE loops
+  Per-pattern counts: P0=51 P1=31 P2=22 P3=75
+  Phase 0b: Computing TriX signatures...
+  sig[0]: [+++++++++-------00000000--------...] nz=96/128 (from 51 samples, seq trits masked)
+  sig[1]: [+++++++++-------00000000++++++++...] nz=95/128 (from 31 samples, seq trits masked)
+  sig[2]: [+++++++++-------00000000+-+-+-+-...] nz=94/128 (from 22 samples, seq trits masked)
+  sig[3]: [+++++++++-------00000000++++-+--...] nz=96/128 (from 75 samples, seq trits masked)
+  Signature pattern-ID trits [16..23]:
+    sig[0][16..23]: 00000000
+    sig[1][16..23]: 00000000
+    sig[2][16..23]: 00000000
+    sig[3][16..23]: 00000000
+  Signature cross-dots:
+    sig[0] vs: s0=96 s1=71 s2=26 s3=72 
+    sig[1] vs: s0=71 s1=95 s2=21 s3=67 
+    sig[2] vs: s0=26 s1=21 s2=94 s3=26 
+    sig[3] vs: s0=72 s1=67 s2=26 s3=96 
+  Ring drops: 0
+
+  Phase 0c: Installing signatures as W_f gate weights...
+  W_f weights set from signatures (8 neurons/pattern)
+  Gate threshold: 2147483647 (Phase 3: blend DISABLED, all neurons HOLD)
+  Neurons 0-7 → pattern 0
+  Neurons 8-15 → pattern 1
+  Neurons 16-23 → pattern 2
+  Neurons 24-31 → pattern 3
+  Gate selectivity: 0 fires / 64 steps = 0%
+
+  GDMA offset calibration...
+  GDMA offset mapping: G0→P0 G1→P1 G2→P2 G3→P3
+  ISR groups:  [7, 12, 26, 27]
+  CPU patterns: [7, 12, 26, 27]
+
+  Phase 0d: TriX Cube face observation (15s)...
+  TriX Cube face signatures:
+    +x:recent: 113 samples [P0=51 P1=24 P2=3 P3=35]
+    -x:prior: 80 samples [P0=21 P1=4 P2=0 P3=55]
+    +y:stable: 44 samples [P0=21 P1=10 P2=0 P3=13]
+    -y:transient: 23 samples [P0=10 P1=4 P2=2 P3=7]
+    +z:confident: 0 samples [P0=0 P1=0 P2=0 P3=0]
+    -z:uncertain: 35 samples [P0=0 P1=0 P2=0 P3=35]
+  Face divergence from core (avg Hamming across patterns):
+    +x:recent: 23 avg (4 patterns with data)
+    -x:prior: 35 avg (3 patterns with data)
+    +y:stable: 28 avg (3 patterns with data)
+    -y:transient: 22 avg (4 patterns with data)
+    +z:confident: 0 avg (0 patterns with data)
+    -z:uncertain: 40 avg (1 patterns with data)
+  Ring drops: 0
+
+  Phase 1: TriX Cube ensemble (up to 32 samples, 60s)...
+    s01: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[22,-,-,20,-,-]
+    s02: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[22,94,94,20,-,94]
+    s03: truth=2 core=2 isr=2 | cv=[0,1,2,0] iv=[0,1,2,0] xor=[17,76,65,18,-,94]
+    s04: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[22,94,94,20,-,94]
+    s05: truth=0 core=0 isr=0 | cv=[9,0,0,0] iv=[9,0,0,1] xor=[16,30,16,7,-,96]
+    s06: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[9,19,9,8,-,106]
+    s07: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[6,16,7,4,-,111]
+    s08: truth=0 core=0 isr=0 | cv=[10,1,0,0] iv=[10,1,0,0] xor=[6,19,8,3,-,43]
+    s09: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[5,8,4,2,-,3]
+    s10: truth=1 core=1 isr=1 | cv=[2,6,0,0] iv=[2,6,0,0] xor=[6,32,7,12,-,81]
+    s11: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[7,42,9,15,-,108]
+    s12: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[6,42,9,16,-,108]
+    s13: truth=1 core=1 isr=1 | cv=[0,4,0,0] iv=[0,4,0,0] xor=[4,42,10,18,-,109]
+    s14: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[4,42,3,18,-,109]
+    s15: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[18,100,100,16,-,100]
+    s16: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[14,106,106,13,-,106]
+    s17: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[14,106,106,13,-,106]
+    s18: truth=2 core=2 isr=2 | cv=[0,1,2,0] iv=[0,1,2,0] xor=[10,72,71,9,-,107]
+    s19: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[14,106,106,13,-,106]
+    s20: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[3,2,1,4,-,1]
+    s21: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[2,3,4,2,-,1]
+    s22: truth=0 core=0 isr=0 | cv=[10,1,0,0] iv=[10,1,0,0] xor=[1,4,4,3,-,12]
+    s23: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[0,5,4,5,-,4]
+    s24: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[7,8,9,6,-,3]
+    s25: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[5,2,3,2,-,19]
+    s26: truth=1 core=1 isr=1 | cv=[0,4,0,0] iv=[0,4,0,0] xor=[5,2,3,3,-,2]
+    s27: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[2,2,3,3,-,2]
+    s28: truth=1 core=1 isr=1 | cv=[0,5,0,0] iv=[0,5,0,0] xor=[4,4,5,7,-,6]
+    s29: truth=1 core=1 isr=1 | cv=[0,4,0,0] iv=[0,4,0,0] xor=[5,5,3,8,-,7]
+    s30: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[14,106,106,13,-,106]
+    s31: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[14,106,106,13,-,106]
+    s32: truth=2 core=2 isr=2 | cv=[0,1,2,0] iv=[0,1,2,0] xor=[11,72,70,11,-,73]
+
+  ═══ CLASSIFICATION RESULTS (TriX Cube) ═══
+  Window: 43188 ms
+  GIE loops in window: 21209 (491 Hz) — classification mode,
+    CfC blend disabled (gate_threshold = INT32_MAX)
+  TriX classifications in window: 21209 (491 Hz, 100% of loops clean)
+  Total GIE loops since start_freerun: 41547 (spans Phase 0a-0c too;
+    not a rate denominator)
+  Test samples: 32
+  Ring drops: 0
+  Core (CPU per-pkt vote):   32/32 = 100%
+  ISR  (HW 430 Hz TriX):     32/32 = 100% (all samples)
+  ISR  (windows w/ data):    32/32 = 100% (286 pkts clean, 0 pkts timeout)
+  TriX channel signals:      28650 (seq=28650)
+  Baseline (packet-rate):    28/32 = 87%
+
+  ── Novelty Detection ──
+  Novel packets: 102 / 286 (35%)
+  Novel windows: 11
+
+  ── Online Maintenance ──
+  Core re-signs: 11
+  Core drift (Hamming):
+    sig[0]: 14/128 trits
+    sig[1]: 18/128 trits
+    sig[2]: 14/128 trits
+    sig[3]: 0/128 trits
+
+  ── XOR Masks (temporal displacement per face) ──
+    Face              avg  | rssi patid payload timing
+    +x:recent            6/128 |  0/16  0/8   0/64    6/40
+    -x:prior            25/128 |  1/16  0/8  14/64    9/40
+    +y:stable           18/128 |  1/16  0/8   7/64    8/40
+    -y:transient         7/128 |  0/16  0/8   0/64    7/40
+    +z:confident         -     | (no data)
+    -z:uncertain        50/128 |  7/16  0/8  29/64   13/40
+    ── Signal distribution ──
+    RSSI:    10% of mask weight
+    PatID:   0% of mask weight
+    Payload: 47% of mask weight
+    Timing:  41% of mask weight
+
+  ── TriX Cube Geometry ──
+    +x:recent: 297 samples, 16 avg hamming from core
+    -x:prior: 264 samples, 36 avg hamming from core
+    +y:stable: 228 samples, 41 avg hamming from core
+    -y:transient: 207 samples, 16 avg hamming from core
+    +z:confident: 0 samples, 0 avg hamming from core
+    -z:uncertain: 219 samples, 38 avg hamming from core
+  Gate firing: 0%
+
+  Architecture:
+  - TriX ISR: HW classifies at 430 Hz (CfC blend DISABLED — Phase 3)
+  - 7-voxel TriX Cube: core + 6 temporal faces
+  - Faces: recent, prior, stable, transient, confident, uncertain
+  - Core classifies alone. Faces compute XOR masks (intervention sensors)
+  - XOR mask = trit positions where face sig != core sig
+  - Online maintenance + novelty detection
+  - Gate threshold=2147483647, novelty=60
+  OK
+
+-- TEST 15: Hebbian LP Weight Learning --
+   Design: 3-phase (A=60s, B=60s, C=60s) × 5 reps × 2 conditions
+   Total: 900s per condition, 1800s overall
+
+  ══ Control (CMD5 only) — Rep 1/5 ══
+
+  ── Condition: Control (CMD5 only) ──
+[DIAG] 500us: agree=839 disagree=482 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27448(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7628(dscr_st=3 out_st=2) eof_addr=0x40827604
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
