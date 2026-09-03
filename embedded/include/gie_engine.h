@@ -188,7 +188,7 @@ void gie_init_gpio(void);
 
 /* Fabric-multiply experiment (Sep 2026): stream BOTH ternary operands so the
  * PCNT wiring performs the multiply in hardware instead of the CPU. */
-esp_err_t gie_reinit_parlio_4bit(void);
+esp_err_t gie_reinit_parlio_nbit(int width);
 esp_err_t gie_parlio_transmit(const void *buf, size_t bitlen);
 void gie_read_pcnt(int *agree, int *disagree);
 void gie_init_etm_clk(void);

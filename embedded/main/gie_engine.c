@@ -756,7 +756,7 @@ void gie_init_parlio(void) {
  *
  *  Returns ESP_OK on success. Safe to call after gie_init_parlio().
  * ══════════════════════════════════════════════════════════════════ */
-esp_err_t gie_reinit_parlio_4bit(void) {
+esp_err_t gie_reinit_parlio_nbit(int width) {
     if (parlio) {
         parlio_tx_unit_disable(parlio);
         esp_err_t derr = parlio_del_tx_unit(parlio);
@@ -767,7 +767,7 @@ esp_err_t gie_reinit_parlio_4bit(void) {
         .clk_src = PARLIO_CLK_SRC_DEFAULT,
         .clk_in_gpio_num = -1,
         .output_clk_freq_hz = 20000000,
-        .data_width = 4,                    /* was 2 */
+        .data_width = width,
         .clk_out_gpio_num = -1,
         .valid_gpio_num = -1,
         .trans_queue_depth = 4,
@@ -777,7 +777,7 @@ esp_err_t gie_reinit_parlio_4bit(void) {
         .flags = { .io_loop_back = 1 },
     };
     for (int i = 0; i < PARLIO_TX_UNIT_MAX_DATA_WIDTH; i++)
-        cfg.data_gpio_nums[i] = (i < 4) ? (4 + i) : -1;   /* GPIO 4,5,6,7 */
+        cfg.data_gpio_nums[i] = (i < width) ? (4 + i) : -1;
     esp_err_t err = parlio_new_tx_unit(&cfg, &parlio);
     if (err != ESP_OK) return err;
     err = parlio_tx_unit_enable(parlio);
