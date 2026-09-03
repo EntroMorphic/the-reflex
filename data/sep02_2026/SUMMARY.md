@@ -43,7 +43,65 @@ fails to distinguish patterns.
 packets encoded as distinct inputs; masked, 233/234 — the first duplicate input
 this system has produced.
 
-## Mechanism — two candidates, not yet separated
+## Mechanism — SEPARATED by the random control
+
+A third condition was run in the same session: trits [104..119] filled with a
+per-packet **pseudo-random** ternary block (`RANDOM_SEQUENCE_INPUT=1`) — same
+width, same energy (all ±1, no zeros), same per-packet variability as the
+sequence encoding, and **zero correlation with pattern identity or phase**.
+
+| `[104..119]` | | MTFP /80 | sign /16 |
+|---|---|---|---|
+| sequence counter | variation + phase info | 11.3 ± 3.4 | 3.6 ± 0.4 |
+| **random block** | variation, **no info** | **8.4 ± 2.3** | **1.3 ± 1.2** |
+| zeroed | neither | 2.1 ± 2.1 | 0.2 ± 0.4 |
+
+`random vs masked` isolates *variation*; `sequence vs random` isolates
+*information*. Welch, n=3, t(.05,df≈2) = 3.18:
+
+- **MTFP:** random vs masked **t = +3.53 (significant)**; random vs sequence
+  t = −1.27 (not significant). Pure noise recovers **68%** of the effect
+  (6.3 of 9.2 trits). The MTFP divergence is driven by input *variation*, and
+  is not distinguishable from the condition carrying no pattern information.
+- **sign:** random vs masked t = +1.56 (n.s.); random vs sequence t = −3.16
+  (n.s. at df≈2, but the largest of the three contrasts). Noise recovers only
+  **32%** (1.1 of 3.4). The sign-space separation did depend substantially on
+  the counter's correlation with the sender's schedule.
+
+**The two metrics are compromised in opposite directions.** MTFP is mostly
+variation-driven and largely indifferent to whether the varying field carries
+pattern information. Sign is mostly information-driven and collapses when the
+phase correlation is removed.
+
+### What the random arm is NOT
+
+It is **not a null.** Payload [24..87] and MTFP21 gap history [88..103] remain
+present and pattern-specific in all three conditions — the random arm removes
+pattern information only from those 16 trits, not from the input as a whole.
+8.4/80 must not be read as "divergence from nothing."
+
+The true null requires shuffling the metric's *bins* — accumulating each sample
+into a uniformly random pattern bin instead of ground truth, so all four means
+are drawn from one distribution and the reported divergence is pure
+finite-sample noise. Implemented as `NULL_SHUFFLE_BINS=1`; **not yet run.** It
+directly tests `README.md`'s asserted "null ~1", which no run in this corpus
+substantiates.
+
+## Causal necessity (TEST 13) — sequence present, reference
+
+`t13_seq_on.log`, via the new `SKIP_TO_13` flag (enrollment + Tests 12/13):
+
+```
+CMD 5 (TEST 12) P1 vs P2 Hamming: 4
+CMD 4 (TEST 13) P1 vs P2 Hamming: 1
+VDB feedback contribution:        +3 trits
+```
+
+Reproduces the published direction (papers report CMD 4 = 1, CMD 5 = 2,
+contribution +1). The masked counterpart is the open question: sign-space is the
+information-driven metric, so the VDB contribution may not survive.
+
+## Superseded framing
 
 The sender holds each pattern for **5 s** (`espnow_sender.c:288`) at ~7.5
 packets/s ≈ 37 packets per block, ~150 per four-pattern cycle. Input trits

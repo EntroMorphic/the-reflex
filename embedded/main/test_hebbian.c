@@ -121,6 +121,28 @@ static int run_t15_condition(int cond, int8_t mean_out[][LP_HIDDEN_DIM],
         }
         if (!new_input || gt > 3) continue;
 
+#ifdef NULL_SHUFFLE_BINS
+        /* TRUE NULL for the divergence metric (audit, Sep 2026).
+         *
+         * Everything upstream is untouched: same input, same GIE, same VDB,
+         * same LP dynamics, same MTFP encoding, same sample count. The ONLY
+         * change is which per-pattern bin each sample is accumulated into —
+         * a uniformly random bin instead of ground truth. All four "pattern"
+         * means are therefore drawn from one identical distribution, so any
+         * divergence the harness then reports is pure finite-sample noise.
+         *
+         * This measures the FLOOR of the metric at this sample size. It tests
+         * README.md's asserted "null ~1", which no run in the corpus
+         * substantiates. Dedicated PRNG: must not perturb cfc_rand(). */
+        {
+            static uint32_t nullrng = 0x2545F491u;
+            nullrng ^= nullrng << 13;
+            nullrng ^= nullrng >> 17;
+            nullrng ^= nullrng << 5;
+            gt = (uint8_t)(nullrng & 3u);
+        }
+#endif
+
         /* ISR-safe input update */
         gie_input_pending = 1;
         while (gie_input_pending) { vTaskDelay(1); }

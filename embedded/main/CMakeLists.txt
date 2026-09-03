@@ -63,6 +63,23 @@ else()
     if(DEFINED MASK_SEQUENCE_INPUT AND MASK_SEQUENCE_INPUT)
         add_compile_definitions(MASK_SEQUENCE_INPUT=1)
     endif()
+    # B5 mechanism control: replace sequence trits [104..119] with a per-packet
+    # pseudo-random ternary block of identical width and energy. Separates
+    # "sequence supplied variation" from "sequence supplied pattern-phase
+    # information". Mutually exclusive with MASK_SEQUENCE_INPUT (takes priority).
+    if(DEFINED RANDOM_SEQUENCE_INPUT AND RANDOM_SEQUENCE_INPUT)
+        add_compile_definitions(RANDOM_SEQUENCE_INPUT=1)
+    endif()
+    # Audit B5: enrollment + Tests 12/13 only — isolates the CMD 4 vs CMD 5
+    # causal-necessity measurement so it can be re-run under sequence masking.
+    if(DEFINED SKIP_TO_13 AND SKIP_TO_13)
+        add_compile_definitions(SKIP_TO_13=1)
+    endif()
+    # TRUE NULL: accumulate TEST 15 divergence samples into a random pattern
+    # bin instead of ground truth. Measures the metric's finite-sample floor.
+    if(DEFINED NULL_SHUFFLE_BINS AND NULL_SHUFFLE_BINS)
+        add_compile_definitions(NULL_SHUFFLE_BINS=1)
+    endif()
     # Skip to Test 14 (enrollment + kinetic attention only)
     if(DEFINED SKIP_TO_14 AND SKIP_TO_14)
         add_compile_definitions(SKIP_TO_14=1)

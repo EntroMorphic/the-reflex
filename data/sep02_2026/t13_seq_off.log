@@ -1,0 +1,5 @@
+# TEST 13 causal necessity — sequence MASKED.
+# Build: SKIP_TO_13=1 MASK_PATTERN_ID=1 MASK_PATTERN_ID_INPUT=1 MASK_SEQUENCE_INPUT=1
+# Board A rx=C6#3 C8:24 /dev/ttyACM0 | Board B tx=C6#2 C7:D4 /dev/ttyACM1
+# Captured 2026-09-02 20:45:04
+W (206) spi_flash: Detected size(4096k) larger than the size in the binary image header(2048k). Using the size in the binary image header.

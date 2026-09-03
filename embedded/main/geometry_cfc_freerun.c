@@ -123,6 +123,18 @@ void app_main(void) {
     printf("[SWEEP] SKIP_TO_15: running Test 11 (enrollment) + Test 15 only\n\n");
     test_count++; pass_count += run_test_11();
     test_count++; pass_count += run_test_15();
+#elif defined(SKIP_TO_13)
+    /* Audit B5 (Sep 2026): isolate the causal-necessity measurement.
+     * Test 13 compares CMD 4 (CfC + VDB search, no blend) against CMD 5
+     * (CfC + VDB + blend) — the evidence for "the episodic memory is causally
+     * necessary". That claim was only ever measured with the sequence counter
+     * present in the GIE input. This flag runs enrollment + Tests 12/13 so the
+     * comparison can be repeated under MASK_SEQUENCE_INPUT without paying for
+     * the full suite. Test 12 populates the handoff state Test 13 consumes. */
+    printf("[SWEEP] SKIP_TO_13: running Test 11 (enrollment) + Tests 12, 13\n\n");
+    test_count++; pass_count += run_test_11();
+    test_count++; pass_count += run_test_12();
+    test_count++; pass_count += run_test_13();
 #elif defined(SKIP_TO_14C)
     /* Multi-seed 14C sweep: skip Tests 1-10,12-14. Only run Test 11
      * (signature enrollment — required for classification) and Test 14C. */

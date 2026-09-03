@@ -1434,7 +1434,33 @@ int espnow_encode_rx_entry(const espnow_rx_entry_t *entry,
      * ablation. Default is OFF so that this firmware continues to match the
      * committed data in data/apr9_2026 and data/apr11_2026; the divergence
      * numbers in the papers were measured with sequence present. */
-#ifndef MASK_SEQUENCE_INPUT
+#if defined(RANDOM_SEQUENCE_INPUT)
+    /* B5 MECHANISM CONTROL (Sep 2026). Fill [104..119] with a per-packet
+     * PSEUDO-RANDOM ternary block instead of the sequence counter.
+     *
+     * This isolates *information* from *variation*. The block has the same
+     * width (16 trits), the same energy (all +/-1, no zeros) and the same
+     * per-packet variability as the sequence encoding — it differs only in
+     * carrying zero correlation with pattern identity or pattern phase.
+     *
+     *   divergence(random) ~ divergence(sequence)  => the counter was supplying
+     *       per-snapshot VARIATION that episodic retrieval needs (scaffolding).
+     *   divergence(random) ~ divergence(masked)    => the counter was supplying
+     *       pattern-phase INFORMATION (leak).
+     *
+     * Dedicated PRNG state: must NOT draw from cfc_rand(), which seeds the
+     * weight matrices — sharing it would shift every subsequent draw and break
+     * seed reproducibility against the committed datasets. */
+    {
+        static uint32_t seq_rng = 0x9E3779B9u;   /* independent xorshift32 */
+        for (int i = 0; i < 16; i++) {
+            seq_rng ^= seq_rng << 13;
+            seq_rng ^= seq_rng >> 17;
+            seq_rng ^= seq_rng << 5;
+            new_input[104 + i] = (seq_rng & 1u) ? T_POS : T_NEG;
+        }
+    }
+#elif !defined(MASK_SEQUENCE_INPUT)
     uint32_t seq_lo = pkt->sequence & 0x0F;
     for (int i = 0; i < 8; i++) {
         int idx = 104 + i;
