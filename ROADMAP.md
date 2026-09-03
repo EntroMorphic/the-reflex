@@ -44,6 +44,20 @@ The modulation loop is closed. The three pillars are next.
 
 **Why this was first:** Kinetic attention provides the behavioral measure that all three pillars require. It is now the foundation for forward work.
 
+**Successor experiment — TEST 16, blend-gated deference.** Specified in
+[`docs/BLEND_GATED_DEFERENCE.md`](docs/BLEND_GATED_DEFERENCE.md). Kinetic attention applies the prior to
+the GIE gate — the perceptual pathway the architecture exists to keep clear. TEST 16 applies deference
+where the architecture licenses it: the VDB→LP blend. The knob already exists (`fb_threshold`, HP-writable,
+read by `ulp/main.S` before every blend), so the change is one HP-side write and **no assembly**.
+
+Calibration from `test_lp_char` logs: VDB match scores run 26–32 when the pattern is established but drop to
+9–15 immediately post-switch, where the fixed threshold of 8 still admits them — the blend rewrites 8–9 of 16
+LP trits with stale content at exactly the moment the world changes. Gating the threshold on
+TriX-vs-prior disagreement (8 when agreeing, 20 when not) withholds stale memory during the conflict and
+re-admits it as new-pattern episodes accumulate: deference that releases on evidence rather than on a decay
+timer. Four conditions, including the fixed-high-threshold control kinetic attention lacked, paired within one
+boot and counterbalanced. Falsification criteria and the ablation-equivalence risk are pre-registered in the spec.
+
 **Design:** See `docs/KINETIC_ATTENTION.md` for full specification. Summary:
 
 1. Add `lp_gate_bias[4]` to LP SRAM layout (HP-writable, ISR-readable).
