@@ -68,7 +68,10 @@ PASS_CRITERION     = 15     # Confirmations to re-align (CLS prediction)
 CLS theory predicts that when the input pattern switches from P1 to P2:
 
 1. The GIE immediately classifies the new packets as P2 (TriX runs on raw peripheral hardware
-   — it is always correct, 100% of the time, on the first packet).
+   — modelled as always correct on the first packet. **Note (Sep 2026 audit):**
+   this assumption is now known to be optimistic — measured per-packet accuracy
+   is 90.5–96.4%. Simulation results that depend on a perfect classifier should
+   be read as an upper bound.
 2. The LP prior is still committed to P1 (it accumulated over 90 seconds of P1 exposure).
 3. The VDB begins retrieving P2-correlated memories (because the GIE hidden, which is the
    query key, is now P2-like).

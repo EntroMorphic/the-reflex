@@ -121,6 +121,8 @@ packets.
 | R2 | Test 14 accuracy mislabelled as CPU core_pred | **Fixed** | `test_kinetic.c` printout + confusion header; papers attribute to TriX ISR |
 | R3 | Windowed accuracy not uniformly 100% | **Fixed** | 31–32/32 (96–100%) across 15 runs, everywhere |
 | R4 | Per-packet denominator is novelty-admitted only | **Fixed** | "per admitted packet" throughout, gate stated |
+| R5 | Secondary live docs never remediated | **Fixed** | `THE_PRIOR_AS_VOICE.md`, `KINETIC_ATTENTION.md`, `MEMORY_MODULATED_ATTENTION.md`, `PERIPHERALS-ONLY-COMPUTE.md`, `LCACHE_TEST14C_SIM.md` + a missed line in `PAPER_CLS_ARCHITECTURE.md` |
+| R6 | Withdrawn ISR rate figures (705/711 Hz) still cited | **Fixed** | Same root cause as R1; withdrawn in live docs, correction headers cover in-body labels |
 
 **Verification performed:** ESP-IDF v5.4 firmware builds clean before and after
 (exit 0, zero new warnings — the five project warnings present after the change
@@ -128,6 +130,38 @@ are pre-existing, in files outside the diff, surfaced by a full recompile).
 `MASK_SEQUENCE_INPUT=1` builds clean in a separate tree and the define is
 confirmed absent from the default build. All three papers compile with zero
 undefined references (12/8/7 pages); PDFs regenerated.
+
+### R5. The remediation stopped at the papers and the front door
+
+A second sweep found six **live** documents still carrying the corrected claims:
+`THE_PRIOR_AS_VOICE.md`, `KINETIC_ATTENTION.md`, `MEMORY_MODULATED_ATTENTION.md`,
+`PERIPHERALS-ONLY-COMPUTE.md`, `LCACHE_TEST14C_SIM.md`, and one line inside
+`PAPER_CLS_ARCHITECTURE.md` that the first pass missed.
+
+`THE_PRIOR_AS_VOICE.md` was the worst of these: it is the document that makes the
+strongest claim about the least-verified component, it still read "correct 100% of
+the time across all hardware runs," and its §4 still described the bias
+attenuating "to zero in one confirmation" — the code path that is never entered.
+All six now carry correction headers; §4 and §5 of the perspective paper are
+rewritten in place.
+
+Dated session records (`SESSION_*.md`, `AUDIT_APRIL_2026.md`, `REDTEAM_MAR22.md`,
+`REFLECTION_MAR22.md`, `REMEDIATION_PLAN_*.md`) were **deliberately left alone**.
+They record what was believed at the time; editing them would falsify the history
+the project depends on.
+
+### A3 was a regression, not a discovery
+
+`SESSION_APR06_07_2026.md` line 137, written April 6:
+
+> The TEST 11 "100% accuracy" was an ensemble result (TriX Cube voting over
+> multiple packets). The raw per-packet argmax accuracy is the same for both —
+> ~80% pre-MTFP21, ~96% post-MTFP21.
+
+The project had already found and documented this. The April 12 paper rewrites
+then published "100% label-free accuracy" anyway. The finding did not need to be
+discovered; it needed to survive the trip from the session record into the paper,
+and it did not. Worth noting as a process failure distinct from a measurement one.
 
 ### Three items deliberately left open
 

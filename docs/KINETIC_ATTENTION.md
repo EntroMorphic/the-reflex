@@ -1,5 +1,8 @@
 # Kinetic Attention: Closing the Loop from LP Prior to GIE Behavior
 
+> **Correction header — September 2, 2026** (`docs/AUDIT_SEP2026.md`): classification is 96–100% windowed (31–32/32 across 15 label-free runs) and 90.5–96.4% per admitted packet, not a flat 100%. The 430.8 Hz figure is the CfC-blend-active loop rate (TEST 1: 432 loops in 1.003 s); the classification-mode rate is higher but unmeasured. Kinetic attention was subsequently found not to improve on the VDB baseline (−5.5 ± 5.3/80, n=3). Any ISR-rate figure in this document (705 Hz, 711 Hz) is withdrawn: that diagnostic divided a numerator and denominator spanning different windows and was never a valid rate.
+
+
 **The Reflex Project — Phase 5 Design Document**
 
 *Written March 22, 2026. Motivated by TEST 12/13 results (commit `12aa970`).*
@@ -18,7 +21,7 @@ Phase 4 (TEST 12/13) proved that the LP core develops pattern-specific internal 
 
 The March 22 session established, with hardware evidence and a paired ablation control:
 
-1. The GIE classifies four transmission patterns at 100% accuracy using peripheral-hardware ternary dot products at 430.8 Hz.
+1. The GIE classifies four transmission patterns label-free at 96–100% windowed accuracy (90.5–96.4% per admitted packet) using peripheral-hardware ternary dot products at 430.8 Hz.
 2. With CMD 5 active, the LP core develops statistically distinct internal states per pattern after 90 seconds of live operation.
 3. VDB episodic memory is causally necessary: CMD 4 (CfC only, no blend) produces P1=P2 (Hamming=0) in 2 of 3 runs. CMD 5 (CfC + VDB blend) produces Hamming 1–5 for the same pair across all runs.
 4. The mechanism is episodic disambiguation: VDB retrieval routes around the CfC's random-projection degeneracy via a pattern-specific second path.

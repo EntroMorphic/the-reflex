@@ -1,5 +1,8 @@
 # Peripherals-Only Compute: How the GIE Works
 
+> **Correction header — September 2, 2026** (`docs/AUDIT_SEP2026.md`): classification is 96–100% windowed (31–32/32 across 15 label-free runs) and 90.5–96.4% per admitted packet, not a flat 100%. The 430.8 Hz figure is the CfC-blend-active loop rate (TEST 1: 432 loops in 1.003 s); the classification-mode rate is higher but unmeasured. Kinetic attention was subsequently found not to improve on the VDB baseline (−5.5 ± 5.3/80, n=3). Any ISR-rate figure in this document (705 Hz, 711 Hz) is withdrawn: that diagnostic divided a numerator and denominator spanning different windows and was never a valid rate.
+
+
 **The Geometry Intersection Engine (GIE) runs a 64-neuron ternary neural network at 430 Hz
 with both CPU cores asleep. The compute happens entirely inside GDMA, PARLIO, and PCNT —
 three hardware peripherals that were designed for data transfer and event counting,
@@ -348,7 +351,7 @@ Here is the complete end-to-end flow with all layers visible:
         │ cfc.hidden[32] updated 430× per second
         ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  TriX CLASSIFICATION (inside ISR, at 711 Hz)                           │
+│  TriX CLASSIFICATION (inside ISR; rate figure withdrawn, audit R1)     │
 │                                                                         │
 │  On every GIE EOF (not just loop boundary), the ISR computes a          │
 │  dot product between the current cumulative PCNT snapshot and each      │
@@ -466,5 +469,5 @@ counters to count — so the CPU never has to.**
 ---
 
 *Verified on ESP32-C6FH4 (QFN32) rev v0.2, ESP-IDF v5.3.2, March 22, 2026.*
-*11/11 tests passing. 430.8 Hz. 100% classification accuracy. No floating point.*
+*11/11 tests passing. 430.8 Hz (CfC blend active). 96–100% windowed classification accuracy, 90.5–96.4% per admitted packet. No floating point.*
 *No multiplication. No GPU. No neural network framework.*

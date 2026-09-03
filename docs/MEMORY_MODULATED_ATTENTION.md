@@ -1,5 +1,8 @@
 # Memory-Modulated Adaptive Attention in a Ternary Reflex Arc
 
+> **Correction header — September 2, 2026** (`docs/AUDIT_SEP2026.md`): classification is 96–100% windowed (31–32/32 across 15 label-free runs) and 90.5–96.4% per admitted packet, not a flat 100%. The 430.8 Hz figure is the CfC-blend-active loop rate (TEST 1: 432 loops in 1.003 s); the classification-mode rate is higher but unmeasured. Kinetic attention was subsequently found not to improve on the VDB baseline (−5.5 ± 5.3/80, n=3). Any ISR-rate figure in this document (705 Hz, 711 Hz) is withdrawn: that diagnostic divided a numerator and denominator spanning different windows and was never a valid rate.
+
+
 **The Reflex Project — March 22, 2026**
 
 *Verified on silicon: ESP32-C6FH4 (QFN32) rev v0.2. Commit `12aa970`.*
@@ -8,7 +11,7 @@
 
 ## Abstract
 
-We demonstrate that a three-layer ternary neural architecture running on a single embedded microcontroller develops pattern-specific internal states from classification history — without explicit labeling, gradient descent, or floating-point arithmetic. The system receives wireless signals via ESP-NOW, classifies them using peripheral-hardware ternary dot products at 705 Hz, stores episodic memory snapshots in a navigable small-world vector database on an ultra-low-power RISC-V core, and retrieves those memories to modulate a continuous-time recurrent network's hidden state in real time. After 90 seconds of live operation across four transmission patterns, the sub-conscious layer (LP core, 16 MHz, ~30 µA) develops statistically distinct internal states for each pattern. All cross-pattern pairs diverge by Hamming distance ≥ 1 in the LP hidden space, with a maximum of 6. A paired ablation experiment (CMD 4, CfC integration without VDB blend) establishes the causal role of episodic memory: CfC integration alone collapses P1 and P2 to identical LP representations in 2 of 3 hardware runs (Hamming=0); VDB feedback consistently separates them (+1 to +5 trits). Classification accuracy remains 100% throughout (unchanged from the baseline without memory modulation), confirming that the memory pathway modulates the sub-conscious layer without interfering with the peripheral classification pathway. All computation uses ternary arithmetic {−1, 0, +1} with no floating point and no multiplication. **13/13 PASS.**
+We demonstrate that a three-layer ternary neural architecture running on a single embedded microcontroller develops pattern-specific internal states from classification history — without explicit labeling, gradient descent, or floating-point arithmetic. The system receives wireless signals via ESP-NOW, classifies them using peripheral-hardware ternary dot products (the 705 Hz rate cited in this paper is withdrawn — see correction header), stores episodic memory snapshots in a navigable small-world vector database on an ultra-low-power RISC-V core, and retrieves those memories to modulate a continuous-time recurrent network's hidden state in real time. After 90 seconds of live operation across four transmission patterns, the sub-conscious layer (LP core, 16 MHz, ~30 µA) develops statistically distinct internal states for each pattern. All cross-pattern pairs diverge by Hamming distance ≥ 1 in the LP hidden space, with a maximum of 6. A paired ablation experiment (CMD 4, CfC integration without VDB blend) establishes the causal role of episodic memory: CfC integration alone collapses P1 and P2 to identical LP representations in 2 of 3 hardware runs (Hamming=0); VDB feedback consistently separates them (+1 to +5 trits). Classification accuracy is unchanged by memory modulation (32/32 windowed; 90.5–96.4% per admitted packet), confirming that the memory pathway modulates the sub-conscious layer without interfering with the peripheral classification pathway. All computation uses ternary arithmetic {−1, 0, +1} with no floating point and no multiplication. **13/13 PASS.**
 
 ---
 
@@ -16,7 +19,7 @@ We demonstrate that a three-layer ternary neural architecture running on a singl
 
 The question motivating this work: **can a system's classification history modulate what it pays attention to next**, without CPU involvement, without gradient descent, and using only ternary operations?
 
-Conventional embedded machine learning answers this with attention mechanisms, learned query projections, and floating-point matrix multiplications. We take a different path. The Reflex architecture uses peripheral hardware as its fastest computational layer — GDMA streaming ternary weights through PARLIO's loopback GPIO routing while PCNT tallies agree/disagree edges at 430.8 Hz. This layer classifies incoming wireless signals with 100% accuracy. A second layer — the LP core, a 16 MHz RISC-V microcontroller drawing ~30 µA — runs a continuous-time recurrent network (CfC) whose hidden state is integrated over time. A vector database on the LP core stores 48-trit episodic snapshots of the system's state at each classification moment. The LP core retrieves the most similar past state and blends it into the current hidden state via ternary blend rules.
+Conventional embedded machine learning answers this with attention mechanisms, learned query projections, and floating-point matrix multiplications. We take a different path. The Reflex architecture uses peripheral hardware as its fastest computational layer — GDMA streaming ternary weights through PARLIO's loopback GPIO routing while PCNT tallies agree/disagree edges at 430.8 Hz. This layer classifies incoming wireless signals at 96–100% windowed accuracy (90.5–96.4% per admitted packet). A second layer — the LP core, a 16 MHz RISC-V microcontroller drawing ~30 µA — runs a continuous-time recurrent network (CfC) whose hidden state is integrated over time. A vector database on the LP core stores 48-trit episodic snapshots of the system's state at each classification moment. The LP core retrieves the most similar past state and blends it into the current hidden state via ternary blend rules.
 
 The result is a system that develops pattern-specific priors from experience: after 150 P1 classifications, the LP core's internal state reflects "I have been seeing P1 recently" in a way that is measurably different from its state during a P2-heavy session. This is memory-modulated attention in the most literal sense — past experience, stored as ternary vectors, shapes how the sub-conscious layer integrates future input.
 
@@ -75,7 +78,7 @@ Physical World
 │  Layer 2: LP Core        │  │  TriX Classifier (HP SRAM)     │
 │  16 MHz RISC-V, ~30 µA  │  │  7-voxel TriX Cube             │
 │  Hand-written ASM        │  │  Core + 6 temporal faces       │
-│                          │  │  100% accuracy vs 84% baseline │
+│                          │  │  32/32 windowed vs 84% base    │
 │  CMD 5 (feedback step):  │  └────────────────────────────────┘
 │  1. CfC step: integrate  │
 │     gie_hidden→lp_hidden │
@@ -355,7 +358,7 @@ Mean LP hidden state after 60-second session (sign of accumulated sum over all c
 
 Notation: `+` = +1, `-` = −1, `0` = 0.
 
-**Structural observation**: Trits 0–9 show significant overlap across P0–P2 (`-+++---+-+`), with P3 diverging at trit 4 (`-+++-+-+`). This suggests the first 9 trits encode features common to multiple patterns (RSSI, common payload structure), while trits 10–15 carry the pattern-discriminating information. P3's early divergence (trit 4) likely reflects its distinct payload content — the same payload structure that allows TriX to distinguish P0 from P3 at 100% accuracy.
+**Structural observation**: Trits 0–9 show significant overlap across P0–P2 (`-+++---+-+`), with P3 diverging at trit 4 (`-+++-+-+`). This suggests the first 9 trits encode features common to multiple patterns (RSSI, common payload structure), while trits 10–15 carry the pattern-discriminating information. P3's early divergence (trit 4) likely reflects its distinct payload content — the same payload structure that allows TriX to distinguish P0 from P3 reliably (P3 is nonetheless the weakest class per packet, 51.8–63.0% recall).
 
 ### 4.5 LP Divergence Matrix (Hamming Distance)
 
@@ -563,7 +566,7 @@ The next architectural step — using LP hidden state to bias the GIE's gate thr
 
 ### 5.5 Why CMD 4 Alone Fails to Separate P1 and P2
 
-The hardware evidence is stark: in 2 of 3 runs, P1 and P2 produce **identical** LP hidden state vectors under CMD 4 despite being correctly classified by TriX at 100% accuracy. Understanding why requires tracing the CfC computation through the degeneracy.
+The hardware evidence is stark: in 2 of 3 runs, P1 and P2 produce **identical** LP hidden state vectors under CMD 4 despite being correctly classified by TriX on those samples. Understanding why requires tracing the CfC computation through the degeneracy.
 
 **The LP CfC weight matrices are random, not trained.** W_f[n] and W_g[n] are initialized from a seeded pseudorandom ternary distribution and never updated. They project the 48-trit GIE hidden state into the LP hidden space through a fixed, arbitrary linear transformation. There is no guarantee — and no mechanism — that this random projection preserves all distinctions present in the GIE space.
 
@@ -571,7 +574,7 @@ The hardware evidence is stark: in 2 of 3 runs, P1 and P2 produce **identical** 
 
 **The random projection collapses P1 and P2 to the same LP attractor.** In LP space, the CfC dynamics are governed by W_f and W_g. When the GIE hidden states for P1 and P2 are projected through these fixed random matrices, the resulting f_dot and g_dot values may be similar enough that the blend rule — UPDATE/INVERT vs HOLD — produces the same binary outcome on every neuron for both patterns. The LP hidden state then evolves along the same trajectory regardless of which pattern is active. This is not a failure of classification — it is the expected behavior of a fixed random projection applied to inputs that are similar along the projection direction, even if distinct along other directions.
 
-**VDB feedback breaks this degeneracy via a different information path.** CMD 5 adds a critical step: the VDB search retrieves a memory whose content reflects past LP states accumulated under a particular pattern. Because the VDB query is 67% GIE hidden, and because TriX distinguishes P1 and P2 at 100% accuracy in GIE space, the retrieved memory is pattern-specific even when the current LP hidden state is pattern-ambiguous. The retrieved LP-hidden portion (trits 32–47 of the 48-trit vector) carries information about what the LP state was during past P1 or P2 classification moments. When this is blended into the current lp_hidden, the LP state is displaced from the degenerate attractor in a pattern-specific direction.
+**VDB feedback breaks this degeneracy via a different information path.** CMD 5 adds a critical step: the VDB search retrieves a memory whose content reflects past LP states accumulated under a particular pattern. Because the VDB query is 67% GIE hidden, and because TriX distinguishes P1 and P2 reliably in GIE space (per-packet recall 95.8% and 90.9% respectively), the retrieved memory is pattern-specific even when the current LP hidden state is pattern-ambiguous. The retrieved LP-hidden portion (trits 32–47 of the 48-trit vector) carries information about what the LP state was during past P1 or P2 classification moments. When this is blended into the current lp_hidden, the LP state is displaced from the degenerate attractor in a pattern-specific direction.
 
 **The mechanism is episodic disambiguation.** After N P1 classifications, the VDB contains P1 snapshots. When the system sees P1 again, it retrieves a P1 memory with GIE-similar context, and the blend injects the LP portion of that memory. After M P2 classifications, the VDB has P2 snapshots. The retrieved LP-hidden portions for P1 and P2 are different — because they accumulated under different GIE conditions — and their injection into the current LP state breaks the symmetry that the random projection created.
 
@@ -585,7 +588,7 @@ The following claims are now verified on silicon (commit `12aa970`, ESP32-C6FH4 
 
 | Claim | Evidence |
 |-------|----------|
-| Peripheral hardware computes ternary classification at 100% accuracy (in-distribution, 4 known patterns, 1 known sender) | TEST 11: 32/32, 705 Hz ISR rate |
+| Peripheral hardware computes ternary classification (in-distribution, 4 known patterns, 1 known sender) | TEST 11: 32/32 windowed; 90.5–96.4% per admitted packet. **The "705 Hz ISR rate" is withdrawn** — that diagnostic divided counters spanning different windows (audit R1). |
 | Payload content is dominant discriminant (43%) | XOR mask decomposition, TEST 11 |
 | Rate-only classification is 16 points worse | 100% vs 84% on same data |
 | LP hidden state diverges by pattern from VDB memory (CMD 5) | TEST 12 Run 3: all pairs Hamming ≥ 1; P1 vs P3 Hamming 4 |
@@ -689,7 +692,7 @@ Board B's `espnow_sender.c` contains a hardcoded `PEER_MAC` that must match Boar
 | CfC→VDB pipeline (CMD 4) | Feb 9 | Perceive+think+remember in 10ms wake |
 | VDB→CfC feedback stability (CMD 5) | Feb 9 | 50 unique states, HOLD damping |
 | Live wireless input (ESP-NOW) | March 22 | Board B integration, PEER_MAC fix |
-| TriX classification 100% accuracy | March 22 | ISR + Core vote, 705 Hz |
+| TriX classification 32/32 windowed | March 22 | ISR + Core vote (rate figure withdrawn, audit R1) |
 | **Memory-modulated LP priors** | **March 22** | **TEST 12, this document** |
 | **VDB feedback causally confirmed** | **March 22** | **TEST 13 CMD 4 ablation, 13/13 PASS** |
 

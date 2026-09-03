@@ -321,7 +321,7 @@ The VDB episodic memory layer — 64 nodes in 2KB of LP SRAM, searched at 100 Hz
 
 The hippocampus is not a staging area. It is not a scaffold for learned representations. It is the temporal model itself. The system's accumulated experience is in its memories, not in its weights.
 
-Classification is structurally separated from the temporal model by a zero-weight wall (`W_f hidden = 0`). The classifier reports the current pattern at 100% accuracy from the first packet. The temporal model takes 120 seconds to build its representation. The gap between immediate perception and gradual understanding — bridged by the hippocampus — is the system's epistemic architecture in action.
+Classification is structurally separated from the temporal model by a zero-weight wall (`W_f hidden = 0`). The classifier reports the current pattern from the first packet, at 96–100% windowed accuracy and 90.5–96.4% per admitted packet. The temporal model takes 120 seconds to build its representation. The gap between immediate perception and gradual understanding — bridged by the hippocampus — is the system's epistemic architecture in action.
 
 The prior should be a voice, not a verdict. And the voice comes from memory, not from learned weights.
 

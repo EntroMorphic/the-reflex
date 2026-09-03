@@ -5,6 +5,16 @@
 *Written March 23, 2026.*
 *Authors: [Author], Claude Sonnet 4.6 (Observer and Co-Author)*
 
+> **Correction header — September 2, 2026** (`docs/AUDIT_SEP2026.md`).
+> This paper was written *before* TEST 14 ran, and its own footer said so
+> ("Status: Draft. Hardware results for Phase 5 pending TEST 14"). The hardware
+> did not support §4 and §5's account of component 5. Corrected below, in place:
+> classification is 96–100% windowed and 90.5–96.4% per admitted packet, not
+> "100% of the time"; and the evidence-deference policy is **unverified**, not
+> demonstrated. The argument's structure survives; one of its five components
+> does not yet have silicon behind it. See `docs/BLEND_GATED_DEFERENCE.md` for
+> the experiment that would test it properly.
+
 ---
 
 > *"The prior should be a voice, not a verdict."*
@@ -47,7 +57,7 @@ The mechanism operates in three layers, each structurally distinct.
 
 **The perceptual layer** uses the chip's peripheral hardware — a chain of subsystems called GDMA, PARLIO, and PCNT — configured not for their intended purpose but as a ternary neural computing substrate. Incoming wireless packets are encoded as vectors of ternary values (+1, 0, -1). These vectors are multiplied against fixed signature matrices in the peripheral hardware, producing dot products that fire or don't fire a set of thirty-two neurons. No CPU instruction cycles are involved. The computation happens in the topology of the silicon — in the wiring between peripherals, not in executed code. The perceptual layer runs at 430 times per second, autonomously, drawing power in the thermal noise.
 
-A fast classifier called TriX reads the neuron firing pattern and identifies which of four known patterns the current signal most resembles. It is correct 100% of the time across all hardware runs. This accuracy is not trained — it is structural. The signature matrices were computed from a thirty-second observation window at initialization and have never been updated.
+A fast classifier called TriX reads the neuron firing pattern and identifies which of four known patterns the current signal most resembles. Across fifteen label-free hardware runs it is correct on 31–32 of 32 windowed samples (96–100%), where each window is a majority vote over roughly eight packets; scored packet by packet it is correct 90.5–96.4% of the time, with nearly all the error on one pattern. This accuracy is not trained — it is structural. The signature matrices were computed from a thirty-second observation window at initialization and have never been updated.
 
 **The episodic layer** runs on the chip's ultra-low-power core — a separate processor that operates at sixteen megahertz and wakes for ten milliseconds every hundred milliseconds to do its work. It maintains a graph of forty-eight-trit snapshots: records of what the perceptual layer looked like at each classification moment, stored in a compact memory structure called a Vector Database (VDB). When a new snapshot arrives, the episodic layer searches this graph for the closest match — the past moment that most resembles the present — and retrieves what the system's state looked like at that past moment.
 
@@ -97,11 +107,19 @@ The resolution came from asking what would have to be true for the prior to step
 
 This means that when TriX says Pattern 2 and the temporal state says Pattern 1, the disagreement is real information. TriX is not echoing the prior back. It is reporting what the peripheral hardware measured about the physical signal, independently, at hardware speed, without prior influence. The disagreement cannot be circular. It means something in the world changed.
 
-The agreement mechanism makes this explicit: gate bias is weighted by the agreement between the temporal prior and the current TriX classification. When they agree — both saying Pattern 1 — the prior amplifies. When they disagree — TriX saying Pattern 2, prior still saying Pattern 1 — the bias attenuates to zero in one confirmation. The raw perceptual signal reaches the temporal layer unmodulated. The prior steps back.
+The agreement mechanism was designed to make this explicit: gate bias weighted by the agreement between the temporal prior and the current TriX classification. When they agree, the prior amplifies. When they disagree, the bias releases and the raw perceptual signal reaches the temporal layer unmodulated.
 
-This is not a heuristic. It is a structural policy enforced by the architecture: the prior defers to evidence when the evidence-reader — which the prior cannot corrupt — reports a disagreement.
+**This is the part the hardware did not confirm.** Two facts, established after this paper was drafted:
 
-The prior becomes, precisely, a voice.
+*The immediate-release path never ran.* The mechanism has two release routes — a hard branch that zeroes the bias the moment four or more trits disagree, and a soft geometric decay (×0.9 per step, half-life ~6.6 steps). On every clean seed in the recorded data, the hard branch is **never entered**. What the silicon demonstrates is graceful forgetting on a timer, not deference at the point of conflict. The sentence "the bias attenuates to zero in one confirmation" describes a code path the experiments never exercised.
+
+*The mechanism was measured and did not help.* Agreement-weighted gate bias changed the LP representation by −5.5 ± 5.3 trits out of 80 across three runs — harmful in two, helpful in one, and not statistically distinguishable from zero. It also never reached one of the four neuron groups.
+
+There is a deeper reason to expect this, and it is visible in this section's own argument. §4 opens by diagnosing "the problem with all systems that let the prior drive the perceptual apparatus without constraint" — and then proposes letting the prior drive the perceptual apparatus, with a constraint. The architectural wall protects *classification*. It does not isolate the hidden state, which gate bias modulates and which is the temporal layer's input. Gate bias reaches around the wall on the side the wall does not cover.
+
+So the honest statement is narrower than the one this paper originally made: **the prior is structurally prevented from corrupting the evidence-reader, which makes disagreement real information. Whether the system then defers to that information is not yet demonstrated.** The mechanism that would demonstrate it should act on the memory pathway — how much retrieved past is admitted into the temporal state — and leave the perceptual threshold alone. That experiment is specified and has not been run.
+
+The prior is structurally prevented from becoming a verdict. Whether it has yet become a voice is an open question.
 
 ---
 
@@ -117,7 +135,7 @@ Five components are required for a system to maintain structural epistemic humil
 
 **A disagreement detection mechanism.** A way to know when the prior and the evidence-reader are saying different things — and to know that this difference is real information rather than noise. In the Reflex: the agreement score, computed from the alignment between the temporal state and the current TriX classification. Because TriX cannot be corrupted by the prior, a disagreement between them is genuine. It means the world changed. In a mind: this is the felt sense of cognitive dissonance — the awareness that what is expected and what is perceived are not the same. The problem is that this signal is often suppressed, rationalized, or attributed to the evidence rather than the prior.
 
-**A policy of prior deference at the point of conflict.** When the prior and the evidence-reader disagree, a rule that gives evidence priority. Not permanent priority — the prior does not disappear, it waits, it continues to accumulate — but situational priority, at the moment of conflict. In the Reflex: gate bias attenuates to zero when agreement is zero. The raw signal reaches the temporal layer without prior-induced suppression. The prior resumes influence when agreement is restored. In a mind: this is the practice that contemplative traditions and cognitive behavioral therapy and good epistemology all point toward, in their different vocabularies. Notice the assumption. Sit with the discomfort. Let the evidence be what it is, before deciding what it means.
+**A policy of prior deference at the point of conflict.** When the prior and the evidence-reader disagree, a rule that gives evidence priority. Not permanent priority — the prior does not disappear, it waits, it continues to accumulate — but situational priority, at the moment of conflict. In the Reflex: **specified but not yet verified.** The gate-bias implementation of this component was tested and did not separate from zero, and its immediate-release path was never exercised (see §4). Components 1–4 are silicon-verified; this one is not. The raw signal reaches the temporal layer without prior-induced suppression. The prior resumes influence when agreement is restored. In a mind: this is the practice that contemplative traditions and cognitive behavioral therapy and good epistemology all point toward, in their different vocabularies. Notice the assumption. Sit with the discomfort. Let the evidence be what it is, before deciding what it means.
 
 The principle: **structural epistemic humility requires all five components.** A prior without an independent evidence-reader is circular. An evidence-reader without structural separation from the prior can be corrupted. Separation without disagreement detection produces no signal. Disagreement detection without a deference policy produces paralysis. The prior that can override its own disagreement detector is not a voice — it is a verdict that learned to talk.
 

@@ -152,7 +152,7 @@ Every milestone verified on silicon (ESP32-C6FH4 QFN32 rev v0.2), exact dot-for-
 | VDB→CfC feedback | Verified | CMD 5, HOLD damping, 50 unique states in 50 steps |
 | ESP-NOW live input | Verified | 4-pattern wireless input drives GIE |
 | **TriX classification** | **Verified** | **32/32 = 100% (Core + ISR), zero-shot from signatures** |
-| **TriX classification channel** | **Verified** | **Packed dots via reflex_signal, 705 Hz ISR classification rate** |
+| **TriX classification channel** | **Verified** | **Packed dots via reflex_signal. The 705 Hz rate figure is withdrawn (audit R1: the diagnostic divided counters spanning different windows).** |
 | Online maintenance | Verified | Signature re-sign every 16 pkts, novelty gate at 60 |
 | 7-voxel TriX Cube | Verified | Core + 6 temporal faces, XOR mask displacement data |
 | **Memory-modulated LP priors** | **Verified** | **13/13 PASS: LP hidden diverges by pattern (P1 vs P3: Hamming 5/16), 97% feedback applied** |
