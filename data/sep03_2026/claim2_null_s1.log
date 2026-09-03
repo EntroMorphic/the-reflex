@@ -1,8 +1,8 @@
-# R9 CAMPAIGN — Claim 2, arm=seq, session 1 of 3.
+# R9 CAMPAIGN — Claim 2, arm=null, session 1 of 3.
 # TEST 15 Control arm only (T15_CONTROL_ONLY), gt binning, label-free.
 # Both arms measured within one session; sender reset only between sessions.
-# Captured 2026-09-03 05:55:37
-W (206) spi_flash: Detected size(4096k) larger than the size in the binary image header(2048k). Using the size in the binary image header.
+# Captured 2026-09-03 06:09:50
+W (205) spi_flash: Detected size(4096k) larger than the size in the binary image header(2048k). Using the size in the binary image header.
 
 ============================================================
   FREE-RUNNING SUB-CPU NEURAL NETWORK
@@ -25,21 +25,21 @@ W (206) spi_flash: Detected size(4096k) larger than the size in the binary image
 [INIT] LP seed: 0xCAFE1234
 [LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
 [INIT] ESP-NOW receiver...
-W (8378) wifi:ACK_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
-W (8378) wifi:CTS_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
-W (8379) wifi:(agc)0x600a7128:0xd20fc800, min.avgNF:0xce->0xd2(dB), RCalCount:0xfc, min.RRssi:0x800(-128.00)
-W (8379) wifi:(TB)WDEV_PWR_TB_MCS0:19
-W (8379) wifi:(TB)WDEV_PWR_TB_MCS1:19
-W (8379) wifi:(TB)WDEV_PWR_TB_MCS2:19
-W (8380) wifi:(TB)WDEV_PWR_TB_MCS3:19
-W (8380) wifi:(TB)WDEV_PWR_TB_MCS4:19
-W (8380) wifi:(TB)WDEV_PWR_TB_MCS5:19
-W (8380) wifi:(TB)WDEV_PWR_TB_MCS6:18
-W (8380) wifi:(TB)WDEV_PWR_TB_MCS7:18
-W (8380) wifi:(TB)WDEV_PWR_TB_MCS8:17
-W (8380) wifi:(TB)WDEV_PWR_TB_MCS9:15
-W (8380) wifi:(TB)WDEV_PWR_TB_MCS10:15
-W (8381) wifi:(TB)WDEV_PWR_TB_MCS11:15
+W (8379) wifi:ACK_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
+W (8379) wifi:CTS_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
+W (8380) wifi:(agc)0x600a7128:0xd20a2800, min.avgNF:0xce->0xd2(dB), RCalCount:0xa2, min.RRssi:0x800(-128.00)
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS0:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS1:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS2:19
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS3:19
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS4:19
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS5:19
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS6:18
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS7:18
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS8:17
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS9:15
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS10:15
+W (8382) wifi:(TB)WDEV_PWR_TB_MCS11:15
 [ESPNOW] Listening on channel 1 (no AP connection)
 [INIT] Done.
 
@@ -54,23 +54,23 @@ W (8381) wifi:(TB)WDEV_PWR_TB_MCS11:15
 [DIAG] gdma2: fifo=0x61 state=0x2e7628(dscr_st=3 out_st=2) eof_addr=0x40827604
 [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x1(eof=0 rempty=1)
   Phase 0a: Observing input signatures (30s)...
-  Observed: 208 packets, 208 encoded, 12871 GIE loops
-  Per-pattern counts: P0=59 P1=24 P2=17 P3=108
+  Observed: 179 packets, 179 encoded, 12872 GIE loops
+  Per-pattern counts: P0=51 P1=32 P2=22 P3=74
   Phase 0b: Computing TriX signatures...
-  sig[0]: [+++++++++-------00000000--------...] nz=96/128 (from 59 samples, seq trits masked)
-  sig[1]: [+++++++++-------00000000++++++++...] nz=96/128 (from 24 samples, seq trits masked)
-  sig[2]: [+++++++++-------00000000+-+-+-+-...] nz=96/128 (from 17 samples, seq trits masked)
-  sig[3]: [+++++++++-------00000000++++-++-...] nz=95/128 (from 108 samples, seq trits masked)
+  sig[0]: [+++++++++-------00000000--------...] nz=96/128 (from 51 samples, seq trits masked)
+  sig[1]: [+++++++++-------00000000++++++++...] nz=96/128 (from 32 samples, seq trits masked)
+  sig[2]: [+++++++++-------00000000+-+-+-+-...] nz=95/128 (from 22 samples, seq trits masked)
+  sig[3]: [+++++++++-------00000000+++++-+-...] nz=95/128 (from 74 samples, seq trits masked)
   Signature pattern-ID trits [16..23]:
     sig[0][16..23]: 00000000
     sig[1][16..23]: 00000000
     sig[2][16..23]: 00000000
     sig[3][16..23]: 00000000
   Signature cross-dots:
-    sig[0] vs: s0=96 s1=68 s2=28 s3=55 
-    sig[1] vs: s0=68 s1=96 s2=24 s3=51 
-    sig[2] vs: s0=28 s1=24 s2=96 s3=27 
-    sig[3] vs: s0=55 s1=51 s2=27 s3=95 
+    sig[0] vs: s0=96 s1=68 s2=21 s3=51 
+    sig[1] vs: s0=68 s1=96 s2=29 s3=47 
+    sig[2] vs: s0=21 s1=29 s2=95 s3=28 
+    sig[3] vs: s0=51 s1=47 s2=28 s3=95 
   Ring drops: 0
 
   Phase 0c: Installing signatures as W_f gate weights...
@@ -84,108 +84,108 @@ W (8381) wifi:(TB)WDEV_PWR_TB_MCS11:15
 
   GDMA offset calibration...
   GDMA offset mapping: G0→P0 G1→P1 G2→P2 G3→P3
-  ISR groups:  [94, 70, 26, 53]
-  CPU patterns: [94, 70, 26, 53]
+  ISR groups:  [19, 13, 22, 20]
+  CPU patterns: [19, 13, 22, 20]
 
   Phase 0d: TriX Cube face observation (15s)...
   TriX Cube face signatures:
-    +x:recent: 81 samples [P0=42 P1=24 P2=11 P3=4]
-    -x:prior: 80 samples [P0=7 P1=3 P2=2 P3=68]
-    +y:stable: 34 samples [P0=21 P1=8 P2=5 P3=0]
-    -y:transient: 19 samples [P0=6 P1=6 P2=3 P3=4]
+    +x:recent: 114 samples [P0=51 P1=24 P2=3 P3=36]
+    -x:prior: 80 samples [P0=20 P1=4 P2=0 P3=56]
+    +y:stable: 44 samples [P0=21 P1=9 P2=0 P3=14]
+    -y:transient: 23 samples [P0=10 P1=5 P2=1 P3=7]
     +z:confident: 0 samples [P0=0 P1=0 P2=0 P3=0]
-    -z:uncertain: 4 samples [P0=0 P1=0 P2=0 P3=4]
+    -z:uncertain: 36 samples [P0=0 P1=0 P2=0 P3=36]
   Face divergence from core (avg Hamming across patterns):
     +x:recent: 20 avg (4 patterns with data)
-    -x:prior: 44 avg (4 patterns with data)
-    +y:stable: 18 avg (3 patterns with data)
-    -y:transient: 22 avg (4 patterns with data)
+    -x:prior: 34 avg (3 patterns with data)
+    +y:stable: 27 avg (3 patterns with data)
+    -y:transient: 25 avg (4 patterns with data)
     +z:confident: 0 avg (0 patterns with data)
-    -z:uncertain: 37 avg (1 patterns with data)
+    -z:uncertain: 38 avg (1 patterns with data)
   Ring drops: 0
 
   Phase 1: TriX Cube ensemble (up to 32 samples, 60s)...
-    s01: truth=0 core=0 isr=0 | cv=[11,0,0,0] iv=[11,0,0,0] xor=[8,19,10,8,-,106]
-    s02: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[6,17,8,6,-,110]
-    s03: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[4,8,8,5,-,110]
-    s04: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[5,3,8,2,-,14]
-    s05: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[6,4,4,3,-,3]
-    s06: truth=1 core=1 isr=1 | cv=[2,6,0,0] iv=[2,6,0,0] xor=[12,39,9,15,-,69]
-    s07: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[5,43,7,13,-,111]
-    s08: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[5,43,7,13,-,111]
-    s09: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[5,43,7,13,-,111]
-    s10: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[5,43,5,13,-,111]
-    s11: truth=2 core=2 isr=2 | cv=[0,1,2,0] iv=[0,1,2,0] xor=[15,59,18,19,-,111]
-    s12: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[21,68,27,22,-,96]
-    s13: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[21,68,27,22,-,96]
-    s14: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[21,68,27,22,-,96]
-    s15: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[21,68,27,22,-,96]
-    s16: truth=3 core=1 isr=2 | cv=[0,1,1,0] iv=[0,1,2,1] xor=[13,55,13,12,-,103]
-    s17: truth=3 core=0 isr=0 | cv=[7,2,0,0] iv=[7,3,0,0] xor=[3,11,2,3,-,27]
-    s18: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[2,1,3,1,-,2]
-    s19: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[2,2,2,2,-,3]
-    s20: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[2,4,4,4,-,5]
-    s21: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[2,2,5,2,-,4]
-    s22: truth=0 core=0 isr=0 | cv=[9,2,0,0] iv=[9,2,0,0] xor=[4,3,3,3,-,23]
-    s23: truth=1 core=1 isr=1 | cv=[0,5,0,0] iv=[0,5,0,0] xor=[5,2,0,3,-,1]
-    s24: truth=1 core=1 isr=1 | cv=[0,5,0,0] iv=[0,5,0,0] xor=[4,2,2,3,-,2]
-    s25: truth=1 core=1 isr=1 | cv=[0,4,0,0] iv=[0,4,0,0] xor=[2,2,4,4,-,3]
-    s26: truth=1 core=1 isr=1 | cv=[0,7,0,0] iv=[0,7,0,0] xor=[2,2,4,4,-,3]
-    s27: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[3,3,4,5,-,3]
-    s28: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[21,68,27,22,-,96]
-    s29: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[18,68,23,18,-,102]
-    s30: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[15,69,19,15,-,109]
-    s31: truth=2 core=2 isr=2 | cv=[0,1,2,0] iv=[0,1,2,0] xor=[12,48,13,12,-,74]
-    s32: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[15,69,19,15,-,109]
+    s01: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[17,-,-,24,-,-]
+    s02: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[17,95,95,24,-,95]
+    s03: truth=2 core=2 isr=2 | cv=[0,1,2,0] iv=[0,1,2,0] xor=[15,76,68,23,-,95]
+    s04: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[17,95,95,24,-,95]
+    s05: truth=0 core=0 isr=0 | cv=[8,0,0,0] iv=[10,0,0,0] xor=[16,26,16,12,-,96]
+    s06: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[10,21,9,9,-,104]
+    s07: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[6,18,6,4,-,110]
+    s08: truth=0 core=0 isr=0 | cv=[10,1,0,0] iv=[10,1,0,0] xor=[6,19,6,4,-,50]
+    s09: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[5,12,3,3,-,2]
+    s10: truth=1 core=1 isr=1 | cv=[3,5,0,0] iv=[3,5,0,0] xor=[9,25,10,14,-,60]
+    s11: truth=1 core=1 isr=1 | cv=[0,4,0,0] iv=[0,4,0,0] xor=[16,39,16,21,-,96]
+    s12: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[11,42,11,15,-,104]
+    s13: truth=1 core=1 isr=1 | cv=[0,4,0,0] iv=[0,4,0,0] xor=[6,45,7,10,-,112]
+    s14: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[6,45,4,8,-,112]
+    s15: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[12,102,102,19,-,102]
+    s16: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[7,109,109,14,-,109]
+    s17: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[7,109,109,14,-,109]
+    s18: truth=2 core=2 isr=2 | cv=[0,1,2,0] iv=[0,1,2,0] xor=[6,74,74,10,-,110]
+    s19: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[7,109,109,14,-,109]
+    s20: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[4,3,2,4,-,3]
+    s21: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[4,4,4,4,-,2]
+    s22: truth=0 core=0 isr=0 | cv=[10,1,0,0] iv=[10,1,0,0] xor=[2,2,3,5,-,15]
+    s23: truth=0 core=0 isr=0 | cv=[11,0,0,0] iv=[11,0,0,0] xor=[2,3,3,3,-,4]
+    s24: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[4,3,2,4,-,1]
+    s25: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[4,2,2,1,-,2]
+    s26: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[3,2,2,1,-,2]
+    s27: truth=1 core=1 isr=1 | cv=[0,7,0,0] iv=[0,7,0,0] xor=[2,2,2,1,-,2]
+    s28: truth=1 core=1 isr=1 | cv=[0,4,0,0] iv=[0,4,0,0] xor=[2,2,2,1,-,2]
+    s29: truth=1 core=1 isr=1 | cv=[0,5,0,0] iv=[0,5,0,0] xor=[2,2,2,1,-,2]
+    s30: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[7,109,109,14,-,109]
+    s31: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[7,109,109,14,-,109]
+    s32: truth=2 core=2 isr=2 | cv=[0,1,2,0] iv=[0,1,2,0] xor=[5,73,73,9,-,73]
 
   ═══ CLASSIFICATION RESULTS (TriX Cube) ═══
-  Window: 41187 ms
-  GIE loops in window: 20222 (490 Hz) — classification mode,
+  Window: 43210 ms
+  GIE loops in window: 21221 (491 Hz) — classification mode,
     CfC blend disabled (gate_threshold = INT32_MAX)
-  TriX classifications in window: 20222 (490 Hz, 100% of loops clean)
-  Total GIE loops since start_freerun: 40558 (spans Phase 0a-0c too;
+  TriX classifications in window: 21221 (491 Hz, 100% of loops clean)
+  Total GIE loops since start_freerun: 41541 (spans Phase 0a-0c too;
     not a rate denominator)
   Test samples: 32
   Ring drops: 0
-  Core (CPU per-pkt vote):   30/32 = 93%
-  ISR  (HW 430 Hz TriX):     30/32 = 93% (all samples)
-  ISR  (windows w/ data):    30/32 = 93% (281 pkts clean, 0 pkts timeout)
-  TriX channel signals:      27671 (seq=27671)
-  Baseline (packet-rate):    26/32 = 81%
+  Core (CPU per-pkt vote):   32/32 = 100%
+  ISR  (HW 430 Hz TriX):     32/32 = 100% (all samples)
+  ISR  (windows w/ data):    32/32 = 100% (286 pkts clean, 0 pkts timeout)
+  TriX channel signals:      28646 (seq=28645)
+  Baseline (packet-rate):    27/32 = 84%
 
   ── Novelty Detection ──
-  Novel packets: 91 / 281 (32%)
-  Novel windows: 9
+  Novel packets: 95 / 286 (33%)
+  Novel windows: 10
 
   ── Online Maintenance ──
-  Core re-signs: 12
+  Core re-signs: 10
   Core drift (Hamming):
-    sig[0]: 13/128 trits
+    sig[0]: 12/128 trits
     sig[1]: 16/128 trits
-    sig[2]: 15/128 trits
+    sig[2]: 14/128 trits
     sig[3]: 0/128 trits
 
   ── XOR Masks (temporal displacement per face) ──
     Face              avg  | rssi patid payload timing
     +x:recent            6/128 |  0/16  0/8   0/64    6/40
-    -x:prior            18/128 |  0/16  0/8  11/64    6/40
-    +y:stable            7/128 |  0/16  0/8   0/64    7/40
+    -x:prior            25/128 |  1/16  0/8  14/64    8/40
+    +y:stable           17/128 |  1/16  0/8   7/64    8/40
     -y:transient         7/128 |  0/16  0/8   0/64    7/40
     +z:confident         -     | (no data)
-    -z:uncertain        48/128 |  6/16  0/8  27/64   13/40
+    -z:uncertain        49/128 |  7/16  0/8  29/64   12/40
     ── Signal distribution ──
-    RSSI:    8% of mask weight
+    RSSI:    10% of mask weight
     PatID:   0% of mask weight
-    Payload: 44% of mask weight
-    Timing:  47% of mask weight
+    Payload: 48% of mask weight
+    Timing:  41% of mask weight
 
   ── TriX Cube Geometry ──
-    +x:recent: 271 samples, 15 avg hamming from core
-    -x:prior: 270 samples, 28 avg hamming from core
-    +y:stable: 224 samples, 29 avg hamming from core
-    -y:transient: 209 samples, 15 avg hamming from core
+    +x:recent: 305 samples, 12 avg hamming from core
+    -x:prior: 271 samples, 38 avg hamming from core
+    +y:stable: 235 samples, 41 avg hamming from core
+    -y:transient: 214 samples, 15 avg hamming from core
     +z:confident: 0 samples, 0 avg hamming from core
-    -z:uncertain: 194 samples, 38 avg hamming from core
+    -z:uncertain: 227 samples, 37 avg hamming from core
   Gate firing: 0%
 
   Architecture:
@@ -205,113 +205,125 @@ W (8381) wifi:(TB)WDEV_PWR_TB_MCS11:15
   ══ Control (CMD5 only) — Rep 1/3 ══
 
   ── Condition: Control (CMD5 only) ──
-[DIAG] 500us: agree=792 disagree=482 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11039348 cpu_agree=20 loop=0
+[DIAG] 500us: agree=836 disagree=482 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
 [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27448(park=0) peri=9
 [DIAG] gdma2: fifo=0x61 state=0x2e7628(dscr_st=3 out_st=2) eof_addr=0x40827604
 [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
 [LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
-    step 300 (43s): vdb=37 flips=0 p=1 gt=3
+    step 300 (45s): vdb=37 flips=0 p=0 gt=0
     Phase B: control (60s)... baseline=419 confirms, VDB=52
-    step 600 (87s): vdb=64 flips=0 p=3 gt=3
+    step 600 (89s): vdb=64 flips=0 p=1 gt=2
     Phase C: measuring (60s)... flips=0 updates=0
-    step 900 (131s): vdb=64 flips=0 p=3 gt=3
-    step 1200 (174s): vdb=64 flips=0 p=0 gt=0
+    step 900 (132s): vdb=64 flips=0 p=3 gt=2
+    step 1200 (176s): vdb=64 flips=0 p=0 gt=3
     Phase A (pre) divergence (/16):
          P0  P1  P2  P3
-    P0:   0   4   0   1  (153)
-    P1:   4   0   4   5  (72)
-    P2:   0   4   0   1  (28)
-    P3:   1   5   1   0  (165)
-    Mean: 2.5
+    P0:   0   0   1   1  (107)
+    P1:   0   0   1   1  (110)
+    P2:   1   1   0   0  (96)
+    P3:   1   1   0   0  (105)
+    Mean: 0.7
     Phase C (post) divergence (/16):
          P0  P1  P2  P3
-    P0:   0   2   2   1  (153)
-    P1:   2   0   0   1  (59)
-    P2:   2   0   0   1  (33)
-    P3:   1   1   1   0  (165)
-    Mean: 1.2
-    Confirms: 1246, Flips: 0, Updates: 0
-    Rep 1: sign=1.2/16 mtfp=6.3/80 (6 pairs) flips=0
+    P0:   0   0   0   0  (104)
+    P1:   0   0   0   0  (105)
+    P2:   0   0   0   0  (98)
+    P3:   0   0   0   0  (103)
+    Mean: 0.0
+    Confirms: 1238, Flips: 0, Updates: 0
+    Rep 1: sign=0.0/16 mtfp=5.0/80 (6 pairs) flips=0
 
   ══ Control (CMD5 only) — Rep 2/3 ══
 
   ── Condition: Control (CMD5 only) ──
-[DIAG] 500us: agree=1155 disagree=146 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
-[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27448(park=0) peri=9
-[DIAG] gdma2: fifo=0x50 state=0x2e7628(dscr_st=3 out_st=2) eof_addr=0x40827604
-[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
-[LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
-    step 300 (46s): vdb=37 flips=0 p=2 gt=2
-    Phase B: control (60s)... baseline=407 confirms, VDB=50
-    step 600 (93s): vdb=64 flips=0 p=3 gt=3
-    Phase C: measuring (60s)... flips=0 updates=0
-    step 900 (136s): vdb=64 flips=0 p=0 gt=3
-    Phase A (pre) divergence (/16):
-         P0  P1  P2  P3
-    P0:   0   0   1   2  (147)
-    P1:   0   0   1   2  (61)
-    P2:   1   1   0   1  (33)
-    P3:   2   2   1   0  (165)
-    Mean: 1.2
-    Phase C (post) divergence (/16):
-         P0  P1  P2  P3
-    P0:   0   0   0   0  (135)
-    P1:   0   0   0   0  (72)
-    P2:   0   0   0   0  (33)
-    P3:   0   0   0   0  (156)
-    Mean: 0.0
-    Confirms: 1198, Flips: 0, Updates: 0
-    Rep 2: sign=0.0/16 mtfp=9.7/80 (6 pairs) flips=0
-
-  ══ Control (CMD5 only) — Rep 3/3 ══
-
-  ── Condition: Control (CMD5 only) ──
-[DIAG] 500us: agree=821 disagree=557 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11039348 cpu_agree=20 loop=0
+[DIAG] 500us: agree=1279 disagree=91 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
 [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27448(park=0) peri=9
 [DIAG] gdma2: fifo=0x61 state=0x2e7628(dscr_st=3 out_st=2) eof_addr=0x40827604
 [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
 [LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
-    step 300 (43s): vdb=37 flips=0 p=0 gt=0
+    step 300 (45s): vdb=37 flips=0 p=1 gt=2
     Phase B: control (60s)... baseline=397 confirms, VDB=49
-    step 600 (87s): vdb=64 flips=0 p=0 gt=0
+    step 600 (92s): vdb=64 flips=0 p=2 gt=2
     Phase C: measuring (60s)... flips=0 updates=0
-    step 900 (130s): vdb=64 flips=0 p=0 gt=0
-    step 1200 (174s): vdb=64 flips=0 p=1 gt=1
+    step 900 (137s): vdb=64 flips=0 p=0 gt=3
     Phase A (pre) divergence (/16):
          P0  P1  P2  P3
-    P0:   0   2   3   3  (153)
-    P1:   2   0   5   5  (72)
-    P2:   3   5   0   0  (33)
-    P3:   3   5   0   0  (138)
-    Mean: 3.0
+    P0:   0   1   1   1  (98)
+    P1:   1   0   0   0  (100)
+    P2:   1   0   0   0  (108)
+    P3:   1   0   0   0  (90)
+    Mean: 0.5
     Phase C (post) divergence (/16):
          P0  P1  P2  P3
-    P0:   0   1   2   0  (153)
-    P1:   1   0   1   1  (72)
-    P2:   2   1   0   2  (28)
-    P3:   0   1   2   0  (165)
-    Mean: 1.2
-    Confirms: 1220, Flips: 0, Updates: 0
-    Rep 3: sign=1.2/16 mtfp=9.2/80 (6 pairs) flips=0
+    P0:   0   0   0   0  (105)
+    P1:   0   0   0   0  (116)
+    P2:   0   0   0   0  (84)
+    P3:   0   0   0   0  (91)
+    Mean: 0.0
+    Confirms: 1188, Flips: 0, Updates: 0
+    Rep 2: sign=0.0/16 mtfp=1.0/80 (6 pairs) flips=0
+
+  ══ Control (CMD5 only) — Rep 3/3 ══
+
+  ── Condition: Control (CMD5 only) ──
+[DIAG] 500us: agree=862 disagree=508 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11038348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27448(park=0) peri=9
+[DIAG] gdma2: fifo=0x50 state=0x2e7628(dscr_st=3 out_st=2) eof_addr=0x40827604
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
+    step 300 (43s): vdb=37 flips=0 p=0 gt=1
+    Phase B: control (60s)... baseline=403 confirms, VDB=50
+    step 600 (87s): vdb=64 flips=0 p=0 gt=0
+    Phase C: measuring (60s)... flips=0 updates=0
+    step 900 (130s): vdb=64 flips=0 p=0 gt=3
+    step 1200 (174s): vdb=64 flips=0 p=0 gt=3
+    Phase A (pre) divergence (/16):
+         P0  P1  P2  P3
+    P0:   0   0   0   0  (111)
+    P1:   0   0   0   0  (88)
+    P2:   0   0   0   0  (106)
+    P3:   0   0   0   0  (97)
+    Mean: 0.0
+    Phase C (post) divergence (/16):
+         P0  P1  P2  P3
+    P0:   0   0   0   0  (77)
+    P1:   0   0   0   0  (115)
+    P2:   0   0   0   0  (108)
+    P3:   0   0   0   0  (116)
+    Mean: 0.0
+    Confirms: 1236, Flips: 0, Updates: 0
+    Rep 3: sign=0.0/16 mtfp=4.5/80 (6 pairs) flips=0
 
   ══ TEST 15 COMPARISON (3 reps per condition) ══
-  Control (CMD5 only)       sign: 0.8±0.7 /16  mtfp: 8.4±1.8 /80
-                            (sign reps: 1.2 0.0 1.2)  (mtfp reps: 6.3 9.7 9.2)
+  Control (CMD5 only)       sign: 0.0±0.0 /16  mtfp: 3.5±2.2 /80
+                            (sign reps: 0.0 0.0 0.0)  (mtfp reps: 5.0 1.0 4.5)
   Hebbian (CMD5+learn)      sign: 0.0±0.0 /16  mtfp: 0.0±0.0 /80
                             (sign reps: 0.0 0.0 0.0)  (mtfp reps: 0.0 0.0 0.0)
 
-  Sign contribution:  -0.8 ± 0.7 Hamming /16
-  MTFP contribution:  -8.4 ± 1.8 Hamming /80
+  Sign contribution:  +0.0 ± 0.0 Hamming /16
+  MTFP contribution:  -3.5 ± 2.2 Hamming /80
 
   ── Verdict ──
-  Hebbian > Control (mean):  NO (-0.8)
-  Exceeds noise (>1 std):    NO (-0.8 vs ±0.7)
-  FAIL
+  Hebbian > Control (mean):  YES (+0.0)
+  Exceeds noise (>1 std):    YES (+0.0 vs ±0.0)
+  OK
 ============================================================
-  RESULTS: 1 / 2 PASSED
+  RESULTS: 2 / 2 PASSED
 ============================================================
 
-  SOME TESTS FAILED — see details above.
+  *** FULL SYSTEM VERIFIED ***
+  Layer 1: GIE (GDMA+PARLIO+PCNT) — 428 Hz, ~0 CPU
+  Layer 2: LP core geometric processor — 100 Hz, ~30uA
+  Layer 2b: LP core ternary VDB — NSW graph search (M=7)
+  Layer 2c: CfC -> VDB pipeline — perceive+think+remember
+  Layer 2d: VDB -> CfC feedback — memory shapes inference
+  Layer 3: HP core — reflex channel coordination
+  Layer 4: ESP-NOW -> GIE live input + pattern classification
+  Layer 5: TriX -> VDB -> LP feedback — memory-modulated attention
+  Layer 6: CMD 4 ablation — VDB contribution isolated from CfC baseline
+  All ternary. No floating point. No multiplication.
+  Perceive → classify → remember → retrieve → modulate.
+  Attribution: CMD 5 vs CMD 4 Hamming delta quantifies VDB contribution.
 
 -- LP CHAR: LP Dynamics Characterization --
    (diagnostic — not counted in pass/fail)
@@ -714,14 +726,14 @@ W (8381) wifi:(TB)WDEV_PWR_TB_MCS11:15
   P0:   -7  -2  -5  +0  +4 +12  +2  +1  -8  -2  -3  -1  +5  +0  -1  +2
   P1:   +1  -6  -1  +4  +8  +8  +8  -1 -14  +2  +3  +3  +1  -8  +1  -2
   P2:   -5  -4  -3  +0  +4  +8  +6  +1 -10  +2  +1  -1  +3  -8  +3  +0
-  P3:   -3  -6  +1  +4  +6  +8  +6  -3 -12  +0  +3  -1  +1  -6  +3  -6
+  P3:   -3  -6  -3  +4  +4  +8  +6  +1 -12  +0  +1  +1  +1  -8  +1  -2
 
   LP f-pathway SIGNS:
          n00  n01  n02  n03  n04  n05  n06  n07  n08  n09  n10  n11  n12  n13  n14  n15
   P0:    -    -    -    0    +    +    +    +    -    -    -    -    +    0    -    + 
   P1:    +    -    -    +    +    +    +    -    -    +    +    +    +    -    +    - 
   P2:    -    -    -    0    +    +    +    +    -    +    +    -    +    -    +    0 
-  P3:    -    -    +    +    +    +    +    -    -    0    +    -    +    -    +    - 
+  P3:    -    -    -    +    +    +    +    +    -    0    +    +    +    -    +    - 
 
   P1 vs P2 comparison (f-pathway):
     n00: P1= +1 P2= -5  sign=DIFF  |mag_diff|=4
