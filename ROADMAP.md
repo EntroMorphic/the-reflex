@@ -1,6 +1,12 @@
 # The Reflex: Strategic Roadmap
 
-*Last updated: April 12, 2026 — Papers rewritten around MTFP metrics and honest negative results. Test verdict logic replaced (MTFP-based gates). Label-free TEST 14C validated on silicon (ablation regression confirmed). Repo cleaned (archive consolidated, delta-observer removed, git gc 84→4.7 MB).*
+*Last updated: September 2, 2026 — Audit remediation (`docs/AUDIT_SEP2026.md`). Claim corrections applied across README, papers, and data digests: kinetic attention restated as harmful in 2 of 3 runs and not distinguishable from zero at n=3; classification split into windowed (31–32/32, 96–100% across 15 runs) and per-admitted-packet (90.5–96.4%, TriX ISR). A red-team pass the same day corrected three further errors: the "664 Hz" classification-mode rate was withdrawn (the diagnostic divided counters spanning different windows and was never a valid rate — only the 430 Hz blend-active figure is cleanly measured); windowed accuracy is 96–100%, not a uniform 100%; and the Test 14 accuracy printout was mislabelled "CPU core_pred" when it in fact scores the TriX ISR over novelty-admitted packets. Code fixes: group→pattern mapping applied to gate bias and fire counters; TriX/CPU agreement metric compares predictions directly; rate and accuracy diagnostics corrected; `MASK_SEQUENCE_INPUT` ablation flag added.*
+
+*Prior update: April 12, 2026 — Papers rewritten around MTFP metrics and honest negative results. Test verdict logic replaced (MTFP-based gates). Label-free TEST 14C validated on silicon (ablation regression confirmed). Repo cleaned (archive consolidated, delta-observer removed, git gc 84→4.7 MB).*
+
+> **Open since March 19, 2026 — still the top blocker.** UART-only verification with direct current measurement. The ~30 µA figure remains a datasheet number. This is the one experiment that can invalidate the headline claim, it takes an afternoon, and it has now been queued for five and a half months while work moved elsewhere (TriX integration, May 16). Do it before submission.
+
+> **Unmerged work.** The `trix-integration` branch (May 16, 2026) adds `TRIX_DUMP_TRAINING`, `USE_TRIX_WEIGHTS`, `TRIX_DISABLE_NOVELTY`, and a parameterized `PEER_MAC`, plus an externally-trained (QAT) signature override path. No document below describes it. Note the tension to resolve deliberately rather than by merge: `USE_TRIX_WEIGHTS` imports weights trained off-chip, which complicates the papers' "no training" and "enrolled, not trained" framing even though it leaves the no-float-on-chip claim intact.
 
 ---
 
@@ -8,7 +14,7 @@
 
 As of commit `c7ef286`, the Reflex architecture has demonstrated:
 
-- **GIE**: Peripheral-hardware ternary dot products at 430.8 Hz, ISR-driven. TriX classification accuracy: 100% on 4 well-separated patterns with distinct payloads, **100% label-free** (pattern_id trits masked from signatures, commit `c7ef286`). Prior P1-P2 confusion (71% label-free) was caused by near-identical P2 payload, not the classifier.
+- **GIE**: Peripheral-hardware ternary dot products, ISR-driven, at 430 Hz with the CfC blend active (the classification-mode rate is higher but unmeasured). TriX label-free classification: **31–32/32 windowed (96–100% across 15 runs)**, 90.5–96.4% per admitted packet, macro average 84.6–87.4% (pattern_id trits masked from signatures, commit `c7ef286`). Essentially all per-packet error is in P3. Prior P1-P2 confusion (71% label-free) was caused by near-identical P2 payload, not the classifier.
 - **VDB**: 64-node NSW graph in LP SRAM, 48-trit vectors, recall@1=95%, 10–15ms round-trip.
 - **LP CfC**: 16-trit hidden state, CMD 5 (CfC + VDB + feedback blend) running at ~100 Hz on the 16 MHz LP core (~30 µA).
 - **Memory-modulated priors**: LP hidden state develops pattern-specific representations after 90s of live operation. VDB feedback is causally necessary — ablation (CMD 4) collapses P1 and P2 to Hamming=0 in 2 of 3 runs. Multi-seed validated (3 seeds, `data/apr9_2026/SUMMARY.md`).
@@ -30,9 +36,9 @@ The modulation loop is closed. The three pillars are next.
 
 ## Phase 5: Kinetic Attention (Implemented — Harmful at MTFP Resolution)
 
-**Mechanism implemented and verified:** LP hidden state biases GIE gate thresholds via agreement-weighted gate bias. The mechanism reliably fires (per-group fire rate shift >10% every run). LP feedback dispatched from TriX ISR. No float in the mechanism path.
+**Mechanism implemented and verified:** LP hidden state biases GIE gate thresholds via agreement-weighted gate bias. The mechanism fires where it can reach (fire-rate shift >10% every run on groups 0–2; **group 3 never fires the gate in any condition of any run**). LP feedback dispatched from TriX ISR. No float in the mechanism path.
 
-**Honest negative result:** At MTFP resolution, kinetic attention consistently degrades LP divergence: mean -5.5/80 across 3 label-free runs. The bias saturates the GIE hidden state, reducing LP dot magnitude diversity. The sign-space metric (+1.3/16) incorrectly showed improvement. Reported in the Stratum 1 paper as a negative finding.
+**Honest negative result:** At MTFP resolution, kinetic attention degrades LP divergence in 2 of 3 label-free runs (+0.4, −7.0, −9.8; mean −5.5 ± 5.3/80, t(2) = −1.80, p ≈ 0.21). At n=3 this is **not statistically distinguishable from zero** — the supported claim is "no improvement on the VDB baseline," not "reliably harmful." Where the bias acts it plausibly saturates the GIE hidden state, reducing LP dot magnitude diversity; the sign-space metric (+1.3/16) showed improvement by trading magnitude diversity for sign diversity. Two scope limits: neuron group 3 never fires the gate (bias reaches 3 of 4 groups), and condition order is never counterbalanced. Reported in the Stratum 1 paper as a negative finding with its scope stated.
 
 **TEST 14C (transition experiment):** VDB stabilization confirmed label-free on Seed A (`data/apr11_2026/t14c_labelfree_seed_a.log`): 15/15 TriX@15, ablation regression visible (gap +22→−6 by step 30). `pred` flips at step +1. Bias decays geometrically (×0.9/step). Multi-seed supporting data: `data/apr9_2026/SUMMARY.md` (3 seeds × 3 conditions, pre-label-free).
 
@@ -42,11 +48,11 @@ The modulation loop is closed. The three pillars are next.
 
 1. Add `lp_gate_bias[4]` to LP SRAM layout (HP-writable, ISR-readable).
 2. HP core projects lp_hidden onto pre-computed LP-space signatures (from TEST 12 means) to produce per-pattern-group gate bias values.
-3. ISR applies: `effective_threshold = gate_threshold + lp_gate_bias[neuron_group]`, with a hard floor.
+3. ISR applies: `effective_threshold = gate_threshold - gie_gate_bias[pattern]`, with a hard floor. The ISR resolves its group index through `trix_group_to_pattern[]` first (audit fix, Sep 2026).
 4. TEST 14 (three conditions: scalar bias, per-group bias, bias=0 baseline) measures whether LP prior amplifies LP divergence above TEST 12 baseline and whether the system remains stable through pattern switches.
 
 **Pass criteria for TEST 14:**
-- Classification accuracy remains 100%
+- Classification accuracy unchanged by the bias (structural wall; measured per packet, not as a bare 100%)
 - LP Hamming matrix under per-group bias ≥ TEST 12 on ≥ 4 of 6 pairs
 - System updates LP prior within 15 confirmations of a Board B pattern switch (no lock-in)
 - GIE hidden state does not saturate (energy < 60/64 on average)

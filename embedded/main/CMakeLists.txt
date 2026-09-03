@@ -52,6 +52,17 @@ else()
     if(DEFINED MASK_PATTERN_ID_INPUT AND MASK_PATTERN_ID_INPUT)
         add_compile_definitions(MASK_PATTERN_ID_INPUT=1)
     endif()
+    # Audit (Sep 2026): mask sequence trits [104..119] from the INPUT in
+    # espnow_encode_rx_entry(). The legacy encoder espnow_encode_input()
+    # already zeroes them; the stream encoder used by every load-bearing test
+    # does not. Sequence is monotonic while patterns cycle, so it is a
+    # possible back-channel into the GIE hidden state -> VDB -> LP path on
+    # which the divergence measurements are taken. Default OFF so the
+    # firmware continues to match the committed apr9/apr11 datasets; turn ON
+    # to run the ablation and confirm the MTFP baseline is unchanged.
+    if(DEFINED MASK_SEQUENCE_INPUT AND MASK_SEQUENCE_INPUT)
+        add_compile_definitions(MASK_SEQUENCE_INPUT=1)
+    endif()
     # Skip to Test 14 (enrollment + kinetic attention only)
     if(DEFINED SKIP_TO_14 AND SKIP_TO_14)
         add_compile_definitions(SKIP_TO_14=1)

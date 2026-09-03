@@ -1,0 +1,35 @@
+# TX-SENDER boot capture 2026-05-16T07:28:43.881584 (DURATION_S=180)
+[   2.44s] I (152) esp_image: segment 3: paddr=000b5cc8 vaddr=40800a08 size[SEND] Pattern 1 -> 2 | seq=349 ok=242 fail=107
+[   7.94s] [SEND] Pattern 2 -> 3 | seq=360 ok=243 fail=117
+[  13.04s] [SEND] Pattern 3 -> 0 | seq=411 ok=290 fail=121
+[  18.14s] [SEND] Pattern 0 -> 1 | seq=462 ok=341 fail=121
+[  23.34s] [SEND] Pattern 1 -> 2 | seq=486 ok=365 fail=121
+[  28.84s] [SEND] Pattern 2 -> 3 | seq=497 ok=376 fail=121
+[  33.94s] [SEND] Pattern 3 -> 0 | seq=548 ok=427 fail=121
+[  39.04s] [SEND] Pattern 0 -> 1 | seq=599 ok=478 fail=121
+[  44.24s] [SEND] Pattern 1 -> 2 | seq=623 ok=502 fail=121
+[  49.74s] [SEND] Pattern 2 -> 3 | seq=634 ok=513 fail=121
+[  54.84s] [SEND] Pattern 3 -> 0 | seq=685 ok=564 fail=121
+[  59.94s] [SEND] Pattern 0 -> 1 | seq=736 ok=615 fail=121
+[  65.14s] [SEND] Pattern 1 -> 2 | seq=760 ok=639 fail=121
+[  70.64s] [SEND] Pattern 2 -> 3 | seq=771 ok=650 fail=121
+[  75.74s] [SEND] Pattern 3 -> 0 | seq=822 ok=701 fail=121
+[  80.84s] [SEND] Pattern 0 -> 1 | seq=873 ok=752 fail=121
+[  86.04s] [SEND] Pattern 1 -> 2 | seq=897 ok=776 fail=121
+[  91.54s] [SEND] Pattern 2 -> 3 | seq=908 ok=787 fail=121
+[  96.64s] [SEND] Pattern 3 -> 0 | seq=959 ok=838 fail=121
+[ 101.74s] [SEND] Pattern 0 -> 1 | seq=1010 ok=889 fail=121
+[ 106.94s] [SEND] Pattern 1 -> 2 | seq=1034 ok=913 fail=121
+[ 112.44s] [SEND] Pattern 2 -> 3 | seq=1045 ok=924 fail=121
+[ 117.54s] [SEND] Pattern 3 -> 0 | seq=1096 ok=975 fail=121
+[ 122.64s] [SEND] Pattern 0 -> 1 | seq=1147 ok=1026 fail=121
+[ 127.84s] [SEND] Pattern 1 -> 2 | seq=1171 ok=1050 fail=121
+[ 133.34s] [SEND] Pattern 2 -> 3 | seq=1182 ok=1061 fail=121
+[ 138.44s] [SEND] Pattern 3 -> 0 | seq=1233 ok=1112 fail=121
+[ 143.54s] [SEND] Pattern 0 -> 1 | seq=1284 ok=1163 fail=121
+[ 148.74s] [SEND] Pattern 1 -> 2 | seq=1308 ok=1187 fail=121
+[ 154.24s] [SEND] Pattern 2 -> 3 | seq=1319 ok=1198 fail=121
+[ 159.34s] [SEND] Pattern 3 -> 0 | seq=1370 ok=1249 fail=121
+[ 164.44s] [SEND] Pattern 0 -> 1 | seq=1421 ok=1300 fail=121
+[ 169.64s] [SEND] Pattern 1 -> 2 | seq=1445 ok=1324 fail=121
+[ 175.14s] [SEND] Pattern 2 -> 3 | seq=1456 ok=1335 fail=121

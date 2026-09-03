@@ -4,6 +4,7 @@
 EntroMorphic Research
 
 *Rewritten: April 12, 2026. The original title was "The Hippocampus Stabilizes, Not Accelerates." The April 9-12 session tested the consolidation path (Hebbian weight learning) and found it produces no improvement. The hippocampus is not a stabilizer of neocortical learning. It IS the temporal model. Transition experiment (Section 6) validated with label-free silicon data.*
+*Audit remediation, September 2, 2026 (`docs/AUDIT_SEP2026.md`), with a red-team pass the same day: kinetic attention restated as harmful in 2 of 3 runs (−5.5 ± 5.3/80, n=3, p ≈ 0.21 — not distinguishable from zero); classification split into windowed (31–32/32, 96–100% across 15 runs) and per-admitted-packet (90.5–96.4%, TriX ISR); the only clean rate measurement is 430 Hz with the CfC blend active — the classification-mode rate is **unmeasured**, the previously printed "664 Hz" figure having been computed from counters spanning different windows. **The LaTeX sources in `papers/` are canonical.***
 
 *Data: `data/apr11_2026/SUMMARY.md` (authoritative label-free dataset). `data/apr11_2026/t14c_labelfree_seed_a.log` (label-free TEST 14C). `data/apr9_2026/SUMMARY.md` (multi-seed TEST 14C, 3 seeds × 3 conditions). Firmware commit `ebc65a4`. ESP32-C6FH4, ESP-IDF v5.4. Build: `MASK_PATTERN_ID=1`, `MASK_PATTERN_ID_INPUT=1`.*
 
@@ -11,7 +12,7 @@ EntroMorphic Research
 
 ## Abstract
 
-We present a fixed-weight analog of Complementary Learning Systems (CLS) theory running on a $0.50 microcontroller. A ternary Closed-form Continuous-time neural network (CfC) with random, non-updating weights serves as the neocortical extractor. A 64-node Navigable Small World graph serves as the hippocampal episodic store. The system classifies 4 wireless signal patterns at 100% label-free accuracy in peripheral hardware at 430 Hz, drawing approximately 30 microamps.
+We present a fixed-weight analog of Complementary Learning Systems (CLS) theory running on a $0.50 microcontroller. A ternary Closed-form Continuous-time neural network (CfC) with random, non-updating weights serves as the neocortical extractor. A 64-node Navigable Small World graph serves as the hippocampal episodic store. The system classifies 4 wireless signal patterns in peripheral hardware — 96-100% label-free on windowed classification (31-32/32 across 15 runs), 90.5-96.4% per admitted packet — at 430 Hz with the CfC blend active, drawing approximately 30 microamps.
 
 The hippocampal layer is permanently load-bearing. We know this not because we chose not to implement consolidation, but because **we implemented it and it produced no effect.** Three iterations of Hebbian weight learning — with VDB-mismatch targets, TriX-accumulator targets, and diagnosed f-vs-g pathway selection — were tested under ablation-controlled, replicated conditions. Result: +0.1 ± 1.1 Hamming at n=3. The neocortex does not learn from the hippocampus.
 
@@ -37,7 +38,7 @@ Unlike prior fixed-weight CLS demonstrations, we do not merely omit consolidatio
 
 Three layers, operating on genuine wireless signals from an ESP-NOW sender:
 
-- **Layer 1 (GIE):** A Geometry Intersection Engine running ternary dot products at 430 Hz on peripheral hardware (GDMA → PARLIO → PCNT loopback). Classifies wireless signals at 100% label-free accuracy (TriX ISR, structural guarantee: `W_f hidden = 0`). The CPU computes zero dot products after initialization.
+- **Layer 1 (GIE):** A Geometry Intersection Engine running ternary dot products on peripheral hardware (GDMA → PARLIO → PCNT loopback) at 430 Hz with the CfC blend active (classification-mode rate unmeasured). Classifies wireless signals at 96-100% label-free windowed and 90.5-96.4% per admitted packet (TriX ISR, structural guarantee: `W_f hidden = 0`). The CPU computes zero dot products after initialization.
 
 - **Layer 2 (LP core):** A 16 MHz RISC-V ultra-low-power core (~30 µA) running a 16-neuron ternary CfC with fixed random weights, plus a 64-node NSW vector database storing 48-trit episodic snapshots `[gie_hidden(32) | lp_hidden(16)]`. Five command modes execute in a single 10 ms wake cycle.
 
@@ -69,7 +70,7 @@ For our system: the hippocampus does enable pattern-discriminative LP states (8.
 
 The LP CfC computes 16 integer dot products per step, one per neuron. These dot products are the LP's representation of the current input. The sign-quantized version (`lp_hidden[16]`, taking sign of each dot) is a 16-trit ternary vector. The MTFP-encoded version (5 trits per dot: sign + 2 exponent + 2 mantissa) is an 80-trit vector that preserves magnitude information.
 
-The distinction matters. Sign-space collapses the magnitudes, producing LP divergence of 1.2-2.3/16 across 4 patterns. MTFP-space preserves them, producing 8.5-9.7/80 — a 4-5× richer measurement that correctly identifies effects that sign-space hides or misreports (see Section 4.2).
+The distinction matters. Sign-space collapses the magnitudes, producing LP divergence of 1.2-2.3/16 across 4 patterns. MTFP-space preserves them, producing 8.5-9.7/80 — a measurement over 5× more dimensions that correctly identifies effects that sign-space hides or misreports (see Section 4.2). Normalized, 9.7/80 = 12.1% of trits against 0.7/16 = 4.4%, a ratio of ~2.8×; the raw-count ratio (~12×) is not a like-for-like comparison and should not be used.
 
 All divergence measurements in this paper use MTFP-space unless otherwise noted.
 
@@ -169,9 +170,9 @@ Agreement-weighted gate bias (Phase 5: LP prior biases GIE gate thresholds) was 
 | 1 | 9.8/80 | 10.2/80 | +0.4 |
 | 2 | 15.5/80 | 8.5/80 | -7.0 |
 | 3 | 15.5/80 | 5.7/80 | -9.8 |
-| **Mean** | **13.6** | **8.1** | **-5.5** |
+| **Mean** | **13.6** | **8.1** | **-5.5 ± 5.3** |
 
-The gate bias consistently reduces MTFP divergence. Root cause: lowering a neuron group's gate threshold fires more GIE neurons, saturating the GIE hidden state and making the LP input more uniform across patterns. The bias makes the GIE LESS discriminative for the LP.
+The gate bias reduces MTFP divergence in 2 of 3 runs (mean -5.5 ± 5.3/80, n=3, p ~ 0.21 — not distinguishable from zero). Root cause: lowering a neuron group's gate threshold fires more GIE neurons, saturating the GIE hidden state and making the LP input more uniform across patterns. The bias makes the GIE LESS discriminative for the LP.
 
 The sign-space metric (+1.3/16 mean) incorrectly showed kinetic attention as helpful. The sign-space improvement was an artifact: the bias traded magnitude diversity (which MTFP captures) for sign diversity (which sign-space captures). A net information loss visible only at the richer MTFP resolution.
 
@@ -331,7 +332,7 @@ The prior should be a voice, not a verdict. And the voice comes from memory, not
 | Parameter | Value |
 |---|---|
 | Chip | ESP32-C6FH4 (QFN32) rev v0.2 |
-| GIE rate | 430.8 Hz (peripheral fabric) |
+| GIE rate | 430 Hz, CfC blend active (classification-mode rate unmeasured) |
 | LP core | 16 MHz RISC-V, ~30 µA |
 | LP CfC | 16 neurons, 48-trit input, fixed random weights |
 | VDB | 64 nodes, NSW graph (M=7), 48-trit vectors |

@@ -66,9 +66,19 @@ This is an honest result confirmed at MTFP resolution across 3 independent runs 
 | 3 | 15.5/80 | 5.7/80 | -9.8 |
 | **Mean** | **13.6** | **8.1** | **-5.5** |
 
-The sign-space metric (+1.3/16 mean) was an artifact: the bias traded magnitude diversity for sign diversity — a net information loss. The bias saturates the GIE hidden state (more neurons fire → LP input becomes more uniform → LP dot magnitudes converge). The mechanism reliably changes per-group fire rates (>10% shift every run) but the effect on LP representation is consistently negative at MTFP resolution.
+The sign-space metric (+1.3/16 mean) was an artifact: the bias traded magnitude diversity for sign diversity — a net information loss. The bias saturates the GIE hidden state (more neurons fire → LP input becomes more uniform → LP dot magnitudes converge). The mechanism reliably changes fire rates on the groups it reaches (>10% shift every run on G0–G2), and the effect on LP representation is negative in 2 of 3 runs.
 
-The 3 runs used independent board resets between each run (both sender and receiver). The within-run comparison (14A vs 14C) shares VDB content (14A builds the VDB, 14C inherits it) but VDB is cleared and LP weights re-initialized between conditions. The direction of the MTFP effect is consistent across all 3 independent runs.
+**Statistical reading (added Sep 2026 audit).** Per-run improvements are +0.4, −7.0, −9.8: mean −5.47, sd 5.27, sem 3.04, t(2) = −1.80, two-tailed p ≈ 0.21. At n=3 this is **not statistically distinguishable from zero**, the same verdict correctly applied to the Hebbian result below. The supported claim is "kinetic attention does not improve on the VDB baseline," not "kinetic attention is reliably harmful."
+
+**Scope limit (added Sep 2026 audit).** Neuron group 3 never fires the gate in any condition of any run (G3 = 0 in all 9 condition-runs). The bias therefore modulates 3 of 4 pattern groups; kinetic attention was never tested on a full network. P3 is also the pattern carrying essentially all per-packet classification error, which suggests its enrolled signature simply produces smaller dot magnitudes than the other three.
+
+The 3 runs used independent board resets between each run (both sender and receiver).
+
+**Reset protocol, corrected (Sep 2026 audit).** Between conditions, `run_test_14()` clears the VDB (`vdb_clear()`) and zeroes `lp_hidden`. It does **not** re-initialize the LP weights — `init_lp_core_weights()` is called once, in `app_main`. This has no practical consequence for Test 14, because nothing in Test 14 modifies the LP weights (only `lp_hebbian_step()` does, and it is not called here), but the earlier wording was inaccurate.
+
+**Order confound (Sep 2026 audit).** Conditions always run 14A → 14C → 14C-iso, and all 3 runs use that same order. Any drift across the ~6-minute sequence — thermal, RF environment, board state — is confounded with condition and does not average out across replicates. The unstable 14A baseline (9.8, 15.5, 15.5) is consistent with a drift term of this kind. The 60-second snapshot controls for maturity *within* a condition, not for order *between* conditions.
+
+The direction of the MTFP effect is negative in 2 of 3 independent runs and positive in the third.
 
 ### Hebbian Learning (Test 15)
 

@@ -1,6 +1,6 @@
 # The Reflex
 
-**A temporal context layer beneath a perfect classifier — in peripheral hardware, at thirty microamps.**
+**A temporal context layer beneath a label-free classifier — in peripheral hardware, at thirty microamps.**
 
 > *"The prior should be a voice, not a verdict."*
 
@@ -8,9 +8,9 @@
 
 ## What It Is
 
-The Reflex is a three-layer ternary neural computing system running on an ESP32-C6 microcontroller. It classifies wireless signals at 100% accuracy using only peripheral hardware — no CPU, no floating point, no multiplication. Beneath that classifier, it builds a temporal model of what it has been perceiving, using that model to bias future perception while ensuring the bias can always be overridden by direct measurement.
+The Reflex is a three-layer ternary neural computing system running on an ESP32-C6 microcontroller. It classifies wireless signals using only peripheral hardware — no CPU, no floating point, no multiplication — at 96–100% label-free accuracy on windowed classification and 90.5–96.4% per admitted packet. Beneath that classifier, it builds a temporal model of what it has been perceiving, using that model to bias future perception while ensuring the bias can always be overridden by direct measurement.
 
-**The core claim:** Peripheral-hardware ternary dot products at 430.8 Hz. ~30 µA. 100% label-free classification (4 patterns, `MASK_PATTERN_ID=1 + MASK_PATTERN_ID_INPUT=1`). Pattern-specific LP hidden states after 120 seconds of live operation — 8.5-9.7/80 MTFP divergence from VDB episodic memory alone. VDB causally necessary (distillation test: CMD 4 collapses P1=P2; CMD 5 separates them). VDB stabilization confirmed label-free (TEST 14C: ablation regresses, VDB blend maintains separation). Kinetic attention mechanism implemented but harmful at MTFP resolution (-5.5/80). Hebbian weight learning: +0.1 ± 1.1 (noise). The system's power is in its episodic memory, not in learned weights or attentional bias. Structural wall (`W_f hidden = 0`) verified across all experiments. No floating point anywhere in the mechanism path.
+**The core claim:** Peripheral-hardware ternary dot products at 430 Hz, measured with the CfC blend active (the classification-mode rate is higher but unmeasured). ~30 µA (datasheet; direct measurement pending). Label-free classification of 4 patterns (`MASK_PATTERN_ID=1 + MASK_PATTERN_ID_INPUT=1`): 31–32/32 windowed (96–100% across 15 runs), 90.5–96.4% per admitted packet, with essentially all error in P3. Pattern-specific LP hidden states after 120 seconds of live operation — 8.5-9.7/80 MTFP divergence from VDB episodic memory alone. VDB causally necessary (distillation test: CMD 4 collapses P1=P2; CMD 5 separates them). VDB stabilization confirmed label-free (TEST 14C: ablation regresses, VDB blend maintains separation). Kinetic attention: harmful in 2 of 3 runs, −5.5 ± 5.3/80 at n=3 — no improvement on the baseline. Hebbian weight learning: +0.1 ± 1.1/80 at n=3 — likewise. Neither downstream mechanism is statistically distinguishable from zero. The system's power is in its episodic memory, not in learned weights or attentional bias. Structural wall (`W_f hidden = 0`) verified by inspection of every write path. No floating point anywhere in the mechanism path.
 
 The system was not designed toward this architecture. It emerged from a minimum-assumptions experiment — and the constraints (ternary, peripheral, no floating point) are what made the structure visible.
 
@@ -22,10 +22,10 @@ The system was not designed toward this architecture. It emerged from a minimum-
 Layer 1: GIE — Geometry Intersection Engine (Peripheral Fabric)
 ┌──────────────────────────────────────────────────────────────┐
 │  Circular DMA chain: [dummy×5][neuron×32] loops forever      │
-│  GDMA → PARLIO (2-bit, 10MHz) → GPIO loopback → PCNT        │
+│  GDMA → PARLIO (2-bit, 20MHz) → GPIO loopback → PCNT        │
 │  ISR: drain PCNT → decode dot → TriX classify                │
-│  430.8 Hz, 32 neurons, ~0 CPU after init                     │
-│  TriX classifier: 100% accuracy, 4 patterns, enrolled        │
+│  430 Hz (CfC blend active), 32 neurons, ~0 CPU after init    │
+│  TriX classifier: 31-32/32 windowed, 4 patterns, enrolled    │
 └──────────────────────────────────────────────────────────────┘
         │ cfc.hidden[32] via reflex_channel_t (18µs latency)
         ▼
@@ -48,13 +48,13 @@ Layer 3: HP Core — Initialization and Monitoring (160MHz)
 
 **Operations used:** AND, popcount (byte LUT), add, sub, negate, branch, shift.
 **Operations absent:** MUL, DIV, FP, gradients, backpropagation.
-**Verification:** All claims silicon-verified, distillation-controlled, multi-seed validated.
+**Verification:** Claims silicon-verified, distillation-controlled, multi-seed where noted. Two exceptions, stated up front: the ~30 µA figure is from the datasheet (UART-only measurement pending), and both downstream-mechanism results are underpowered at n=3. See [`docs/AUDIT_SEP2026.md`](docs/AUDIT_SEP2026.md).
 
 ---
 
 ## The Reframe
 
-This system is not building a better classifier. The classifier is already perfect (100% across all hardware runs). The system is building a **temporal context layer beneath a perfect classifier** — a sub-conscious layer that accumulates a model of what has been experienced, and uses that model to shape what the perceptual layer is sensitive to next.
+This system is not building a better classifier. The classifier is good enough that improving it is not where the interest lies: 31–32/32 on windowed classification across every label-free configuration tested, 90.5–96.4% per admitted packet. The system is building a **temporal context layer beneath that classifier** — a sub-conscious layer that accumulates a model of what has been experienced, and uses that model to shape what the perceptual layer is sensitive to next.
 
 The LP hidden state develops pattern-specific representations after 90 seconds of live operation. VDB episodic memory provides disambiguation that the CfC's random projection cannot achieve alone. The memory pathway is architecturally decoupled from the classification pathway (`W_f hidden = 0` structural wall). The classifier cannot be corrupted by what the memory has learned.
 
@@ -68,10 +68,12 @@ See [`docs/THE_PRIOR_AS_VOICE.md`](docs/THE_PRIOR_AS_VOICE.md) for the full argu
 
 | Metric | Value | Verified |
 |--------|-------|---------|
-| GIE classification accuracy (with label) | 100% (4 patterns, TriX ISR) | All runs, structural guarantee |
-| GIE classification accuracy (label-free) | 100% (4 patterns, pattern_id masked) | `c7ef286`, `-DMASK_PATTERN_ID=1` |
+| GIE classification, windowed (label-free) | 31–32/32 = 96–100% across 15 runs | `c7ef286`, `-DMASK_PATTERN_ID=1`, TEST 11 |
+| GIE classification, per admitted packet (label-free) | 90.5–96.4%; macro avg 84.6–87.4% | TEST 14, TriX ISR, ~550 confirms/condition |
+| Worst per-class recall (P3) | 51.8–63.0% | TEST 14 confusion matrices |
 | Prior P1-P2 label-free (old payload) | 71% (P2 at 10%, others 100%) | `2fc5219` — test-design artifact |
-| GIE rate | 430.8 Hz | Silicon |
+| GIE rate (CfC blend active) | 430 Hz | Silicon, 430 loops in exactly 1 s |
+| GIE rate (classification mode) | Higher, **unmeasured** | Old "664 Hz" diagnostic mixed counter windows; firmware fixed, not yet re-run |
 | GIE power | ~0 CPU after init | Silicon |
 | LP core power | ~30 µA | Datasheet (JTAG-free measurement pending) |
 | LP CfC hidden state divergence (P1 vs P3) | Hamming 5/16 | TEST 12 |
@@ -86,7 +88,8 @@ See [`docs/THE_PRIOR_AS_VOICE.md`](docs/THE_PRIOR_AS_VOICE.md) for the full argu
 | MTFP P1-P2 separation | Hamming 7-9/80 (null ~1) | 3 seeds |
 | Hebbian LP learning (label-free) | +0.1 ± 1.1 MTFP (noise, n=3) | TEST 15, diagnosed v3 |
 | MTFP LP divergence (VDB only) | 9.7 ± 0.6 /80 | TEST 15, 3 reps |
-| Kinetic attention (MTFP) | -5.5 /80 (harmful, 3 runs) | TEST 14, label-free |
+| Kinetic attention (MTFP) | −5.5 ± 5.3 /80, n=3 (harmful 2/3 runs; not distinguishable from zero) | TEST 14, label-free |
+| Gate fires, neuron group 3 | 0 in every condition of every run | TEST 14 — bias reaches 3 of 4 groups |
 
 **TEST 13 (distillation test):** CMD 4 runs CfC + VDB but skips the blend into LP hidden. CMD 5 runs CfC + VDB + blend. In paired 90-second runs, CMD 4 produces P1=P2 (Hamming=0) in 2 of 3 hardware runs. CMD 5 produces Hamming 1–5 for the same pair every time. The VDB feedback is causally necessary, not incidental.
 
@@ -114,9 +117,11 @@ P0: neurons 0–7, P1: 8–15, P2: 16–23, P3: 24–31.
 
 ## Phase 5: Kinetic Attention (Implemented — Harmful at MTFP Resolution)
 
-The LP hidden state biases GIE gate thresholds, making the peripheral hardware compute differently based on accumulated experience. The bias is agreement-weighted with two release paths: (1) a soft geometric decay (×0.9/step, half-life ~6.6 steps) that runs unconditionally every step, and (2) a hard disagree-count zero (`n_disagree ≥ 4` trits) that sets bias to 0 immediately. LP feedback is dispatched from the TriX ISR (100% accuracy on the 4-pattern set). No floating point in the mechanism path.
+The LP hidden state biases GIE gate thresholds, making the peripheral hardware compute differently based on accumulated experience. The bias is agreement-weighted with two release paths: (1) a soft geometric decay (×0.9/step, half-life ~6.6 steps) that runs unconditionally every step, and (2) a hard disagree-count zero (`n_disagree ≥ 4` trits) that sets bias to 0 immediately. **Only path (1) is exercised** — the hard-disagreement branch is not entered on any clean seed in the recorded data, so what the hardware demonstrates is graceful decay, not immediate deference. LP feedback is dispatched from the TriX ISR. No floating point in the mechanism path.
 
-**The mechanism fires but the effect is negative.** At MTFP resolution (80 trits), kinetic attention consistently degrades LP divergence: mean -5.5/80 across 3 label-free runs. The bias saturates the GIE hidden state (more neurons fire → LP input becomes more uniform → LP dot magnitudes converge). The sign-space metric (+1.3/16) incorrectly showed improvement by masking the magnitude damage. Reported as an honest negative result in the Stratum 1 paper.
+**The mechanism fires where it can reach, and does not improve the baseline.** Per-run MTFP improvement across 3 label-free runs: +0.4, −7.0, −9.8 — harmful in 2 of 3, mean −5.5 ± 5.3, t(2) = −1.80, p ≈ 0.21. At n=3 this is not statistically distinguishable from zero, and it is held to the same standard as the Hebbian result. Where the bias does act, it plausibly saturates the GIE hidden state (more neurons fire → LP input becomes more uniform → LP dot magnitudes converge); the sign-space metric (+1.3/16) showed improvement by trading magnitude diversity for sign diversity.
+
+**Two scope limits on this negative result.** Neuron group 3 never fires the gate in any condition of any run, so the bias modulates 3 of 4 pattern groups — kinetic attention was never tested on a full network. And the three conditions always run in the fixed order 14A → 14C → 14C-iso, so drift across the 6-minute sequence is confounded with condition. Reported as an honest negative result with its scope stated, in the Stratum 1 paper.
 
 **TEST 14C (transition experiment):** VDB stabilization confirmed label-free (`data/apr11_2026/t14c_labelfree_seed_a.log`). Ablation regression visible: without VDB blend, old P1 prior reasserts (gap +22→−6 by step 30). Bias releases via geometric ×0.9/step; `pred` flips at step +1 post-switch. Multi-seed supporting data: `data/apr9_2026/SUMMARY.md`.
 
@@ -129,7 +134,7 @@ Full design: [`docs/KINETIC_ATTENTION.md`](docs/KINETIC_ATTENTION.md). Paper: [`
 The research sits at three distinct levels, each targeting a different audience:
 
 **Stratum 1 — Engineering** (embedded systems venues)
-GDMA→PARLIO→PCNT as a ternary neural substrate at 430.8 Hz. NSW graph in LP SRAM at ~30 µA. Agreement-weighted gate bias. All claims silicon-verified, distillation-controlled. Papers: TEST 12/13 (potential modulation), TEST 14 (kinetic attention).
+GDMA→PARLIO→PCNT as a ternary neural substrate at 430 Hz (measured, CfC blend active). NSW graph in LP SRAM at ~30 µA. Agreement-weighted gate bias. All claims silicon-verified, distillation-controlled; see `docs/AUDIT_SEP2026.md` for the claim-to-evidence trace. Papers: TEST 12/13 (potential modulation), TEST 14 (kinetic attention).
 
 **Stratum 2 — Architecture** (computational neuroscience venues)
 Fixed-weight Complementary Learning Systems analog. VDB as permanent hippocampal layer (no consolidation path). LP CfC as fixed neocortical extractor. The structure emerged from a minimum-assumptions experiment — the CLS parallel was not designed, it was discovered. Paper: CLS architecture paper, written after TEST 14C data.

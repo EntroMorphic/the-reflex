@@ -33,7 +33,7 @@
 \maketitle
 
 \begin{abstract}
-We present a fixed-weight analog of Complementary Learning Systems (CLS) theory running on a \$0.50 microcontroller. A ternary Closed-form Continuous-time neural network (CfC) with random, non-updating weights serves as the neocortical extractor. A 64-node Navigable Small World graph serves as the hippocampal episodic store. The system classifies 4 wireless signal patterns at 100\% label-free accuracy in peripheral hardware at 430\,Hz, drawing approximately 30 microamps.
+We present a fixed-weight analog of Complementary Learning Systems (CLS) theory running on a \$0.50 microcontroller. A ternary Closed-form Continuous-time neural network (CfC) with random, non-updating weights serves as the neocortical extractor. A 64-node Navigable Small World graph serves as the hippocampal episodic store. The system classifies 4 wireless signal patterns in peripheral hardware---96--100\% label-free on windowed classification (31--32/32 across 15 runs), 90.5--96.4\% per admitted packet---at 430\,Hz with the CfC blend active, drawing approximately 30 microamps.
 
 The hippocampal layer is permanently load-bearing. We know this not because we chose not to implement consolidation, but because \textbf{we implemented it and it produced no effect.} Three iterations of Hebbian weight learning---with VDB-mismatch targets, TriX-accumulator targets, and diagnosed f-vs-g pathway selection---were tested under ablation-controlled, replicated conditions. Result: $+0.1 \pm 1.1$ Hamming at $n=3$. The neocortex does not learn from the hippocampus.
 
@@ -56,7 +56,7 @@ Unlike prior fixed-weight CLS demonstrations, we do not merely omit consolidatio
 
 Three layers, operating on genuine wireless signals from an ESP-NOW sender:
 
-\textbf{Layer 1 (GIE):} A Geometry Intersection Engine running ternary dot products at 430\,Hz on peripheral hardware (GDMA $\to$ PARLIO $\to$ PCNT loopback). Classifies wireless signals at 100\% label-free accuracy (TriX ISR, structural guarantee: $W_f[\text{hidden}] = 0$).
+\textbf{Layer 1 (GIE):} A Geometry Intersection Engine running ternary dot products on peripheral hardware (GDMA $\to$ PARLIO $\to$ PCNT loopback) at 430\,Hz with the CfC blend active. Classification runs with the blend disabled, where the ISR skips the hidden-state re-encode and the loop rate is higher but unmeasured (see Stratum~1, Limitations). Classifies wireless signals at 96--100\% label-free on windowed classification and 90.5--96.4\% per admitted packet (TriX ISR, structural guarantee: $W_f[\text{hidden}] = 0$).
 
 \textbf{Layer 2 (LP core):} A 16\,MHz RISC-V ultra-low-power core ($\sim$30\,$\mu$A) running a 16-neuron ternary CfC with fixed random weights, plus a 64-node NSW vector database storing 48-trit episodic snapshots.
 
@@ -87,6 +87,8 @@ Complementarity & Compensates limitations & VDB routes around CfC degeneracies \
 \subsection{The Measurement: MTFP Divergence}
 
 The LP CfC computes 16 integer dot products per step. The MTFP-encoded version (5 trits per dot: sign + 2 exponent + 2 mantissa) is an 80-trit vector that preserves magnitude information. Sign-space collapses the magnitudes, producing LP divergence of 1.2--2.3/16. MTFP-space preserves them, producing 8.5--9.7/80---a richer measurement that correctly identifies effects that sign-space hides.
+
+Two cautions on reading these numbers. First, 9.7/80 and 0.7/16 are Hamming counts over spaces of different dimensionality; normalized, they are 12.1\% and 4.4\% of available trits, a ratio of $\sim$2.8$\times$, not the $\sim$12$\times$ suggested by comparing the raw counts. Second, the 80-trit code is not of uniform capacity: its fifth trit is degenerate for small dot magnitudes, which is where most LP dots fall (see Stratum~1, Limitations). MTFP is the right instrument for cross-condition comparison; it is not a calibrated distance.
 
 \subsection{Causal Necessity (TEST 13)}
 
@@ -153,9 +155,11 @@ The LP CfC has 16 neurons with 48-trit random ternary weights. The Hebbian rule 
 
 The VDB feedback blend directly injects episodic content into \texttt{lp\_hidden}. It bypasses the weights entirely. \textbf{At 16 neurons with random ternary weights, direct episodic injection is more effective than weight learning for producing pattern-discriminative temporal states.}
 
-\section{Kinetic Attention: Harmful at MTFP Resolution}
+\section{Kinetic Attention: No Improvement on the Baseline}
 
-Agreement-weighted gate bias was tested under label-free conditions. Three runs of Test~14: mean MTFP improvement $-5.5$/80. The bias saturates the GIE hidden state, reducing LP dot magnitude diversity. The sign-space metric ($+1.3$/16) incorrectly showed improvement. Reported as an honest negative result.
+Agreement-weighted gate bias was tested under label-free conditions. Three runs of Test~14 gave MTFP improvements of $+0.4$, $-7.0$ and $-9.8$/80: harmful in 2 of 3 runs, mean $-5.5 \pm 5.3$, $t(2) = -1.80$, $p \approx 0.21$. At $n=3$ this is not distinguishable from zero, and we hold it to the same standard as the Hebbian result above. What the data supports is that gate bias does not improve on the VDB baseline.
+
+Where it does act, the mechanism plausibly saturates the GIE hidden state, reducing LP dot magnitude diversity---the sign-space metric ($+1.3$/16) showed improvement by trading magnitude diversity for sign diversity. Two scope limits apply: the bias never reaches neuron group~3, which does not fire the gate in any condition of any run, and the three conditions always run in the same order, so drift is confounded with condition. Reported as an honest negative result with its scope stated.
 
 \section{The Transition Experiment}
 
@@ -283,7 +287,10 @@ This suggests a condition under which consolidation fails: \textbf{when the neoc
 \item \textbf{16 neurons may be too few for consolidation.} Wider LP or MTFP-targeted learning might enable consolidation.
 \item \textbf{Four patterns, one sender.}
 \item \textbf{JTAG attached.} UART-only verification pending.
-\item \textbf{MTFP metric is nonlinear.}
+\item \textbf{MTFP metric is nonlinear,} and the ``/80'' denominator overstates its effective resolution (see Stratum~1, Limitations).
+\item \textbf{Both negative results are underpowered at $n=3$.} Neither kinetic attention nor Hebbian learning separates from zero. They support ``no improvement on the VDB baseline'' and nothing stronger.
+\item \textbf{Test~14 condition order is not counterbalanced,} so drift across the 6-minute sequence is confounded with condition.
+\item \textbf{Kinetic attention was never tested on a full network.} Neuron group~3 never fires the gate, so the bias modulates 3 of 4 pattern groups.
 \end{enumerate}
 
 \section{Conclusion}

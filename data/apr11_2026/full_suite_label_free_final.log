@@ -1,0 +1,1482 @@
+# FULL SUITE: label-free (MASK_PATTERN_ID=1 + MASK_PATTERN_ID_INPUT=1)
+# Distinct P2 payload, cycling sender, 3-rep Test 15
+# The authoritative label-free dataset
+# Captured 2026-04-11 20:39:36
+I (176) esp_image: segment 3: paddr=000d6338 vaddr=408065f0 sizeESP-ROM:esp32c6-20220919
+Build:Sep 19 2022
+rst:0x15 (USB_UART_HPSYS),boot:0x1e (SPI_FAST_FLASH_BOOT)
+Saved PC:0x40806624
+SPIWP:0xee
+mode:DIO, clock div:2
+load:0x40875730,len:0x180c
+load:0x4086c110,len:0xfac
+load:0x4086e610,len:0x3154
+entry 0x4086c11a
+I (23) boot: ESP-IDF v5.4 2nd stage bootloader
+I (23) boot: compile time Apr 11 2026 20:38:18
+I (23) boot: chip revision: v0.2
+I (24) boot: efuse block revision: v0.3
+I (24) qio_mode: Enabling default flash chip QIO
+I (24) boot.esp32c6: SPI Speed      : 80MHz
+I (24) boot.esp32c6: SPI Mode       : QIO
+I (25) boot.esp32c6: SPI Flash Size : 2MB
+I (25) boot: Enabling RNG early entropy source...
+I (25) boot: Partition Table:
+I (25) boot: ## Label            Usage          Type ST Offset   Length
+I (26) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (26) boot:  1 phy_init         RF data          01 01 0000f000 00001000
+I (27) boot:  2 factory          factory app      00 00 00010000 00100000
+I (28) boot: End of partition table
+I (28) esp_image: segment 0: paddr=00010020 vaddr=420a0020 size=21a00h (137728) map
+I (53) esp_image: segment 1: paddr=00031a28 vaddr=40800000 size=065f0h ( 26096) load
+I (59) esp_image: segment 2: paddr=00038020 vaddr=42000020 size=9e310h (647952) map
+I (176) esp_image: segment 3: paddr=000d6338 vaddr=408065f0 size=131ech ( 78316) load
+I (192) esp_image: segment 4: paddr=000e952c vaddr=408197e0 size=03c24h ( 15396) load
+I (196) esp_image: segment 5: paddr=000ed158 vaddr=50003fc0 size=0000ch (    12) load
+I (203) boot: Loaded app from partition at offset 0x10000
+I (203) boot: Disabling RNG early entropy source...
+W (213) spi_flash: Detected size(4096k) larger than the size in the binary image header(2048k). Using the size in the binary image header.
+
+============================================================
+  FREE-RUNNING SUB-CPU NEURAL NETWORK
+  + LP CORE GEOMETRIC PROCESSOR
+  GIE (441 Hz HW) → LP core (100 Hz, 16MHz RISC-V, ~30uA)
+  Three-layer hierarchy: peripheral → geometric → CPU
+============================================================
+
+[INIT] GPIO 4-7...
+[INIT] ETM clock...
+[INIT] PARLIO TX (2-bit, 20MHz, loopback)...
+[INIT] PCNT (2 units)...
+[INIT] Timer...
+[INIT] GDMA channel detection...
+[GDMA] PARLIO owns CH0
+[INIT] GDMA ISR (free-running mode)...
+[GDMA ISR] OK — CH0 (source=69), LEVEL3
+[INIT] LP core binary (16320 bytes)...
+[INIT] LP core weights (after binary load)...
+[INIT] LP seed: 0xCAFE1234
+[LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
+[INIT] ESP-NOW receiver...
+W (8376) wifi:ACK_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
+W (8376) wifi:CTS_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
+W (8377) wifi:(agc)0x600a7128:0xd20cc800, min.avgNF:0xce->0xd2(dB), RCalCount:0xcc, min.RRssi:0x800(-128.00)
+W (8377) wifi:(TB)WDEV_PWR_TB_MCS0:19
+W (8377) wifi:(TB)WDEV_PWR_TB_MCS1:19
+W (8377) wifi:(TB)WDEV_PWR_TB_MCS2:19
+W (8378) wifi:(TB)WDEV_PWR_TB_MCS3:19
+W (8378) wifi:(TB)WDEV_PWR_TB_MCS4:19
+W (8378) wifi:(TB)WDEV_PWR_TB_MCS5:19
+W (8378) wifi:(TB)WDEV_PWR_TB_MCS6:18
+W (8378) wifi:(TB)WDEV_PWR_TB_MCS7:18
+W (8378) wifi:(TB)WDEV_PWR_TB_MCS8:17
+W (8378) wifi:(TB)WDEV_PWR_TB_MCS9:15
+W (8378) wifi:(TB)WDEV_PWR_TB_MCS10:15
+W (8379) wifi:(TB)WDEV_PWR_TB_MCS11:15
+[ESPNOW] Listening on channel 1 (no AP connection)
+[INIT] Done.
+
+[PRIME] Warming pipeline...
+[PRIME] Done.
+
+-- TEST 1: Free-running loop count --
+[DIAG] 500us: agree=256 disagree=291 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x6603a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x1(eof=0 rempty=1)
+  Loops completed: 430 in 1.003 s
+  Frequency: 428.8 Hz
+  Period: 2332.1 us per loop
+  OK
+
+-- TEST 2: Hidden state evolves autonomously --
+[DIAG] 500us: agree=217 disagree=219 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  snap 0 (loop 22): energy=30
+  snap 1 (loop 43): delta=10 energy=31
+  snap 2 (loop 65): delta=1 energy=31
+  snap 3 (loop 86): delta=0 energy=31
+  snap 4 (loop 108): delta=2 energy=30
+  snap 5 (loop 129): delta=0 energy=30
+  snap 6 (loop 150): delta=0 energy=30
+  snap 7 (loop 172): delta=1 energy=31
+  final h: [-+---+-++-++--+---+0--++---++++-]
+  Total loops: 172
+  OK
+
+-- TEST 3: Per-neuron dot accuracy (single loop) --
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  After warmup: 3 loops, base=4, cnt=69
+  Snapshot at loop 4 (base=4, cnt=69)
+  Raw captures [0..11]:
+    idx  agree  disagree  d_agree  d_disagree
+    [0]      0      0        +0       +0 (dummy)
+    [1]      0      0        +0       +0 (dummy)
+    [2]      0      0        +0       +0 (dummy)
+    [3]      0      0        +0       +0 (dummy)
+    [4]      0      0        +0       +0 (dummy)
+    [5]     21     32       +21      +32 (neuron 0)
+    [6]     53     61       +32      +29
+    [7]     81     84       +28      +23
+    [8]    107    115       +26      +31
+    [9]    138    142       +31      +27
+    [10]    166    178       +28      +36
+    [11]    199    201       +33      +23
+
+  Dot errors: 0 / 64
+  Sign errors: 0 / 64
+  GIE dots[0..7]: -11 3 5 -5 4 -8 10 -16
+  CPU dots[0..7]: -11 3 5 -5 4 -8 10 -16
+  Sign match with offset 0: 64 / 64
+  Sign match with offset 1: 26 / 63
+  Sign match with offset 2: 29 / 62
+  Sign match with offset 3: 26 / 61
+  Sign match with offset 4: 20 / 60
+  OK
+
+-- TEST 4: LP Core Geometric Processor --
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  Phase 1: GIE + LP core integration (300ms)...
+  4a: LP running: YES (steps=27)
+  4c: LP hidden energy: 13/16
+  LP hidden: [--+0-++-00+--+-+]
+  LP decision: -1
+
+  Phase 2: Deterministic single-step verification...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  Known GIE hidden energy: 30/32
+  Known GIE hidden: [+-+--+-+---+-+--+++---+0-+-+-++0]
+  LP steps: 28 → 29 (delta=1)
+  4b: f-dots exact: 16/16, g-dots exact: 16/16
+  4b: f-dots sign:  14/14, g-dots sign:  11/11
+  LP  f-dots: -5 2 4 4 -2 1 2 2 0 2 -1 1 0 -4 5 -9
+  CPU f-dots: -5 2 4 4 -2 1 2 2 0 2 -1 1 0 -4 5 -9
+  LP  g-dots: 2 0 5 2 0 -3 2 0 2 2 1 0 0 -4 6 -2
+  CPU g-dots: 2 0 5 2 0 -3 2 0 2 2 1 0 0 -4 6 -2
+  OK
+
+-- TEST 5: Ternary VDB — NSW Graph (M=7), 64 Nodes --
+  5a: Inserting 64 nodes (graph-aware, cmd=3)...
+  5a: Inserted 64 nodes — OK
+
+  5b: Self-match recall@1 (64 queries)...
+  5b: 64/64 self-match recall@1 — OK
+
+  5c: Recall measurement (20 random queries)...
+    q0: LP=[35,11,48,37] CPU=[35,11,37,48]
+    q1: LP=[15,63,31,53] CPU=[15,31,63,26]
+    q2: LP=[49,61,36,25] CPU=[49,36,61,25]
+  Recall@1: 19/20 = 95%
+  Recall@4: 72/80 = 90%
+  5c: OK (thresholds: r@1>=95%, r@4>=90%)
+
+  5d: Visit count (graph vs brute-force)...
+  Graph search visited: 60 / 64 nodes
+  5d: OK (sub-linear: YES)
+
+  5e: Connectivity (BFS from node 0)...
+  Reachable from node 0: 64 / 64
+  5e: OK
+
+  5f: Latency benchmark (10 searches, N=64)...
+  Round-trip (includes LP wake jitter up to 10ms):
+    min=9277 us, max=14988 us, avg=13416 us
+  5f: OK
+
+  OK
+
+-- TEST 6: CfC -> VDB Pipeline (CMD 4) --
+  Setup: Inserting 32 vectors into VDB...
+  VDB has 32 nodes
+
+  6a: Pipeline basic operation...
+[DIAG] 500us: agree=256 disagree=291 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x6603a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  step_count: 29 -> 30 (delta=1)
+  search_count: 95 -> 96 (delta=1)
+  Pipeline return: 0
+  Top-4 results: [5,17,30,24] scores=[7,7,6,6]
+  6a: OK
+
+  6b: CfC determinism (cmd=4 vs cmd=1)...
+  cmd=1 hidden: [-0++0-+00+-00+++]
+  cmd=4 hidden: [-0++0-+00+-00+++]
+  Hidden match: YES
+  f-dots match: YES, g-dots match: YES
+  6b: OK
+
+  6c: VDB consistency (pipeline vs standalone search)...
+  Pipeline: [5,17,30,24] scores=[7,7,6,6]
+  Standalone: [5,17,30,24] scores=[7,7,6,6]
+  Results match: YES
+  6c: OK
+
+  6d: Sustained pipeline operation (10 steps)...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  Pipeline steps completed: 10 / 10
+  step_count delta: 10
+  search_count delta: 10
+  Final LP hidden: [0-+---+-+--+-0-+]
+  Final LP hidden energy: 14/16
+  6d: OK
+
+  OK
+
+-- TEST 7: Reflex Channel Coordination --
+  7a: Channel signals match loop count...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11039348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  Signals received: 50 / 50
+  Value mismatches: 0
+  Final loop_count: 51, channel value: 51, channel seq: 51
+  7a: OK
+
+  7b: Signal latency (ISR -> main loop)...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  Samples: 100
+  Latency (cycles): min=1991, max=19550, avg=2614
+  Latency (ns):     min=12443, max=122187, avg=16337
+  7b: OK
+
+  7c: Hidden state consistency after channel wait...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  Dot match: 64 / 64
+  Channel signaled: YES (seq 6 -> 7)
+  7c: OK
+
+  7d: Channel-driven LP feeding (20 cycles)...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  Channel-driven feeds: 20 / 20
+  LP step_count delta: 20
+  7d: OK
+
+  OK
+
+-- TEST 8: VDB -> CfC Feedback Loop (CMD 5) --
+  Setup: Inserting 32 vectors into VDB...
+  VDB has 32 nodes
+
+  8a: Single feedback step (cmd=5)...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11039348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  cmd=5 return: 0
+  step_count: 62 -> 63 (delta=1)
+  search_count: 108 -> 109 (delta=1)
+  fb_total_blends: 0 -> 0
+  fb_applied: 0
+  fb_source_id: 255
+  fb_score: 0
+  fb_blend_count: 0 trits modified
+  Top-4 results: [5,17,30,24] scores=[7,7,6,6]
+  LP hidden after feedback: [-0++0-+00+-00+++]
+  8a: OK
+
+  8b: Feedback observability...
+  Applied: NO (best score 0 < threshold 8)
+  This is acceptable if no stored memory is similar enough.
+  8b: OK
+
+  8c: Stability under sustained feedback (50 steps)...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+    step 0: e=10, delta=10, fb=0, score=0, src=255
+    step 10: e=13, delta=7, fb=1, score=10, src=24
+    step 20: e=9, delta=6, fb=1, score=17, src=30
+    step 30: e=11, delta=6, fb=1, score=19, src=17
+    step 40: e=9, delta=8, fb=1, score=13, src=5
+  Steps completed: 50 / 50
+  Feedback applied: 48 / 50 steps
+  Total blend operations: 48
+  Max change per step: 15 / 16 trits
+  Energy range: [7, 16] / 16
+  Unique states visited: 50
+  Final LP hidden: [+-0+-+00+0--0+-+]
+  8c: OK
+
+  8d: Feedback vs no-feedback divergence...
+    step 0: hamming distance = 0
+    step 1: hamming distance = 5
+    step 2: hamming distance = 7
+    step 3: hamming distance = 8
+    step 4: hamming distance = 7
+    step 5: hamming distance = 9
+    step 6: hamming distance = 11
+    step 7: hamming distance = 10
+    step 8: hamming distance = 10
+    step 9: hamming distance = 10
+  First divergence at step: 1
+  Steps with different states: 9 / 10
+  No-feedback final: [--+++-+--+-+-+++]
+  Feedback final   : [0+++0-++0+0-+0+0]
+  8d: OK
+
+  OK
+
+-- TEST 9: ESP-NOW Receive from Board B --
+  Listening for 10 seconds...
+  Packets received: 35
+  RSSI range: [-55, -54] dBm
+  Last pattern_id: 3, seq: 227
+  Source MAC: b4:3a:45:8a:c8:24
+  Unique patterns seen: 3/4
+  OK (35 packets in 10s)
+
+-- TEST 10: ESP-NOW -> GIE Live Input --
+  10a: Input encoding from live ESP-NOW data...
+  Input updates from ESP-NOW: 30 in 3s
+  First encoded input energy: 96 / 128 trits active
+  Input sample [0..15] RSSI: +++++++---------
+  Input sample [16..23] pattern: 00000000
+  Input sample [24..31] payload: --+--+++
+  10a: OK
+
+  10b: GIE hidden state with live ESP-NOW input...
+[DIAG] 500us: agree=256 disagree=291 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x6603a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  Static input: 430 loops, hidden energy=30
+  Live input: 439 loops, 10 input updates, hidden energy=30
+  Hamming distance (static vs live): 14 / 32
+  Static hidden: [+-+--+-----+-0-+++++-++0-+-+-++-]
+  Live hidden  : [+++--++-+0-+-++0+++------+++-+-+]
+  10b: OK
+
+  10c: Pattern-dependent hidden state trajectories...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+    window 0: pattern=0 (count=11), energy=30
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+    window 1: pattern=0 (count=10), energy=32
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x50 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+    window 2: pattern=0 (count=10), energy=28
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+    window 3: pattern=0 (count=10), energy=31
+  Cross-pattern pairs: 0, divergent: 0, max hamming: 0
+  Same-pattern pairs: 6
+  10c: OK
+
+  10d: Full stack: ESP-NOW -> GIE -> LP core...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  GIE loops: 868, LP feeds: 20, LP steps: 19
+  LP hidden energy: 14 / 16
+  LP final hidden: [-+-++-+---0-++0-]
+  10d: OK
+
+  OK
+
+-- TEST 11: Pattern Classification (Stream CfC) --
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11038348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x50 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  Phase 0a: Observing input signatures (30s)...
+  Observed: 163 packets, 163 encoded, 12885 GIE loops
+  Per-pattern counts: P0=51 P1=39 P2=22 P3=51
+  Phase 0b: Computing TriX signatures...
+  sig[0]: [+++++++---------00000000--------...] nz=96/128 (from 51 samples, seq trits masked)
+  sig[1]: [+++++++---------00000000++++++++...] nz=96/128 (from 39 samples, seq trits masked)
+  sig[2]: [+++++++---------00000000+-+-+-+-...] nz=95/128 (from 22 samples, seq trits masked)
+  sig[3]: [+++++++---------00000000+--++--+...] nz=96/128 (from 51 samples, seq trits masked)
+  Signature pattern-ID trits [16..23]:
+    sig[0][16..23]: 00000000
+    sig[1][16..23]: 00000000
+    sig[2][16..23]: 00000000
+    sig[3][16..23]: 00000000
+  Signature cross-dots:
+    sig[0] vs: s0=96 s1=68 s2=21 s3=24
+    sig[1] vs: s0=68 s1=96 s2=29 s3=12
+    sig[2] vs: s0=21 s1=29 s2=95 s3=17
+    sig[3] vs: s0=24 s1=12 s2=17 s3=96
+  Ring drops: 71
+
+  Phase 0c: Installing signatures as W_f gate weights...
+  W_f weights set from signatures (8 neurons/pattern)
+  Gate threshold: 2147483647 (Phase 3: blend DISABLED, all neurons HOLD)
+  Neurons 0-7 → pattern 0
+  Neurons 8-15 → pattern 1
+  Neurons 16-23 → pattern 2
+  Neurons 24-31 → pattern 3
+  Gate selectivity: 0 fires / 64 steps = 0%
+
+  GDMA offset calibration...
+  GDMA offset mapping: G0→P0 G1→P1 G2→P2 G3→P3
+  ISR groups:  [-2, -4, 18, 22]
+  CPU patterns: [-2, -4, 18, 22]
+
+  Phase 0d: TriX Cube face observation (15s)...
+  TriX Cube face signatures:
+    +x:recent: 125 samples [P0=51 P1=24 P2=0 P3=50]
+    -x:prior: 75 samples [P0=24 P1=0 P2=0 P3=51]
+    +y:stable: 75 samples [P0=31 P1=14 P2=0 P3=30]
+    -y:transient: 13 samples [P0=5 P1=3 P2=0 P3=5]
+    +z:confident: 0 samples [P0=0 P1=0 P2=0 P3=0]
+    -z:uncertain: 50 samples [P0=0 P1=0 P2=0 P3=50]
+  Face divergence from core (avg Hamming across patterns):
+    +x:recent: 26 avg (3 patterns with data)
+    -x:prior: 39 avg (2 patterns with data)
+    +y:stable: 24 avg (3 patterns with data)
+    -y:transient: 28 avg (3 patterns with data)
+    +z:confident: 0 avg (0 patterns with data)
+    -z:uncertain: 51 avg (1 patterns with data)
+  Ring drops: 71
+
+  Phase 1: TriX Cube ensemble (up to 32 samples, 60s)...
+    s01: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[-,-,-,-,-,-]
+    s02: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[95,95,95,95,-,95]
+    s03: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[95,95,95,95,-,95]
+    s04: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[95,95,95,95,-,95]
+    s05: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[102,102,102,102,-,102]
+    s06: truth=3 core=3 isr=3 | cv=[0,0,0,7] iv=[0,0,0,10] xor=[51,52,49,48,-,51]
+    s07: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[16,25,14,16,-,96]
+    s08: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[7,19,9,7,-,108]
+    s09: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[6,19,9,4,-,110]
+    s10: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[6,17,6,3,-,13]
+    s11: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[5,2,5,4,-,3]
+    s12: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[12,96,15,22,-,96]
+    s13: truth=1 core=1 isr=1 | cv=[0,4,0,0] iv=[0,4,0,0] xor=[9,103,11,16,-,103]
+    s14: truth=1 core=1 isr=1 | cv=[0,5,0,0] iv=[0,5,0,0] xor=[7,111,8,11,-,111]
+    s15: truth=1 core=1 isr=1 | cv=[0,5,0,0] iv=[0,5,0,0] xor=[7,111,6,11,-,111]
+    s16: truth=1 core=1 isr=1 | cv=[0,4,0,0] iv=[0,4,0,0] xor=[7,111,5,11,-,111]
+    s17: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[110,110,110,110,-,110]
+    s18: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[110,110,110,110,-,110]
+    s19: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[110,110,110,110,-,110]
+    s20: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[110,110,110,110,-,110]
+    s21: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[110,110,110,110,-,110]
+    s22: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[4,2,5,3,-,4]
+    s23: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[5,3,2,2,-,3]
+    s24: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[2,5,4,4,-,5]
+    s25: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[1,5,4,4,-,5]
+    s26: truth=0 core=0 isr=0 | cv=[8,3,0,0] iv=[8,3,0,0] xor=[4,33,1,4,-,32]
+    s27: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[7,112,2,8,-,112]
+    s28: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[7,40,2,2,-,40]
+    s29: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[7,5,2,2,-,5]
+    s30: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[2,5,4,4,-,5]
+    s31: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[2,6,5,5,-,6]
+    s32: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[110,110,110,110,-,110]
+
+  ═══ CLASSIFICATION RESULTS (TriX Cube) ═══
+  Total GIE loops: 41599
+  TriX ISR classifications: 28685 (at 664 Hz)
+  Test samples: 32
+  Ring drops: 71
+  Core (CPU per-pkt vote):   32/32 = 100%
+  ISR  (HW 430 Hz TriX):     32/32 = 100% (all samples)
+  ISR  (windows w/ data):    32/32 = 100% (276 pkts clean, 0 pkts timeout)
+  TriX channel signals:      28685 (seq=28685)
+  Baseline (packet-rate):    28/32 = 87%
+
+  ── Novelty Detection ──
+  Novel packets: 88 / 276 (31%)
+  Novel windows: 11
+
+  ── Online Maintenance ──
+  Core re-signs: 11
+  Core drift (Hamming):
+    sig[0]: 13/128 trits
+    sig[1]: 14/128 trits
+    sig[2]: 15/128 trits
+    sig[3]: 16/128 trits
+
+  ── XOR Masks (temporal displacement per face) ──
+    Face              avg  | rssi patid payload timing
+    +x:recent           19/128 |  1/16  0/8   8/64    8/40
+    -x:prior            40/128 |  4/16  0/8  22/64   13/40
+    +y:stable           19/128 |  1/16  0/8   8/64    8/40
+    -y:transient        19/128 |  1/16  0/8   8/64    9/40
+    +z:confident         -     | (no data)
+    -z:uncertain        54/128 |  7/16  0/8  31/64   15/40
+    ── Signal distribution ──
+    RSSI:    11% of mask weight
+    PatID:   0% of mask weight
+    Payload: 52% of mask weight
+    Timing:  35% of mask weight
+
+  ── TriX Cube Geometry ──
+    +x:recent: 313 samples, 31 avg hamming from core
+    -x:prior: 263 samples, 40 avg hamming from core
+    +y:stable: 263 samples, 40 avg hamming from core
+    -y:transient: 201 samples, 38 avg hamming from core
+    +z:confident: 0 samples, 0 avg hamming from core
+    -z:uncertain: 238 samples, 32 avg hamming from core
+  Gate firing: 0%
+
+  Architecture:
+  - TriX ISR: HW classifies at 430 Hz (CfC blend DISABLED — Phase 3)
+  - 7-voxel TriX Cube: core + 6 temporal faces
+  - Faces: recent, prior, stable, transient, confident, uncertain
+  - Core classifies alone. Faces compute XOR masks (intervention sensors)
+  - XOR mask = trit positions where face sig != core sig
+  - Online maintenance + novelty detection
+  - Gate threshold=2147483647, novelty=60
+  OK
+
+-- TEST 12: Memory-Modulated Adaptive Attention --
+[DIAG] 500us: agree=810 disagree=501 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x6603a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  blend re-enabled (threshold=90), VDB cleared, LP reset
+  running 120s: classify → insert snapshot → LP feedback
+
+  ── LP Hidden State by Pattern ──
+    P0: 306 samples, sign=15/16, mtfp=80/80 [-++++-++++-0++--]
+    P1: 126 samples, sign=16/16, mtfp=80/80 [-++++-++++--++--]
+    P2: 63 samples, sign=16/16, mtfp=80/80 [--+++-++++-+++--]
+    P3: 32 samples, sign=16/16, mtfp=80/80 [+--+--+++++++-++]
+
+  ── LP Divergence Matrix — sign-space (Hamming, /16) ──
+       P0  P1  P2  P3
+  P0:   0   1   2   9
+  P1:   1   0   2   9
+  P2:   2   2   0   7
+  P3:   9   9   7   0
+
+  ── LP Divergence Matrix — MTFP-space (Hamming, /80) ──
+       P0  P1  P2  P3
+  P0:   0   5   6   8
+  P1:   5   0   9  13
+  P2:   6   9   0  10
+  P3:   8  13  10   0
+  P1 vs P3: sign=9/16, mtfp=13/80
+  P1 vs P2: sign=2/16, mtfp=9/80
+
+  ── Summary ──
+  Confirmed: P0=306 P1=126 P2=63 P3=32 (total=527)
+  VDB inserts: 64 (VDB count: 64/64)
+  LP feedback steps: 527, feedback applied: 519
+  Gate firing: 9%
+  P1 vs P3 Hamming: DIVERGED (memory modulated)
+  Cross-pattern LP divergence: YES — sub-conscious state reflects pattern history
+
+  Architecture note:
+  - TriX classification unchanged (W_f hidden=0, ISR step 3b
+    runs before blend step 4 — scores are always input-driven)
+  - LP hidden = episodic memory of pattern exposure
+  - VDB retrieval shapes LP trajectory via ternary blend
+  - This closes the loop: perceive → classify → remember
+    → retrieve → modulate — without CPU or multiplication
+
+  ── Split-Half Null Test (P0, n=306) ──
+  Analytical null bound: ~1/80 MTFP trits (at n=306)
+  Cross-pattern P1-P2 MTFP: 9/80
+  SIGNAL > NULL: MTFP separation exceeds noise floor
+  Sufficient patterns: 4/4 (need >=3 with >=15 samples each)
+  OK
+
+-- TEST 13: CMD 4 Ablation (CfC only, no VDB blend) --
+[DIAG] 500us: agree=1123 disagree=170 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  CMD 4 (no VDB blend), VDB cleared, LP reset
+  running 120s: classify → feed LP → CfC step only
+
+  ── LP Hidden State by Pattern (CMD 4, no blend) ──
+    P0: 285 samples, energy=16/16 [--+++-++++-+-+--]
+    P1: 143 samples, energy=16/16 [--+++-++++---+--]
+    P2: 60 samples, energy=16/16 [--+++-++++--++--]
+    P3: 26 samples, energy=16/16 [-++++-++-+--++--]
+
+  ── LP Divergence Matrix (CMD 4 — ablation) ──
+       P0  P1  P2  P3
+  P0:   0   1   2   4
+  P1:   1   0   1   3
+  P2:   2   1   0   2
+  P3:   4   3   2   0
+
+  ── Attribution Analysis (P1 vs P2 primary pair) ──
+  CMD 5 (TEST 12) P1 vs P2 Hamming: 2
+  CMD 4 (TEST 13) P1 vs P2 Hamming: 1
+  CMD 5 (TEST 12) P1 vs P3 Hamming: 9
+  CMD 4 (TEST 13) P1 vs P3 Hamming: 3
+  VDB feedback contribution (P1 vs P2): +1 trits
+  RESULT: LP diverges without VDB (CMD 4 Hamming=1),
+          but CMD 5 produces stronger separation (+1 trits).
+          CfC integration drives baseline; VDB amplifies it.
+  Sufficient patterns: 4/4 (need >=3)
+  OK
+
+-- TEST 14: Kinetic Attention (Agreement-Weighted Gate Bias) --
+
+  ── Condition: 14A (no bias) ──
+[DIAG] 500us: agree=1247 disagree=123 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+    step 100 (21s): bias=[0 0 0 0] p=0 vdb=12
+    step 200 (42s): bias=[0 0 0 0] p=0 vdb=25
+    step 300 (63s): bias=[0 0 0 0] p=0 vdb=37
+    step 400 (85s): bias=[0 0 0 0] p=0 vdb=50
+    step 500 (107s): bias=[0 0 0 0] p=0 vdb=62
+
+  LP Hidden State (14A (no bias)):
+    P0: 320 samples, energy=16/16 [-++++-++++-+-+--]
+    P1: 146 samples, energy=16/16 [-++++-++++-+-+--]
+    P2: 61 samples, energy=16/16 [--+++-++++-+++--]
+    P3: 29 samples, energy=16/16 [-++++-++++-+-+--]
+  Confirms: 556, max_bias: 0, gate_firing: 10%, bias_duty: 0% (0/556 confirms)
+  Per-group fires: [102312 30193 37960 0]
+
+  ── Condition: 14C (full bias) ──
+[DIAG] 500us: agree=800 disagree=524 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x6603a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+    step 100 (27s): bias=[0 0 0 0] p=0 vdb=12
+    step 200 (48s): bias=[10 0 0 0] p=0 vdb=25
+    step 300 (70s): bias=[12 0 0 0] p=0 vdb=37
+    step 400 (92s): bias=[13 0 0 0] p=0 vdb=50
+    step 500 (115s): bias=[8 10 0 0] p=1 vdb=62
+
+  LP Hidden State (14C (full bias)):
+    P0: 308 samples, energy=16/16 [-++++-++++-+++--]
+    P1: 144 samples, energy=16/16 [-++++-++++--++--]
+    P2: 53 samples, energy=16/16 [-++++-++++--++--]
+    P3: 17 samples, energy=16/16 [-++++-++++-+++--]
+  Confirms: 522, max_bias: 15, gate_firing: 17%, bias_duty: 91% (477/522 confirms)
+  Per-group fires: [104736 101953 77736 0]
+
+  ── Condition: 14C-iso (bias after 60s) ──
+[DIAG] 500us: agree=793 disagree=512 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11039348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+    step 100 (24s): bias=[0 0 0 0] p=2 vdb=12
+    step 200 (45s): bias=[0 0 0 0] p=2 vdb=25
+    step 300 (66s): bias=[0 4 11 0] p=2 vdb=37
+    step 400 (85s): bias=[0 3 5 0] p=2 vdb=50
+    step 500 (107s): bias=[0 2 12 0] p=2 vdb=62
+
+  LP Hidden State (14C-iso (bias after 60s)):
+    P0: 342 samples, energy=16/16 [-++++-++++-+++--]
+    P1: 129 samples, energy=16/16 [-++++-++++-+++--]
+    P2: 61 samples, energy=16/16 [-++++-++++-+++--]
+    P3: 47 samples, energy=16/16 [-++++-++++-+++--]
+  Confirms: 579, max_bias: 15, gate_firing: 14%, bias_duty: 50% (293/579 confirms)
+  Per-group fires: [104320 57089 75864 2432]
+
+  ══ TEST 14 COMPARISON ══
+
+  LP Divergence — sign-space (14A (no bias), /16):
+       P0  P1  P2  P3
+  P0:   0   0   2   0
+  P1:   0   0   2   0
+  P2:   2   2   0   2
+  P3:   0   0   2   0
+
+  LP Divergence — sign-space (14C (full bias), /16):
+       P0  P1  P2  P3
+  P0:   0   1   1   0
+  P1:   1   0   0   1
+  P2:   1   0   0   1
+  P3:   0   1   1   0
+
+  LP Divergence — sign-space (14C-iso (bias after 60s), /16):
+       P0  P1  P2  P3
+  P0:   0   0   0   0
+  P1:   0   0   0   0
+  P2:   0   0   0   0
+  P3:   0   0   0   0
+
+  LP Divergence — MTFP-space (14A (no bias), /80):
+       P0  P1  P2  P3
+  P0:   0   3   5  14
+  P1:   3   0   4  13
+  P2:   5   4   0  11
+  P3:  14  13  11   0
+
+  LP Divergence — MTFP-space (14C (full bias), /80):
+       P0  P1  P2  P3
+  P0:   0   6  13  10
+  P1:   6   0   9  12
+  P2:  13   9   0  17
+  P3:  10  12  17   0
+
+  LP Divergence — MTFP-space (14C-iso (bias after 60s), /80):
+       P0  P1  P2  P3
+  P0:   0   9  12  15
+  P1:   9   0  10  12
+  P2:  12  10   0  14
+  P3:  15  12  14   0
+
+  Per-Pair Comparison (14C vs 14A):
+  Pair  | 14A | 14C | delta | 14C-iso | delta
+  ------|-----|-----|-------|---------|------
+  P0-P1 |   0 |   1 |  +1   |     0   |  +0
+  P0-P2 |   2 |   1 |  -1   |     0   |  -2
+  P0-P3 |   0 |   0 |  +0   |     0   |  +0
+  P1-P2 |   2 |   0 |  -2   |     0   |  -2
+  P1-P3 |   0 |   1 |  +1   |     0   |  +0
+  P2-P3 |   2 |   1 |  -1   |     0   |  -2
+  Mean  | 1.0 | 0.7 | -0.3  |   0.0   | -1.0
+
+  Per-Group Gate Fires (total across 120s):
+  Condition                  | G0       G1       G2       G3
+  --------------------------|---------------------------------------
+  14A (no bias)              | 102312   30193    37960    0
+  14C (full bias)            | 104736   101953   77736    0
+  14C-iso (bias after 60s)   | 104320   57089    75864    2432
+
+  Bias Duty Cycle:
+  14A (no bias)               0% (0/556 confirms with non-zero bias)
+  14C (full bias)             91% (477/522 confirms with non-zero bias)
+  14C-iso (bias after 60s)    50% (293/579 confirms with non-zero bias)
+
+  Confound Control — LP Divergence at t=60s:
+  14A (no bias)               mean=1.0/16 (6%)
+  14C (full bias)             mean=1.2/16 (7%)
+  14C-iso (bias after 60s)    mean=1.0/16 (6%)
+  If 14A@60s ~ 14C-iso@60s: unbiased formation confirmed
+  If 14A@60s ~ 14C@60s:     confound (maturity, not formation)
+
+  Classification Accuracy (CPU core_pred vs sender ground truth):
+  14A (no bias)               526/556 = 94.6%
+  14C (full bias)             503/522 = 96.4%
+  14C-iso (bias after 60s)    524/579 = 90.5%
+
+  Confusion Matrix — 14A (no bias) (rows=ground truth, cols=predicted):
+       P0   P1   P2   P3
+  P0:  299    0    1    0
+  P1:    6  138    0    0
+  P2:    0    6   60    0
+  P3:   15    2    0   29
+
+  Confusion Matrix — 14C (full bias) (rows=ground truth, cols=predicted):
+       P0   P1   P2   P3
+  P0:  301    0    2    3
+  P1:    6  138    0    0
+  P2:    0    6   50    0
+  P3:    1    0    1   14
+
+  Confusion Matrix — 14C-iso (bias after 60s) (rows=ground truth, cols=predicted):
+       P0   P1   P2   P3
+  P0:  303    0    0    3
+  P1:    6  117    0    0
+  P2:    0    5   60    0
+  P3:   33    7    1   44
+
+  TriX ISR vs CPU core_pred agreement:
+  14A (no bias)               533/556 = 95.9% agree
+  14C (full bias)             503/522 = 96.4% agree
+  14C-iso (bias after 60s)    546/579 = 94.3% agree
+
+  Divergence as % of maximum (16 trits):
+  14A (no bias)               mean 1.0/16 = 6%
+  14C (full bias)             mean 0.7/16 = 4%
+  14C-iso (bias after 60s)    mean 0.0/16 = 0%
+
+  ── Verdict ──
+  Gate bias activated (14C):    YES (max=15)
+  Mean Hamming 14C >= 14A:      NO (0.7 vs 1.0)
+  No catastrophic regression:   YES (worst: -2)
+  Per-group fire shift > 10%:   YES
+  Pairs 14C > 14A: 2, equal: 1, worse: 3 (of 6)
+  FAIL
+
+-- TEST 14C: CLS Transition Experiment --
+
+  ── Condition: Full (CMD5+bias) ──
+[DIAG] 500us: agree=1156 disagree=175 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  Sync: waiting for ≥60s continuous P1...
+    P1 step 100: vdb=12 p1_n=34 bias=[0 5 0 0]
+    P1 step 200: vdb=25 p1_n=66 bias=[0 7 0 0]
+    P1 step 300: vdb=37 p1_n=93 bias=[0 0 0 0]
+    P1 step 400: vdb=50 p1_n=117 bias=[0 0 0 0]
+    P1 step 500: vdb=62 p1_n=141 bias=[0 0 0 0]
+    P1 step 600: vdb=64 p1_n=165 bias=[0 0 0 0]
+    P1 step 700: vdb=64 p1_n=189 bias=[0 0 0 0]
+    P1 step 800: vdb=64 p1_n=213 bias=[0 0 0 0]
+  SKIP: no ≥60s P1 dwell in 120s. Sender not in TRANSITION_MODE.
+  TEST 14C SKIPPED — sender not in TRANSITION_MODE.
+  Rebuild sender with -DTRANSITION_MODE=1 and reflash Board B.
+  OK (skipped)
+
+-- TEST 15: Hebbian LP Weight Learning --
+   Design: 3-phase (A=60s, B=60s, C=60s) × 3 reps × 2 conditions
+   Total: 540s per condition, 1080s overall
+
+  ══ Control (CMD5 only) — Rep 1/3 ══
+
+  ── Condition: Control (CMD5 only) ──
+[DIAG] 500us: agree=710 disagree=653 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x66039348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
+    step 300 (44s): vdb=37 flips=0 p=0 gt=3
+    Phase B: control (60s)... baseline=396 confirms, VDB=49
+    step 600 (88s): vdb=64 flips=0 p=0 gt=0
+    Phase C: measuring (60s)... flips=0 updates=0
+    step 900 (133s): vdb=64 flips=0 p=0 gt=0
+    step 1200 (179s): vdb=64 flips=0 p=1 gt=1
+    Phase A (pre) divergence (/16):
+         P0  P1  P2  P3
+    P0:   0   2   1   1  (153)
+    P1:   2   0   1   3  (72)
+    P2:   1   1   0   2  (31)
+    P3:   1   3   2   0  (139)
+    Mean: 1.7
+    Phase C (post) divergence (/16):
+         P0  P1  P2  P3
+    P0:   0   1   0   0  (153)
+    P1:   1   0   1   1  (68)
+    P2:   0   1   0   0  (30)
+    P3:   0   1   0   0  (153)
+    Mean: 0.5
+    Confirms: 1204, Flips: 0, Updates: 0
+    Rep 1 result: mean=0.5/16 (6 pairs), flips=0, updates=0
+
+  ══ Control (CMD5 only) — Rep 2/3 ══
+
+  ── Condition: Control (CMD5 only) ──
+[DIAG] 500us: agree=1137 disagree=187 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x6603a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
+    step 300 (49s): vdb=37 flips=0 p=0 gt=3
+    Phase B: control (60s)... baseline=398 confirms, VDB=49
+    step 600 (93s): vdb=64 flips=0 p=2 gt=3
+    Phase C: measuring (60s)... flips=0 updates=0
+    step 900 (138s): vdb=64 flips=0 p=0 gt=0
+    Phase A (pre) divergence (/16):
+         P0  P1  P2  P3
+    P0:   0   6   5   2  (153)
+    P1:   6   0   1   4  (58)
+    P2:   5   1   0   3  (33)
+    P3:   2   4   3   0  (153)
+    Mean: 3.5
+    Phase C (post) divergence (/16):
+         P0  P1  P2  P3
+    P0:   0   0   0   0  (127)
+    P1:   0   0   0   0  (72)
+    P2:   0   0   0   0  (33)
+    P3:   0   0   0   0  (153)
+    Mean: 0.0
+    Confirms: 1173, Flips: 0, Updates: 0
+    Rep 2 result: mean=0.0/16 (6 pairs), flips=0, updates=0
+
+  ══ Control (CMD5 only) — Rep 3/3 ══
+
+  ── Condition: Control (CMD5 only) ──
+[DIAG] 500us: agree=1284 disagree=105 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x6603a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
+    step 300 (44s): vdb=37 flips=0 p=0 gt=0
+    Phase B: control (60s)... baseline=385 confirms, VDB=48
+    step 600 (89s): vdb=64 flips=0 p=1 gt=1
+    Phase C: measuring (60s)... flips=0 updates=0
+    step 900 (140s): vdb=64 flips=0 p=3 gt=3
+    Phase A (pre) divergence (/16):
+         P0  P1  P2  P3
+    P0:   0   3   5   3  (142)
+    P1:   3   0   4   0  (72)
+    P2:   5   4   0   4  (33)
+    P3:   3   0   4   0  (137)
+    Mean: 3.2
+    Phase C (post) divergence (/16):
+         P0  P1  P2  P3
+    P0:   0   2   4   0  (153)
+    P1:   2   0   3   2  (72)
+    P2:   4   3   0   4  (30)
+    P3:   0   2   4   0  (146)
+    Mean: 2.5
+    Confirms: 1168, Flips: 0, Updates: 0
+    Rep 3 result: mean=2.5/16 (6 pairs), flips=0, updates=0
+
+  ══ Hebbian (CMD5+learn) — Rep 1/3 ══
+
+  ── Condition: Hebbian (CMD5+learn) ──
+[DIAG] 500us: agree=811 disagree=474 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x6603a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
+    step 300 (45s): vdb=37 flips=0 p=3 gt=3
+    Phase B: learning (60s)... baseline=406 confirms, VDB=50
+    step 600 (90s): vdb=64 flips=43 p=0 gt=3
+    Phase C: measuring (60s)... flips=78 updates=35
+    step 900 (134s): vdb=64 flips=78 p=0 gt=0
+    step 1200 (179s): vdb=64 flips=78 p=0 gt=0
+    Phase A (pre) divergence (/16):
+         P0  P1  P2  P3
+    P0:   0   1   1   0  (153)
+    P1:   1   0   0   1  (72)
+    P2:   1   0   0   1  (27)
+    P3:   0   1   1   0  (153)
+    Mean: 0.7
+    Phase C (post) divergence (/16):
+         P0  P1  P2  P3
+    P0:   0   1   1   1  (153)
+    P1:   1   0   0   0  (58)
+    P2:   1   0   0   0  (33)
+    P3:   1   0   0   0  (153)
+    Mean: 0.5
+    Confirms: 1204, Flips: 78, Updates: 35
+    Rep 1 result: mean=0.5/16 (6 pairs), flips=78, updates=35
+
+  ══ Hebbian (CMD5+learn) — Rep 2/3 ══
+
+  ── Condition: Hebbian (CMD5+learn) ──
+[DIAG] 500us: agree=1233 disagree=117 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x66039348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
+    step 300 (48s): vdb=37 flips=0 p=2 gt=2
+    Phase B: learning (60s)... baseline=389 confirms, VDB=48
+    step 600 (95s): vdb=64 flips=52 p=3 gt=3
+    Phase C: measuring (60s)... flips=76 updates=20
+    step 900 (139s): vdb=64 flips=76 p=1 gt=3
+    Phase A (pre) divergence (/16):
+         P0  P1  P2  P3
+    P0:   0   1   0   0  (133)
+    P1:   1   0   1   1  (69)
+    P2:   0   1   0   0  (33)
+    P3:   0   1   0   0  (153)
+    Mean: 0.5
+    Phase C (post) divergence (/16):
+         P0  P1  P2  P3
+    P0:   0   1   0   1  (149)
+    P1:   1   0   1   0  (72)
+    P2:   0   1   0   1  (33)
+    P3:   1   0   1   0  (130)
+    Mean: 0.7
+    Confirms: 1156, Flips: 76, Updates: 20
+    Rep 2 result: mean=0.7/16 (6 pairs), flips=76, updates=20
+
+  ══ Hebbian (CMD5+learn) — Rep 3/3 ══
+
+  ── Condition: Hebbian (CMD5+learn) ──
+[DIAG] 500us: agree=1101 disagree=275 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x6603a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
+    step 300 (44s): vdb=37 flips=0 p=0 gt=0
+    Phase B: learning (60s)... baseline=385 confirms, VDB=48
+    step 600 (88s): vdb=64 flips=81 p=0 gt=0
+    Phase C: measuring (60s)... flips=207 updates=33
+    step 900 (133s): vdb=64 flips=207 p=1 gt=1
+    Phase A (pre) divergence (/16):
+         P0  P1  P2  P3
+    P0:   0   4   5   0  (153)
+    P1:   4   0   3   4  (72)
+    P2:   5   3   0   5  (33)
+    P3:   0   4   5   0  (126)
+    Mean: 3.5
+    Phase C (post) divergence (/16):
+         P0  P1  P2  P3
+    P0:   0   2   2   4  (153)
+    P1:   2   0   0   2  (72)
+    P2:   2   0   0   2  (28)
+    P3:   4   2   2   0  (153)
+    Mean: 2.0
+    Confirms: 1195, Flips: 207, Updates: 33
+    Rep 3 result: mean=2.0/16 (6 pairs), flips=207, updates=33
+
+  ══ TEST 15 COMPARISON (3 reps per condition) ══
+  Control (CMD5 only)       1.0 ± 1.3 /16  (reps: 0.5 0.0 2.5)
+  Hebbian (CMD5+learn)      1.1 ± 0.8 /16  (reps: 0.5 0.7 2.0)
+
+  Hebbian contribution: +0.1 ± 1.6 Hamming
+
+  ── Verdict ──
+  Hebbian > Control (mean):  YES (+0.1)
+  Exceeds noise (>1 std):    NO (+0.1 vs ±1.6)
+  FAIL
+============================================================
+  RESULTS: 14 / 16 PASSED
+============================================================
+
+  SOME TESTS FAILED — see details above.
+
+-- LP CHAR: LP Dynamics Characterization --
+   (diagnostic — not counted in pass/fail)
+  Rep 1/3:
+    P1 step   0: fires=14 blend= 0 score=  0 vdb=1
+    P1 step 100: fires=15 blend= 4 score= 28 vdb=5
+    P1 step 200: fires=14 blend= 1 score= 28 vdb=9
+    P1 step 300: fires=15 blend= 5 score= 27 vdb=13
+    P1 step 400: fires=15 blend= 4 score= 29 vdb=17
+    P1 done: vdb_nodes=20
+    P2 step  0: fires=16 blend= 8 score= 10 applied=1
+    P2 step  1: fires=15 blend= 9 score=  9 applied=1
+    P2 step  2: fires=15 blend= 9 score=  9 applied=1
+    P2 step  3: fires=15 blend= 9 score= 10 applied=1
+    P2 step  4: fires=16 blend=10 score=  8 applied=1
+    P2 step  5: fires=15 blend=10 score=  9 applied=1
+    P2 step  6: fires=16 blend=10 score=  7 applied=1
+    P2 step  7: fires=16 blend= 8 score=  9 applied=1
+    P2 step  8: fires=15 blend= 9 score=  9 applied=1
+    P2 step  9: fires=15 blend= 9 score=  9 applied=1
+    P2 step 10: fires=15 blend= 9 score= 10 applied=1
+    P2 step 11: fires=16 blend=10 score=  8 applied=1
+    P2 step 12: fires=15 blend=10 score=  9 applied=1
+    P2 step 13: fires=16 blend=10 score=  7 applied=1
+    P2 step 14: fires=16 blend= 8 score=  9 applied=1
+    P2 step 15: fires=15 blend= 9 score=  9 applied=1
+    P2 step 16: fires=15 blend= 9 score=  9 applied=1
+    P2 step 17: fires=15 blend= 9 score= 10 applied=1
+    P2 step 18: fires=16 blend=10 score=  8 applied=1
+    P2 step 19: fires=15 blend=10 score=  9 applied=1
+    P2 step 20: fires=16 blend=10 score=  7 applied=1
+    P2 step 21: fires=16 blend= 8 score=  9 applied=1
+    P2 step 22: fires=15 blend= 9 score=  9 applied=1
+    P2 step 23: fires=15 blend= 9 score=  9 applied=1
+    P2 step 24: fires=15 blend= 9 score= 10 applied=1
+    P2 step 25: fires=16 blend=10 score=  8 applied=1
+    P2 step 26: fires=15 blend=10 score=  9 applied=1
+    P2 step 27: fires=16 blend=10 score=  7 applied=1
+    P2 step 28: fires=16 blend= 8 score=  9 applied=1
+    P2 step 29: fires=15 blend= 9 score=  9 applied=1
+    P2 step 30: fires=15 blend= 9 score=  9 applied=1
+    P2 step 31: fires=15 blend= 9 score= 10 applied=1
+    P2 step 32: fires=16 blend=10 score=  8 applied=1
+    P2 step 33: fires=15 blend=10 score=  9 applied=1
+    P2 step 34: fires=16 blend=10 score=  7 applied=1
+    P2 step 35: fires=16 blend= 8 score=  9 applied=1
+    P2 step 36: fires=15 blend= 9 score=  9 applied=1
+    P2 step 37: fires=15 blend= 9 score=  9 applied=1
+    P2 step 38: fires=15 blend= 9 score= 10 applied=1
+    P2 step 39: fires=16 blend=10 score=  8 applied=1
+    P2 step 40: fires=15 blend=10 score=  9 applied=1
+    P2 step 41: fires=16 blend=10 score=  7 applied=1
+    P2 step 42: fires=16 blend= 8 score=  9 applied=1
+    P2 step 43: fires=15 blend= 9 score=  9 applied=1
+    P2 step 44: fires=15 blend= 9 score=  9 applied=1
+    P2 step 45: fires=15 blend= 9 score= 10 applied=1
+    P2 step 46: fires=16 blend=10 score=  8 applied=1
+    P2 step 47: fires=15 blend=10 score=  9 applied=1
+    P2 step 48: fires=16 blend=10 score=  7 applied=1
+    P2 step 49: fires=16 blend= 8 score=  9 applied=1
+    P2 step 50: fires=15 blend= 9 score=  9 applied=1
+    P2 step 51: fires=15 blend= 9 score=  9 applied=1
+    P2 step 52: fires=15 blend= 9 score= 10 applied=1
+    P2 step 53: fires=16 blend=10 score=  8 applied=1
+    P2 step 54: fires=15 blend=10 score=  9 applied=1
+    P2 step 55: fires=16 blend=10 score=  7 applied=1
+    P2 step 56: fires=16 blend= 8 score=  9 applied=1
+    P2 step 57: fires=15 blend= 9 score=  9 applied=1
+    P2 step 58: fires=15 blend= 9 score=  9 applied=1
+    P2 step 59: fires=15 blend= 9 score= 10 applied=1
+    P2 step 60: fires=16 blend=10 score=  8 applied=1
+    P2 step 61: fires=15 blend=10 score=  9 applied=1
+    P2 step 62: fires=16 blend=10 score=  7 applied=1
+    P2 step 63: fires=16 blend= 8 score=  9 applied=1
+    P2 step 64: fires=15 blend= 9 score=  9 applied=1
+    P2 step 65: fires=15 blend= 9 score=  9 applied=1
+    P2 step 66: fires=15 blend= 9 score= 10 applied=1
+    P2 step 67: fires=16 blend=10 score=  8 applied=1
+    P2 step 68: fires=15 blend=10 score=  9 applied=1
+    P2 step 69: fires=16 blend=10 score=  7 applied=1
+    P2 step 70: fires=16 blend= 8 score=  9 applied=1
+    P2 step 71: fires=15 blend= 9 score=  9 applied=1
+    P2 step 72: fires=15 blend= 9 score=  9 applied=1
+    P2 step 73: fires=15 blend= 9 score= 10 applied=1
+    P2 step 74: fires=16 blend=10 score=  8 applied=1
+    P2 step 75: fires=15 blend=10 score=  9 applied=1
+    P2 step 76: fires=16 blend=10 score=  7 applied=1
+    P2 step 77: fires=16 blend= 8 score=  9 applied=1
+    P2 step 78: fires=15 blend= 9 score=  9 applied=1
+    P2 step 79: fires=15 blend= 9 score=  9 applied=1
+    P2 step 80: fires=15 blend= 9 score= 10 applied=1
+    P2 step 81: fires=16 blend=10 score=  8 applied=1
+    P2 step 82: fires=15 blend=10 score=  9 applied=1
+    P2 step 83: fires=16 blend=10 score=  7 applied=1
+    P2 step 84: fires=16 blend= 8 score=  9 applied=1
+    P2 step 85: fires=15 blend= 9 score=  9 applied=1
+    P2 step 86: fires=15 blend= 9 score=  9 applied=1
+    P2 step 87: fires=15 blend= 9 score= 10 applied=1
+    P2 step 88: fires=16 blend=10 score=  8 applied=1
+    P2 step 89: fires=15 blend=10 score=  9 applied=1
+    P2 step 90: fires=16 blend=10 score=  7 applied=1
+    P2 step 91: fires=16 blend= 8 score=  9 applied=1
+    P2 step 92: fires=15 blend= 9 score=  9 applied=1
+    P2 step 93: fires=15 blend= 9 score=  9 applied=1
+    P2 step 94: fires=15 blend= 9 score= 10 applied=1
+    P2 step 95: fires=16 blend=10 score=  8 applied=1
+    P2 step 96: fires=15 blend=10 score=  9 applied=1
+    P2 step 97: fires=16 blend=10 score=  7 applied=1
+    P2 step 98: fires=16 blend= 8 score=  9 applied=1
+    P2 step 99: fires=15 blend= 9 score=  9 applied=1
+    P1 mean: fires/step=14.0  blend/step=4.1  implied_alpha=0.255
+    P2 mean: fires/step=15.4  blend/step=9.3  implied_alpha=0.579
+
+  Rep 2/3:
+    P1 step   0: fires=14 blend= 0 score=  0 vdb=1
+    P1 step 100: fires=15 blend= 4 score= 28 vdb=5
+    P1 step 200: fires=14 blend= 1 score= 28 vdb=9
+    P1 step 300: fires=15 blend= 5 score= 27 vdb=13
+    P1 step 400: fires=15 blend= 4 score= 29 vdb=17
+    P1 done: vdb_nodes=20
+    P2 step  0: fires=16 blend= 8 score= 10 applied=1
+    P2 step  1: fires=15 blend= 9 score=  9 applied=1
+    P2 step  2: fires=15 blend= 9 score=  9 applied=1
+    P2 step  3: fires=15 blend= 9 score= 10 applied=1
+    P2 step  4: fires=16 blend=10 score=  8 applied=1
+    P2 step  5: fires=15 blend=10 score=  9 applied=1
+    P2 step  6: fires=16 blend=10 score=  7 applied=1
+    P2 step  7: fires=16 blend= 8 score=  9 applied=1
+    P2 step  8: fires=15 blend= 9 score=  9 applied=1
+    P2 step  9: fires=15 blend= 9 score=  9 applied=1
+    P2 step 10: fires=15 blend= 9 score= 10 applied=1
+    P2 step 11: fires=16 blend=10 score=  8 applied=1
+    P2 step 12: fires=15 blend=10 score=  9 applied=1
+    P2 step 13: fires=16 blend=10 score=  7 applied=1
+    P2 step 14: fires=16 blend= 8 score=  9 applied=1
+    P2 step 15: fires=15 blend= 9 score=  9 applied=1
+    P2 step 16: fires=15 blend= 9 score=  9 applied=1
+    P2 step 17: fires=15 blend= 9 score= 10 applied=1
+    P2 step 18: fires=16 blend=10 score=  8 applied=1
+    P2 step 19: fires=15 blend=10 score=  9 applied=1
+    P2 step 20: fires=16 blend=10 score=  7 applied=1
+    P2 step 21: fires=16 blend= 8 score=  9 applied=1
+    P2 step 22: fires=15 blend= 9 score=  9 applied=1
+    P2 step 23: fires=15 blend= 9 score=  9 applied=1
+    P2 step 24: fires=15 blend= 9 score= 10 applied=1
+    P2 step 25: fires=16 blend=10 score=  8 applied=1
+    P2 step 26: fires=15 blend=10 score=  9 applied=1
+    P2 step 27: fires=16 blend=10 score=  7 applied=1
+    P2 step 28: fires=16 blend= 8 score=  9 applied=1
+    P2 step 29: fires=15 blend= 9 score=  9 applied=1
+    P2 step 30: fires=15 blend= 9 score=  9 applied=1
+    P2 step 31: fires=15 blend= 9 score= 10 applied=1
+    P2 step 32: fires=16 blend=10 score=  8 applied=1
+    P2 step 33: fires=15 blend=10 score=  9 applied=1
+    P2 step 34: fires=16 blend=10 score=  7 applied=1
+    P2 step 35: fires=16 blend= 8 score=  9 applied=1
+    P2 step 36: fires=15 blend= 9 score=  9 applied=1
+    P2 step 37: fires=15 blend= 9 score=  9 applied=1
+    P2 step 38: fires=15 blend= 9 score= 10 applied=1
+    P2 step 39: fires=16 blend=10 score=  8 applied=1
+    P2 step 40: fires=15 blend=10 score=  9 applied=1
+    P2 step 41: fires=16 blend=10 score=  7 applied=1
+    P2 step 42: fires=16 blend= 8 score=  9 applied=1
+    P2 step 43: fires=15 blend= 9 score=  9 applied=1
+    P2 step 44: fires=15 blend= 9 score=  9 applied=1
+    P2 step 45: fires=15 blend= 9 score= 10 applied=1
+    P2 step 46: fires=16 blend=10 score=  8 applied=1
+    P2 step 47: fires=15 blend=10 score=  9 applied=1
+    P2 step 48: fires=16 blend=10 score=  7 applied=1
+    P2 step 49: fires=16 blend= 8 score=  9 applied=1
+    P2 step 50: fires=15 blend= 9 score=  9 applied=1
+    P2 step 51: fires=15 blend= 9 score=  9 applied=1
+    P2 step 52: fires=15 blend= 9 score= 10 applied=1
+    P2 step 53: fires=16 blend=10 score=  8 applied=1
+    P2 step 54: fires=15 blend=10 score=  9 applied=1
+    P2 step 55: fires=16 blend=10 score=  7 applied=1
+    P2 step 56: fires=16 blend= 8 score=  9 applied=1
+    P2 step 57: fires=15 blend= 9 score=  9 applied=1
+    P2 step 58: fires=15 blend= 9 score=  9 applied=1
+    P2 step 59: fires=15 blend= 9 score= 10 applied=1
+    P2 step 60: fires=16 blend=10 score=  8 applied=1
+    P2 step 61: fires=15 blend=10 score=  9 applied=1
+    P2 step 62: fires=16 blend=10 score=  7 applied=1
+    P2 step 63: fires=16 blend= 8 score=  9 applied=1
+    P2 step 64: fires=15 blend= 9 score=  9 applied=1
+    P2 step 65: fires=15 blend= 9 score=  9 applied=1
+    P2 step 66: fires=15 blend= 9 score= 10 applied=1
+    P2 step 67: fires=16 blend=10 score=  8 applied=1
+    P2 step 68: fires=15 blend=10 score=  9 applied=1
+    P2 step 69: fires=16 blend=10 score=  7 applied=1
+    P2 step 70: fires=16 blend= 8 score=  9 applied=1
+    P2 step 71: fires=15 blend= 9 score=  9 applied=1
+    P2 step 72: fires=15 blend= 9 score=  9 applied=1
+    P2 step 73: fires=15 blend= 9 score= 10 applied=1
+    P2 step 74: fires=16 blend=10 score=  8 applied=1
+    P2 step 75: fires=15 blend=10 score=  9 applied=1
+    P2 step 76: fires=16 blend=10 score=  7 applied=1
+    P2 step 77: fires=16 blend= 8 score=  9 applied=1
+    P2 step 78: fires=15 blend= 9 score=  9 applied=1
+    P2 step 79: fires=15 blend= 9 score=  9 applied=1
+    P2 step 80: fires=15 blend= 9 score= 10 applied=1
+    P2 step 81: fires=16 blend=10 score=  8 applied=1
+    P2 step 82: fires=15 blend=10 score=  9 applied=1
+    P2 step 83: fires=16 blend=10 score=  7 applied=1
+    P2 step 84: fires=16 blend= 8 score=  9 applied=1
+    P2 step 85: fires=15 blend= 9 score=  9 applied=1
+    P2 step 86: fires=15 blend= 9 score=  9 applied=1
+    P2 step 87: fires=15 blend= 9 score= 10 applied=1
+    P2 step 88: fires=16 blend=10 score=  8 applied=1
+    P2 step 89: fires=15 blend=10 score=  9 applied=1
+    P2 step 90: fires=16 blend=10 score=  7 applied=1
+    P2 step 91: fires=16 blend= 8 score=  9 applied=1
+    P2 step 92: fires=15 blend= 9 score=  9 applied=1
+    P2 step 93: fires=15 blend= 9 score=  9 applied=1
+    P2 step 94: fires=15 blend= 9 score= 10 applied=1
+    P2 step 95: fires=16 blend=10 score=  8 applied=1
+    P2 step 96: fires=15 blend=10 score=  9 applied=1
+    P2 step 97: fires=16 blend=10 score=  7 applied=1
+    P2 step 98: fires=16 blend= 8 score=  9 applied=1
+    P2 step 99: fires=15 blend= 9 score=  9 applied=1
+    P1 mean: fires/step=14.0  blend/step=4.1  implied_alpha=0.255
+    P2 mean: fires/step=15.4  blend/step=9.3  implied_alpha=0.579
+
+  Rep 3/3:
+    P1 step   0: fires=14 blend= 0 score=  0 vdb=1
+    P1 step 100: fires=15 blend= 4 score= 28 vdb=5
+    P1 step 200: fires=14 blend= 1 score= 28 vdb=9
+    P1 step 300: fires=15 blend= 5 score= 27 vdb=13
+    P1 step 400: fires=15 blend= 4 score= 29 vdb=17
+    P1 done: vdb_nodes=20
+    P2 step  0: fires=16 blend= 8 score= 10 applied=1
+    P2 step  1: fires=15 blend= 9 score=  9 applied=1
+    P2 step  2: fires=15 blend= 9 score=  9 applied=1
+    P2 step  3: fires=15 blend= 9 score= 10 applied=1
+    P2 step  4: fires=16 blend=10 score=  8 applied=1
+    P2 step  5: fires=15 blend=10 score=  9 applied=1
+    P2 step  6: fires=16 blend=10 score=  7 applied=1
+    P2 step  7: fires=16 blend= 8 score=  9 applied=1
+    P2 step  8: fires=15 blend= 9 score=  9 applied=1
+    P2 step  9: fires=15 blend= 9 score=  9 applied=1
+    P2 step 10: fires=15 blend= 9 score= 10 applied=1
+    P2 step 11: fires=16 blend=10 score=  8 applied=1
+    P2 step 12: fires=15 blend=10 score=  9 applied=1
+    P2 step 13: fires=16 blend=10 score=  7 applied=1
+    P2 step 14: fires=16 blend= 8 score=  9 applied=1
+    P2 step 15: fires=15 blend= 9 score=  9 applied=1
+    P2 step 16: fires=15 blend= 9 score=  9 applied=1
+    P2 step 17: fires=15 blend= 9 score= 10 applied=1
+    P2 step 18: fires=16 blend=10 score=  8 applied=1
+    P2 step 19: fires=15 blend=10 score=  9 applied=1
+    P2 step 20: fires=16 blend=10 score=  7 applied=1
+    P2 step 21: fires=16 blend= 8 score=  9 applied=1
+    P2 step 22: fires=15 blend= 9 score=  9 applied=1
+    P2 step 23: fires=15 blend= 9 score=  9 applied=1
+    P2 step 24: fires=15 blend= 9 score= 10 applied=1
+    P2 step 25: fires=16 blend=10 score=  8 applied=1
+    P2 step 26: fires=15 blend=10 score=  9 applied=1
+    P2 step 27: fires=16 blend=10 score=  7 applied=1
+    P2 step 28: fires=16 blend= 8 score=  9 applied=1
+    P2 step 29: fires=15 blend= 9 score=  9 applied=1
+    P2 step 30: fires=15 blend= 9 score=  9 applied=1
+    P2 step 31: fires=15 blend= 9 score= 10 applied=1
+    P2 step 32: fires=16 blend=10 score=  8 applied=1
+    P2 step 33: fires=15 blend=10 score=  9 applied=1
+    P2 step 34: fires=16 blend=10 score=  7 applied=1
+    P2 step 35: fires=16 blend= 8 score=  9 applied=1
+    P2 step 36: fires=15 blend= 9 score=  9 applied=1
+    P2 step 37: fires=15 blend= 9 score=  9 applied=1
+    P2 step 38: fires=15 blend= 9 score= 10 applied=1
+    P2 step 39: fires=16 blend=10 score=  8 applied=1
+    P2 step 40: fires=15 blend=10 score=  9 applied=1
+    P2 step 41: fires=16 blend=10 score=  7 applied=1
+    P2 step 42: fires=16 blend= 8 score=  9 applied=1
+    P2 step 43: fires=15 blend= 9 score=  9 applied=1
+    P2 step 44: fires=15 blend= 9 score=  9 applied=1
+    P2 step 45: fires=15 blend= 9 score= 10 applied=1
+    P2 step 46: fires=16 blend=10 score=  8 applied=1
+    P2 step 47: fires=15 blend=10 score=  9 applied=1
+    P2 step 48: fires=16 blend=10 score=  7 applied=1
+    P2 step 49: fires=16 blend= 8 score=  9 applied=1
+    P2 step 50: fires=15 blend= 9 score=  9 applied=1
+    P2 step 51: fires=15 blend= 9 score=  9 applied=1
+    P2 step 52: fires=15 blend= 9 score= 10 applied=1
+    P2 step 53: fires=16 blend=10 score=  8 applied=1
+    P2 step 54: fires=15 blend=10 score=  9 applied=1
+    P2 step 55: fires=16 blend=10 score=  7 applied=1
+    P2 step 56: fires=16 blend= 8 score=  9 applied=1
+    P2 step 57: fires=15 blend= 9 score=  9 applied=1
+    P2 step 58: fires=15 blend= 9 score=  9 applied=1
+    P2 step 59: fires=15 blend= 9 score= 10 applied=1
+    P2 step 60: fires=16 blend=10 score=  8 applied=1
+    P2 step 61: fires=15 blend=10 score=  9 applied=1
+    P2 step 62: fires=16 blend=10 score=  7 applied=1
+    P2 step 63: fires=16 blend= 8 score=  9 applied=1
+    P2 step 64: fires=15 blend= 9 score=  9 applied=1
+    P2 step 65: fires=15 blend= 9 score=  9 applied=1
+    P2 step 66: fires=15 blend= 9 score= 10 applied=1
+    P2 step 67: fires=16 blend=10 score=  8 applied=1
+    P2 step 68: fires=15 blend=10 score=  9 applied=1
+    P2 step 69: fires=16 blend=10 score=  7 applied=1
+    P2 step 70: fires=16 blend= 8 score=  9 applied=1
+    P2 step 71: fires=15 blend= 9 score=  9 applied=1
+    P2 step 72: fires=15 blend= 9 score=  9 applied=1
+    P2 step 73: fires=15 blend= 9 score= 10 applied=1
+    P2 step 74: fires=16 blend=10 score=  8 applied=1
+    P2 step 75: fires=15 blend=10 score=  9 applied=1
+    P2 step 76: fires=16 blend=10 score=  7 applied=1
+    P2 step 77: fires=16 blend= 8 score=  9 applied=1
+    P2 step 78: fires=15 blend= 9 score=  9 applied=1
+    P2 step 79: fires=15 blend= 9 score=  9 applied=1
+    P2 step 80: fires=15 blend= 9 score= 10 applied=1
+    P2 step 81: fires=16 blend=10 score=  8 applied=1
+    P2 step 82: fires=15 blend=10 score=  9 applied=1
+    P2 step 83: fires=16 blend=10 score=  7 applied=1
+    P2 step 84: fires=16 blend= 8 score=  9 applied=1
+    P2 step 85: fires=15 blend= 9 score=  9 applied=1
+    P2 step 86: fires=15 blend= 9 score=  9 applied=1
+    P2 step 87: fires=15 blend= 9 score= 10 applied=1
+    P2 step 88: fires=16 blend=10 score=  8 applied=1
+    P2 step 89: fires=15 blend=10 score=  9 applied=1
+    P2 step 90: fires=16 blend=10 score=  7 applied=1
+    P2 step 91: fires=16 blend= 8 score=  9 applied=1
+    P2 step 92: fires=15 blend= 9 score=  9 applied=1
+    P2 step 93: fires=15 blend= 9 score=  9 applied=1
+    P2 step 94: fires=15 blend= 9 score= 10 applied=1
+    P2 step 95: fires=16 blend=10 score=  8 applied=1
+    P2 step 96: fires=15 blend=10 score=  9 applied=1
+    P2 step 97: fires=16 blend=10 score=  7 applied=1
+    P2 step 98: fires=16 blend= 8 score=  9 applied=1
+    P2 step 99: fires=15 blend= 9 score=  9 applied=1
+    P1 mean: fires/step=14.0  blend/step=4.1  implied_alpha=0.255
+    P2 mean: fires/step=15.4  blend/step=9.3  implied_alpha=0.579
+
+  Switch window (rep 3, last 20 P1 → first 30 P2):
+  step | fires | blend | score | appl | lp_hidden
+  -----|-------|-------|-------|------|----------
+   -20 |    14 |     4 |    29 |    1 | --+++++--++00++-
+   -19 |    15 |     6 |    29 |    1 | --0++++0-0++0++0
+   -18 |    13 |     5 |    26 |    1 | 0-+++++0-+++-++-
+   -17 |    14 |     4 |    29 |    1 | --+++++--++00++-
+   -16 |    15 |     6 |    29 |    1 | --0++++0-0++0++0
+   -15 |    13 |     5 |    26 |    1 | 0-+++++0-+++-++-
+   -14 |    14 |     4 |    29 |    1 | --+++++--++00++-
+   -13 |    15 |     6 |    29 |    1 | --0++++0-0++0++0
+   -12 |    13 |     5 |    26 |    1 | 0-+++++0-+++-++-
+   -11 |    14 |     4 |    29 |    1 | --+++++--++00++-
+   -10 |    15 |     6 |    29 |    1 | --0++++0-0++0++0
+    -9 |    13 |     5 |    26 |    1 | 0-+++++0-+++-++-
+    -8 |    14 |     4 |    29 |    1 | --+++++--++00++-
+    -7 |    15 |     6 |    29 |    1 | --0++++0-0++0++0
+    -6 |    13 |     5 |    26 |    1 | 0-+++++0-+++-++-
+    -5 |    14 |     4 |    29 |    1 | --+++++--++00++-
+    -4 |    15 |     6 |    29 |    1 | --0++++0-0++0++0
+    -3 |    13 |     5 |    26 |    1 | 0-+++++0-+++-++-
+    -2 |    14 |     4 |    29 |    1 | --+++++--++00++-
+    -1 |    15 |     6 |    29 |    1 | --0++++0-0++0++0
+    +0 |    16 |     8 |    10 |    1 | --+0++00-+000++-
+    +1 |    15 |     9 |     9 |    1 | --+0++0--0000++-
+    +2 |    15 |     9 |     9 |    1 | --+0++0--0+00++-
+    +3 |    15 |     9 |    10 |    1 | 0-+0++0--+000++0
+    +4 |    16 |    10 |     8 |    1 | -0+0++0--+000++-
+    +5 |    15 |    10 |     9 |    1 | 0-+0++00-0000++-
+    +6 |    16 |    10 |     7 |    1 | --+0++00-++00++0
+    +7 |    16 |     8 |     9 |    1 | --+0++00-+000++-
+    +8 |    15 |     9 |     9 |    1 | --+0++0--0000++-
+    +9 |    15 |     9 |     9 |    1 | --+0++0--0+00++-
+   +10 |    15 |     9 |    10 |    1 | 0-+0++0--+000++0
+   +11 |    16 |    10 |     8 |    1 | -0+0++0--+000++-
+   +12 |    15 |    10 |     9 |    1 | 0-+0++00-0000++-
+   +13 |    16 |    10 |     7 |    1 | --+0++00-++00++0
+   +14 |    16 |     8 |     9 |    1 | --+0++00-+000++-
+   +15 |    15 |     9 |     9 |    1 | --+0++0--0000++-
+   +16 |    15 |     9 |     9 |    1 | --+0++0--0+00++-
+   +17 |    15 |     9 |    10 |    1 | 0-+0++0--+000++0
+   +18 |    16 |    10 |     8 |    1 | -0+0++0--+000++-
+   +19 |    15 |    10 |     9 |    1 | 0-+0++00-0000++-
+   +20 |    16 |    10 |     7 |    1 | --+0++00-++00++0
+   +21 |    16 |     8 |     9 |    1 | --+0++00-+000++-
+   +22 |    15 |     9 |     9 |    1 | --+0++0--0000++-
+   +23 |    15 |     9 |     9 |    1 | --+0++0--0+00++-
+   +24 |    15 |     9 |    10 |    1 | 0-+0++0--+000++0
+   +25 |    16 |    10 |     8 |    1 | -0+0++0--+000++-
+   +26 |    15 |    10 |     9 |    1 | 0-+0++00-0000++-
+   +27 |    16 |    10 |     7 |    1 | --+0++00-++00++0
+   +28 |    16 |     8 |     9 |    1 | --+0++00-+000++-
+   +29 |    15 |     9 |     9 |    1 | --+0++0--0000++-
+
+  SUMMARY (3 reps, P1=500 steps, P2=100 steps):
+  P1 steady: fires/step=14.0  blend/step=4.1  implied_alpha=0.255
+  P2 phase:  fires/step=15.4  blend/step=9.3  implied_alpha=0.579
+  REGIME: Path A dominant (CfC fires > 2/step)
+  Sim calibration: LP_SIM_THRESHOLD should match Path A threshold; BLEND_ALPHA = 0.255
+
+
+── LP DOT MAGNITUDE DIAGNOSTIC ──
+  (CPU reference, not LP core)
+
+  LP f-pathway dots (per neuron, 4 patterns):
+        n00 n01 n02 n03 n04 n05 n06 n07 n08 n09 n10 n11 n12 n13 n14 n15
+  P0:   -5  -2  -5  +4  +0  +8  +2  +1  -4  -2  -7  -3  +5  -2  +5  +2
+  P1:   -1  -6  -5  +4  +8  +4  +4  -1 -10  +2  -1  +1  +1 -10  +3  -2
+  P2:   -3  -4  -3  +4  +4  +4  +2  +1  -6  -2  -3  -3  +3  -6  +9  +0
+  P3:   -3  -5  -6  +5  +5  +2  +3  +1  -9  -2  -5  -1  +3  -7  +4  +6
+
+  LP f-pathway SIGNS:
+         n00  n01  n02  n03  n04  n05  n06  n07  n08  n09  n10  n11  n12  n13  n14  n15
+  P0:    -    -    -    +    0    +    +    +    -    -    -    -    +    -    +    +
+  P1:    -    -    -    +    +    +    +    -    -    +    -    +    +    -    +    -
+  P2:    -    -    -    +    +    +    +    +    -    -    -    -    +    -    +    0
+  P3:    -    -    -    +    +    +    +    +    -    -    -    -    +    -    +    +
+
+  P1 vs P2 comparison (f-pathway):
+    n00: P1= -1 P2= -3  sign=SAME  |mag_diff|=2
+    n01: P1= -6 P2= -4  sign=SAME  |mag_diff|=2
+    n02: P1= -5 P2= -3  sign=SAME  |mag_diff|=2
+    n03: P1= +4 P2= +4  sign=SAME  |mag_diff|=0
+    n04: P1= +8 P2= +4  sign=SAME  |mag_diff|=4
+    n05: P1= +4 P2= +4  sign=SAME  |mag_diff|=0
+    n06: P1= +4 P2= +2  sign=SAME  |mag_diff|=2
+    n07: P1= -1 P2= +1  sign=DIFF  |mag_diff|=0
+    n08: P1=-10 P2= -6  sign=SAME  |mag_diff|=4
+    n09: P1= +2 P2= -2  sign=DIFF  |mag_diff|=0
+    n10: P1= -1 P2= -3  sign=SAME  |mag_diff|=2
+    n11: P1= +1 P2= -3  sign=DIFF  |mag_diff|=2
+    n12: P1= +1 P2= +3  sign=SAME  |mag_diff|=2
+    n13: P1=-10 P2= -6  sign=SAME  |mag_diff|=4
+    n14: P1= +3 P2= +9  sign=SAME  |mag_diff|=6
+    n15: P1= -2 P2= +0  sign=DIFF  |mag_diff|=2
+  Signs: 12 same, 4 different
+  Mean |magnitude difference|: 2.1
+  If signs are mostly SAME but magnitudes differ:
+    → 5-trit MTFP per neuron would resolve the degeneracy
+  If signs AND magnitudes are similar:
+    → need more projection directions (wider LP)
+

@@ -1,0 +1,421 @@
+# Seed B = 0xDEAD5678, label-free, SKIP_TO_14
+# Captured 2026-04-12 11:45:58
+I (164) esp_image: segment 3: paddr=000c6fcc vaddr=408012a0 sizeESP-ROM:esp32c6-20220919
+Build:Sep 19 2022
+rst:0x15 (USB_UART_HPSYS),boot:0x1e (SPI_FAST_FLASH_BOOT)
+Saved PC:0x4200ae20
+SPIWP:0xee
+mode:DIO, clock div:2
+load:0x40875730,len:0x180c
+load:0x4086c110,len:0xfac
+load:0x4086e610,len:0x3154
+entry 0x4086c11a
+I (23) boot: ESP-IDF v5.4 2nd stage bootloader
+I (23) boot: compile time Apr 12 2026 11:43:53
+I (23) boot: chip revision: v0.2
+I (24) boot: efuse block revision: v0.3
+I (24) qio_mode: Enabling default flash chip QIO
+I (24) boot.esp32c6: SPI Speed      : 80MHz
+I (24) boot.esp32c6: SPI Mode       : QIO
+I (25) boot.esp32c6: SPI Flash Size : 2MB
+I (25) boot: Enabling RNG early entropy source...
+I (25) boot: Partition Table:
+I (25) boot: ## Label            Usage          Type ST Offset   Length
+I (26) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (26) boot:  1 phy_init         RF data          01 01 0000f000 00001000
+I (27) boot:  2 factory          factory app      00 00 00010000 00100000
+I (28) boot: End of partition table
+I (28) esp_image: segment 0: paddr=00010020 vaddr=42098020 size=1ed50h (126288) map
+I (51) esp_image: segment 1: paddr=0002ed78 vaddr=40800000 size=012a0h (  4768) load
+I (53) esp_image: segment 2: paddr=00030020 vaddr=42000020 size=96fa4h (618404) map
+I (164) esp_image: segment 3: paddr=000c6fcc vaddr=408012a0 size=1853ch ( 99644) load
+I (185) esp_image: segment 4: paddr=000df510 vaddr=408197e0 size=03c1ch ( 15388) load
+I (189) esp_image: segment 5: paddr=000e3134 vaddr=50003fc0 size=0000ch (    12) load
+I (196) boot: Loaded app from partition at offset 0x10000
+I (196) boot: Disabling RNG early entropy source...
+W (206) spi_flash: Detected size(4096k) larger than the size in the binary image header(2048k). Using the size in the binary image header.
+
+============================================================
+  FREE-RUNNING SUB-CPU NEURAL NETWORK
+  + LP CORE GEOMETRIC PROCESSOR
+  GIE (441 Hz HW) → LP core (100 Hz, 16MHz RISC-V, ~30uA)
+  Three-layer hierarchy: peripheral → geometric → CPU
+============================================================
+
+[INIT] GPIO 4-7...
+[INIT] ETM clock...
+[INIT] PARLIO TX (2-bit, 20MHz, loopback)...
+[INIT] PCNT (2 units)...
+[INIT] Timer...
+[INIT] GDMA channel detection...
+[GDMA] PARLIO owns CH0
+[INIT] GDMA ISR (free-running mode)...
+[GDMA ISR] OK — CH0 (source=69), LEVEL3
+[INIT] LP core binary (16320 bytes)...
+[INIT] LP core weights (after binary load)...
+[INIT] LP seed: 0xDEAD5678
+[LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
+[INIT] ESP-NOW receiver...
+W (8368) wifi:ACK_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
+W (8368) wifi:CTS_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
+W (8368) wifi:(agc)0x600a7128:0xd2158800, min.avgNF:0xce->0xd2(dB), RCalCount:0x158, min.RRssi:0x800(-128.00)
+W (8369) wifi:(TB)WDEV_PWR_TB_MCS0:19
+W (8369) wifi:(TB)WDEV_PWR_TB_MCS1:19
+W (8369) wifi:(TB)WDEV_PWR_TB_MCS2:19
+W (8369) wifi:(TB)WDEV_PWR_TB_MCS3:19
+W (8369) wifi:(TB)WDEV_PWR_TB_MCS4:19
+W (8370) wifi:(TB)WDEV_PWR_TB_MCS5:19
+W (8370) wifi:(TB)WDEV_PWR_TB_MCS6:18
+W (8370) wifi:(TB)WDEV_PWR_TB_MCS7:18
+W (8370) wifi:(TB)WDEV_PWR_TB_MCS8:17
+W (8370) wifi:(TB)WDEV_PWR_TB_MCS9:15
+W (8370) wifi:(TB)WDEV_PWR_TB_MCS10:15
+W (8370) wifi:(TB)WDEV_PWR_TB_MCS11:15
+[ESPNOW] Listening on channel 1 (no AP connection)
+[INIT] Done.
+
+[PRIME] Warming pipeline...
+[PRIME] Done.
+
+[SWEEP] SKIP_TO_14: running Test 11 (enrollment) + Test 14 only
+
+-- TEST 11: Pattern Classification (Stream CfC) --
+[DIAG] 500us: agree=256 disagree=294 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x5003a348 cpu_agree=21 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273c8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75a8(dscr_st=3 out_st=2) eof_addr=0x40827584
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x1(eof=0 rempty=1)
+  Phase 0a: Observing input signatures (30s)...
+  Observed: 173 packets, 173 encoded, 12885 GIE loops
+  Per-pattern counts: P0=51 P1=31 P2=22 P3=69
+  Phase 0b: Computing TriX signatures...
+  sig[0]: [+++++++---------00000000--------...] nz=96/128 (from 51 samples, seq trits masked)
+  sig[1]: [+++++++---------00000000++++++++...] nz=95/128 (from 31 samples, seq trits masked)
+  sig[2]: [+++++++---------00000000+-+-+-+-...] nz=95/128 (from 22 samples, seq trits masked)
+  sig[3]: [+++++++---------00000000+++--++-...] nz=96/128 (from 69 samples, seq trits masked)
+  Signature pattern-ID trits [16..23]:
+    sig[0][16..23]: 00000000
+    sig[1][16..23]: 00000000
+    sig[2][16..23]: 00000000
+    sig[3][16..23]: 00000000
+  Signature cross-dots:
+    sig[0] vs: s0=96 s1=69 s2=21 s3=30
+    sig[1] vs: s0=69 s1=95 s2=28 s3=23
+    sig[2] vs: s0=21 s1=28 s2=95 s3=23
+    sig[3] vs: s0=30 s1=23 s2=23 s3=96
+  Ring drops: 0
+
+  Phase 0c: Installing signatures as W_f gate weights...
+  W_f weights set from signatures (8 neurons/pattern)
+  Gate threshold: 2147483647 (Phase 3: blend DISABLED, all neurons HOLD)
+  Neurons 0-7 → pattern 0
+  Neurons 8-15 → pattern 1
+  Neurons 16-23 → pattern 2
+  Neurons 24-31 → pattern 3
+  Gate selectivity: 0 fires / 64 steps = 0%
+
+  GDMA offset calibration...
+  GDMA offset mapping: G0→P0 G1→P1 G2→P2 G3→P3
+  ISR groups:  [6, -1, 19, 12]
+  CPU patterns: [6, -1, 19, 12]
+
+  Phase 0d: TriX Cube face observation (15s)...
+  TriX Cube face signatures:
+    +x:recent: 110 samples [P0=51 P1=24 P2=3 P3=32]
+    -x:prior: 78 samples [P0=24 P1=3 P2=0 P3=51]
+    +y:stable: 57 samples [P0=31 P1=14 P2=0 P3=12]
+    -y:transient: 14 samples [P0=5 P1=3 P2=1 P3=5]
+    +z:confident: 0 samples [P0=0 P1=0 P2=0 P3=0]
+    -z:uncertain: 32 samples [P0=0 P1=0 P2=0 P3=32]
+  Face divergence from core (avg Hamming across patterns):
+    +x:recent: 27 avg (4 patterns with data)
+    -x:prior: 41 avg (3 patterns with data)
+    +y:stable: 29 avg (3 patterns with data)
+    -y:transient: 26 avg (4 patterns with data)
+    +z:confident: 0 avg (0 patterns with data)
+    -z:uncertain: 66 avg (1 patterns with data)
+  Ring drops: 0
+
+  Phase 1: TriX Cube ensemble (up to 32 samples, 60s)...
+    s01: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[17,-,-,24,-,-]
+    s02: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[17,95,95,24,-,95]
+    s03: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[17,95,95,24,-,95]
+    s04: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[17,95,95,24,-,95]
+    s05: truth=0 core=0 isr=0 | cv=[9,0,0,0] iv=[9,0,1,0] xor=[16,24,15,16,-,96]
+    s06: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[9,22,8,10,-,106]
+    s07: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[6,21,5,7,-,111]
+    s08: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[7,22,4,3,-,36]
+    s09: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[5,3,3,3,-,2]
+    s10: truth=1 core=1 isr=1 | cv=[2,6,0,0] iv=[2,6,0,0] xor=[6,31,6,9,-,73]
+    s11: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[8,41,8,11,-,110]
+    s12: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[8,41,8,11,-,110]
+    s13: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[6,39,6,11,-,110]
+    s14: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[6,39,3,12,-,111]
+    s15: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[11,102,102,18,-,102]
+    s16: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[6,109,109,12,-,109]
+    s17: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[6,109,109,12,-,109]
+    s18: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[6,109,109,12,-,109]
+    s19: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[6,109,109,12,-,109]
+    s20: truth=3 core=0 isr=0 | cv=[5,1,0,0] iv=[6,4,0,0] xor=[3,7,3,4,-,19]
+    s21: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[3,3,3,2,-,2]
+    s22: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[3,3,1,2,-,2]
+    s23: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[0,4,3,4,-,4]
+    s24: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[0,4,3,2,-,4]
+    s25: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[1,4,1,2,-,2]
+    s26: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[6,27,3,9,-,111]
+    s27: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[5,3,2,4,-,37]
+    s28: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[5,3,2,4,-,1]
+    s29: truth=1 core=1 isr=1 | cv=[0,5,0,0] iv=[0,5,0,0] xor=[3,3,2,4,-,1]
+    s30: truth=1 core=1 isr=1 | cv=[0,4,0,0] iv=[0,4,0,0] xor=[2,4,2,5,-,2]
+    s31: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[6,109,109,12,-,109]
+    s32: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[6,109,109,12,-,109]
+
+  ═══ CLASSIFICATION RESULTS (TriX Cube) ═══
+  Total GIE loops: 41096
+  TriX ISR classifications: 28189 (at 668 Hz)
+  Test samples: 32
+  Ring drops: 0
+  Core (CPU per-pkt vote):   31/32 = 96%
+  ISR  (HW 430 Hz TriX):     31/32 = 96% (all samples)
+  ISR  (windows w/ data):    31/32 = 96% (275 pkts clean, 0 pkts timeout)
+  TriX channel signals:      28189 (seq=28189)
+  Baseline (packet-rate):    28/32 = 87%
+
+  ── Novelty Detection ──
+  Novel packets: 92 / 275 (33%)
+  Novel windows: 10
+
+  ── Online Maintenance ──
+  Core re-signs: 11
+  Core drift (Hamming):
+    sig[0]: 13/128 trits
+    sig[1]: 15/128 trits
+    sig[2]: 14/128 trits
+    sig[3]: 0/128 trits
+
+  ── XOR Masks (temporal displacement per face) ──
+    Face              avg  | rssi patid payload timing
+    +x:recent            5/128 |  0/16  0/8   0/64    5/40
+    -x:prior            25/128 |  1/16  0/8  14/64    9/40
+    +y:stable           15/128 |  1/16  0/8   7/64    6/40
+    -y:transient         7/128 |  0/16  0/8   0/64    7/40
+    +z:confident         -     | (no data)
+    -z:uncertain        51/128 |  7/16  0/8  29/64   14/40
+    ── Signal distribution ──
+    RSSI:    10% of mask weight
+    PatID:   0% of mask weight
+    Payload: 48% of mask weight
+    Timing:  40% of mask weight
+
+  ── TriX Cube Geometry ──
+    +x:recent: 293 samples, 18 avg hamming from core
+    -x:prior: 261 samples, 42 avg hamming from core
+    +y:stable: 240 samples, 43 avg hamming from core
+    -y:transient: 197 samples, 16 avg hamming from core
+    +z:confident: 0 samples, 0 avg hamming from core
+    -z:uncertain: 215 samples, 45 avg hamming from core
+  Gate firing: 0%
+
+  Architecture:
+  - TriX ISR: HW classifies at 430 Hz (CfC blend DISABLED — Phase 3)
+  - 7-voxel TriX Cube: core + 6 temporal faces
+  - Faces: recent, prior, stable, transient, confident, uncertain
+  - Core classifies alone. Faces compute XOR masks (intervention sensors)
+  - XOR mask = trit positions where face sig != core sig
+  - Online maintenance + novelty detection
+  - Gate threshold=2147483647, novelty=60
+  OK
+
+-- TEST 14: Kinetic Attention (Agreement-Weighted Gate Bias) --
+
+  ── Condition: 14A (no bias) ──
+[DIAG] 500us: agree=813 disagree=481 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11039348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273c8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75a8(dscr_st=3 out_st=2) eof_addr=0x40827584
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+    step 100 (25s): bias=[0 0 0 0] p=0 vdb=12
+    step 200 (51s): bias=[0 0 0 0] p=0 vdb=25
+    step 300 (73s): bias=[0 0 0 0] p=0 vdb=37
+    step 400 (95s): bias=[0 0 0 0] p=0 vdb=50
+    step 500 (117s): bias=[0 0 0 0] p=0 vdb=62
+
+  LP Hidden State (14A (no bias)):
+    P0: 325 samples, energy=15/16 [++++--+-----++0+]
+    P1: 131 samples, energy=16/16 [+++-+-+------+-+]
+    P2: 59 samples, energy=16/16 [+++++-+------+++]
+    P3: 6 samples, energy=15/16 [++-+0+-------+++]
+  Confirms: 521, max_bias: 0, gate_firing: 9%, bias_duty: 0% (0/521 confirms)
+  Per-group fires: [85464 31457 38760 0]
+
+  ── Condition: 14C (full bias) ──
+[DIAG] 500us: agree=1119 disagree=174 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11039348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273c8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75a8(dscr_st=3 out_st=2) eof_addr=0x40827584
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+    step 100 (24s): bias=[0 7 0 0] p=1 vdb=12
+    step 200 (46s): bias=[0 7 6 0] p=2 vdb=25
+    step 300 (75s): bias=[0 0 0 0] p=3 vdb=37
+    step 400 (98s): bias=[0 0 0 0] p=0 vdb=50
+    step 500 (119s): bias=[0 0 0 0] p=0 vdb=62
+
+  LP Hidden State (14C (full bias)):
+    P0: 275 samples, energy=16/16 [++-++-++-----+--]
+    P1: 139 samples, energy=16/16 [++--+-++----++--]
+    P2: 62 samples, energy=16/16 [+++-+-++-+--++--]
+    P3: 33 samples, energy=16/16 [+++-+--+-+--++--]
+  Confirms: 509, max_bias: 15, gate_firing: 13%, bias_duty: 56% (288/509 confirms)
+  Per-group fires: [91640 63657 63856 0]
+
+  ── Condition: 14C-iso (bias after 60s) ──
+[DIAG] 500us: agree=1243 disagree=140 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273c8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75a8(dscr_st=3 out_st=2) eof_addr=0x40827584
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+    step 100 (21s): bias=[0 0 0 0] p=0 vdb=12
+    step 200 (43s): bias=[0 0 0 0] p=0 vdb=25
+    step 300 (64s): bias=[0 0 0 0] p=0 vdb=37
+    step 400 (86s): bias=[5 0 0 0] p=0 vdb=50
+    step 500 (108s): bias=[0 0 0 0] p=0 vdb=62
+
+  LP Hidden State (14C-iso (bias after 60s)):
+    P0: 319 samples, energy=16/16 [++++--+-+-+-++-+]
+    P1: 149 samples, energy=16/16 [++++--+-+-++++-+]
+    P2: 62 samples, energy=16/16 [++++--+++-+-++-+]
+    P3: 5 samples, energy=16/16 [++++--+-+++-++++]
+  Confirms: 535, max_bias: 13, gate_firing: 14%, bias_duty: 35% (188/535 confirms)
+  Per-group fires: [96264 74905 63720 0]
+
+  ══ TEST 14 COMPARISON ══
+
+  LP Divergence — sign-space (14A (no bias), /16):
+       P0  P1  P2  P3
+  P0:   0   4   3   6
+  P1:   4   0   2   6
+  P2:   3   2   0   4
+  P3:   6   6   4   0
+
+  LP Divergence — sign-space (14C (full bias), /16):
+       P0  P1  P2  P3
+  P0:   0   2   4   5
+  P1:   2   0   2   3
+  P2:   4   2   0   1
+  P3:   5   3   1   0
+
+  LP Divergence — sign-space (14C-iso (bias after 60s), /16):
+       P0  P1  P2  P3
+  P0:   0   1   1   2
+  P1:   1   0   2   3
+  P2:   1   2   0   3
+  P3:   2   3   3   0
+
+  LP Divergence — MTFP-space (14A (no bias), /80):
+       P0  P1  P2  P3
+  P0:   0   5  11  15
+  P1:   5   0   9  16
+  P2:  11   9   0  16
+  P3:  15  16  16   0
+
+  LP Divergence — MTFP-space (14C (full bias), /80):
+       P0  P1  P2  P3
+  P0:   0   6   8  11
+  P1:   6   0  10   7
+  P2:   8  10   0   8
+  P3:  11   7   8   0
+
+  LP Divergence — MTFP-space (14C-iso (bias after 60s), /80):
+       P0  P1  P2  P3
+  P0:   0   6   8  19
+  P1:   6   0   5  18
+  P2:   8   5   0  19
+  P3:  19  18  19   0
+
+  Per-Pair Comparison (14C vs 14A):
+  Pair  | 14A | 14C | delta | 14C-iso | delta
+  ------|-----|-----|-------|---------|------
+  P0-P1 |   4 |   2 |  -2   |     1   |  -3
+  P0-P2 |   3 |   4 |  +1   |     1   |  -2
+  P0-P3 |   6 |   5 |  -1   |     2   |  -4
+  P1-P2 |   2 |   2 |  +0   |     2   |  +0
+  P1-P3 |   6 |   3 |  -3   |     3   |  -3
+  P2-P3 |   4 |   1 |  -3   |     3   |  -1
+  Mean  | 4.2 | 2.8 | -1.3  |   2.0   | -2.2
+
+  Per-Group Gate Fires (total across 120s):
+  Condition                  | G0       G1       G2       G3
+  --------------------------|---------------------------------------
+  14A (no bias)              | 85464    31457    38760    0
+  14C (full bias)            | 91640    63657    63856    0
+  14C-iso (bias after 60s)   | 96264    74905    63720    0
+
+  Bias Duty Cycle:
+  14A (no bias)               0% (0/521 confirms with non-zero bias)
+  14C (full bias)             56% (288/509 confirms with non-zero bias)
+  14C-iso (bias after 60s)    35% (188/535 confirms with non-zero bias)
+
+  Confound Control — LP Divergence at t=60s:
+  14A (no bias)               mean=4.5/16 (28%)
+  14C (full bias)             mean=2.5/16 (16%)
+  14C-iso (bias after 60s)    mean=4.3/16 (27%)
+  If 14A@60s ~ 14C-iso@60s: unbiased formation confirmed
+  If 14A@60s ~ 14C@60s:     confound (maturity, not formation)
+
+  Classification Accuracy (CPU core_pred vs sender ground truth):
+  14A (no bias)               487/521 = 93.5%
+  14C (full bias)             484/509 = 95.1%
+  14C-iso (bias after 60s)    492/535 = 92.0%
+
+  Confusion Matrix — 14A (no bias) (rows=ground truth, cols=predicted):
+       P0   P1   P2   P3
+  P0:  302    2    1    1
+  P1:    6  123    0    0
+  P2:    0    5   57    0
+  P3:   17    1    1    5
+
+  Confusion Matrix — 14C (full bias) (rows=ground truth, cols=predicted):
+       P0   P1   P2   P3
+  P0:  264    1    0    3
+  P1:    5  130    0    0
+  P2:    0    6   60    0
+  P3:    6    2    2   30
+
+  Confusion Matrix — 14C-iso (bias after 60s) (rows=ground truth, cols=predicted):
+       P0   P1   P2   P3
+  P0:  290    0    1    1
+  P1:    6  138    0    0
+  P2:    0    6   60    0
+  P3:   23    5    1    4
+
+  TriX ISR vs CPU core_pred agreement:
+  14A (no bias)               501/521 = 96.2% agree
+  14C (full bias)             490/509 = 96.3% agree
+  14C-iso (bias after 60s)    516/535 = 96.4% agree
+
+  Divergence as % of maximum (16 trits):
+  14A (no bias)               mean 4.2/16 = 26%
+  14C (full bias)             mean 2.8/16 = 18%
+  14C-iso (bias after 60s)    mean 2.0/16 = 12%
+
+  ── Verdict ──
+  Gate bias activated (14C):    YES (max=15)
+  Mean Hamming 14C >= 14A:      NO (2.8 vs 4.2)
+  No catastrophic regression:   YES (worst: -3)
+  Per-group fire shift > 10%:   YES
+  Pairs 14C > 14A: 1, equal: 1, worse: 4 (of 6)
+  FAIL
+
+============================================================
+  RESULTS: 1 / 2 PASSED
+============================================================
+
+  SOME TESTS FAILED — see details above.
+
+-- LP CHAR: LP Dynamics Characterization --
+   (diagnostic — not counted in pass/fail)
+  Rep 1/3:
+    P1 step   0: fires=12 blend= 0 score=  0 vdb=1
+    P1 step 100: fires=13 blend= 5 score= 26 vdb=5
+    P1 step 200: fires=14 blend= 4 score= 31 vdb=9
+    P1 step 300: fires=14 blend= 4 score= 31 vdb=13
+    P1 step 400: fires=15 blend= 1 score= 31 vdb=17
+    P1 done: vdb_nodes=20
+    P2 step  0: fires=15 blend= 8 score= 15 applied=1
+    P2 step  1: fires=14 blend= 8 score=  9 applied=1

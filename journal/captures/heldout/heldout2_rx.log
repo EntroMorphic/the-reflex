@@ -1,0 +1,664 @@
+# RX-GIE boot capture 2026-05-16T07:50:52.207189 (DURATION_S=80)
+[   0.10s] ESP-ROM:esp32c6-20220919
+[   0.10s] Build:Sep 19 2022
+[   0.10s] rst:0x15 (USB_UART_HPSYS),boot:0x1e (SPI_FAST_FLASH_BOOT)
+[   0.10s] Saved PC:0x40806624
+[   0.10s] SPIWP:0xee
+[   0.10s] mode:DIO, clock div:2
+[   0.10s] load:0x40875730,len:0x180c
+[   0.10s] load:0x4086c110,len:0xfac
+[   0.10s] load:0x4086e610,len:0x3154
+[   0.10s] entry 0x4086c11a
+[   0.10s] I (23) boot: ESP-IDF v5.4 2nd stage bootloader
+[   0.10s] I (23) boot: compile time May 16 2026 07:41:33
+[   0.10s] I (23) boot: chip revision: v0.2
+[   0.10s] I (24) boot: efuse block revision: v0.3
+[   0.10s] I (24) qio_mode: Enabling default flash chip QIO
+[   0.10s] I (24) boot.esp32c6: SPI Speed      : 80MHz
+[   0.10s] I (24) boot.esp32c6: SPI Mode       : QIO
+[   0.10s] I (25) boot.esp32c6: SPI Flash Size : 2MB
+[   0.11s] I (25) boot: Enabling RNG early entropy source...
+[   0.11s] I (25) boot: Partition Table:
+[   0.11s] I (25) boot: ## Label            Usage          Type ST Offset   Length
+[   0.11s] I (26) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+[   0.11s] I (26) boot:  1 phy_init         RF data          01 01 0000f000 00001000
+[   0.11s] I (27) boot:  2 factory          factory app      00 00 00010000 00100000
+[   0.11s] I (27) boot: End of partition table
+[   0.11s] I (28) esp_image: segment 0: paddr=00010020 vaddr=420a0020 size=21b50h (138064) map
+[   0.11s] I (53) esp_image: segment 1: paddr=00031b78 vaddr=40800000 size=064a0h ( 25760) load
+[   0.11s] I (59) esp_image: segment 2: paddr=00038020 vaddr=42000020 size=9e9d8h (649688) map
+[   0.18s] I (176) esp_image: segment 3: paddr=000d6a00 vaddr=408064a0 size=1333ch ( 78652) load
+[   0.20s] I (193) esp_image: segment 4: paddr=000e9d44 vaddr=408197e0 size=03c24h ( 15396) load
+[   0.20s] I (196) esp_image: segment 5: paddr=000ed970 vaddr=50003fc0 size=0000ch (    12) load
+[   0.21s] I (203) boot: Loaded app from partition at offset 0x10000
+[   0.21s] I (203) boot: Disabling RNG early entropy source...
+[   0.22s] W (214) spi_flash: Detected size(4096k) larger than the size in the binary image header(2048k). Using the size in the binary image header.
+[   8.22s] 
+[   8.22s] ============================================================
+[   8.22s]   FREE-RUNNING SUB-CPU NEURAL NETWORK
+[   8.22s]   + LP CORE GEOMETRIC PROCESSOR
+[   8.22s]   GIE (441 Hz HW) → LP core (100 Hz, 16MHz RISC-V, ~30uA)
+[   8.22s]   Three-layer hierarchy: peripheral → geometric → CPU
+[   8.22s] ============================================================
+[   8.22s] 
+[   8.22s] [INIT] GPIO 4-7...
+[   8.22s] [INIT] ETM clock...
+[   8.22s] [INIT] PARLIO TX (2-bit, 20MHz, loopback)...
+[   8.22s] [INIT] PCNT (2 units)...
+[   8.22s] [INIT] Timer...
+[   8.22s] [INIT] GDMA channel detection...
+[   8.22s] [GDMA] PARLIO owns CH0
+[   8.22s] [INIT] GDMA ISR (free-running mode)...
+[   8.22s] [GDMA ISR] OK — CH0 (source=69), LEVEL3
+[   8.22s] [INIT] LP core binary (16320 bytes)...
+[   8.22s] [INIT] LP core weights (after binary load)...
+[   8.23s] [INIT] LP seed: 0xCAFE1234
+[   8.23s] [LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
+[   8.23s] [INIT] ESP-NOW receiver...
+[   8.33s] W (8386) wifi:ACK_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
+[   8.33s] W (8387) wifi:CTS_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
+[   8.33s] W (8387) wifi:(agc)0x600a7128:0xd21e59f4, min.avgNF:0xce->0xd2(dB), RCalCount:0x1e5, min.RRssi:0x9f4(-96.75)
+[   8.33s] W (8387) wifi:(TB)WDEV_PWR_TB_MCS0:19
+[   8.33s] W (8388) wifi:(TB)WDEV_PWR_TB_MCS1:19
+[   8.33s] W (8388) wifi:(TB)WDEV_PWR_TB_MCS2:19
+[   8.33s] W (8388) wifi:(TB)WDEV_PWR_TB_MCS3:19
+[   8.33s] W (8388) wifi:(TB)WDEV_PWR_TB_MCS4:19
+[   8.33s] W (8388) wifi:(TB)WDEV_PWR_TB_MCS5:19
+[   8.33s] W (8388) wifi:(TB)WDEV_PWR_TB_MCS6:18
+[   8.33s] W (8388) wifi:(TB)WDEV_PWR_TB_MCS7:18
+[   8.33s] W (8388) wifi:(TB)WDEV_PWR_TB_MCS8:17
+[   8.33s] W (8389) wifi:(TB)WDEV_PWR_TB_MCS9:15
+[   8.33s] W (8389) wifi:(TB)WDEV_PWR_TB_MCS10:15
+[   8.33s] W (8389) wifi:(TB)WDEV_PWR_TB_MCS11:15
+[   8.33s] [ESPNOW] Listening on channel 1 (no AP connection)
+[   8.33s] [INIT] Done.
+[   8.33s] 
+[   8.33s] [PRIME] Warming pipeline...
+[   8.33s] [PRIME] Done.
+[   8.33s] 
+[   8.33s] -- TEST 1: Free-running loop count --
+[   8.34s] [DIAG] 500us: agree=256 disagree=291 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x2003a348 cpu_agree=20 loop=0
+[   8.34s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[   8.34s] [DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[   8.34s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x1(eof=0 rempty=1)
+[   9.34s]   Loops completed: 430 in 1.003 s
+[   9.34s]   Frequency: 428.9 Hz
+[   9.34s]   Period: 2331.4 us per loop
+[   9.34s]   OK
+[   9.34s] 
+[   9.34s] -- TEST 2: Hidden state evolves autonomously --
+[   9.35s] [DIAG] 500us: agree=217 disagree=219 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[   9.35s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[   9.35s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[   9.35s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[   9.40s]   snap 0 (loop 22): energy=30
+[   9.45s]   snap 1 (loop 43): delta=10 energy=31
+[   9.50s]   snap 2 (loop 65): delta=1 energy=31
+[   9.55s]   snap 3 (loop 86): delta=0 energy=31
+[   9.60s]   snap 4 (loop 107): delta=0 energy=31
+[   9.65s]   snap 5 (loop 129): delta=2 energy=30
+[   9.70s]   snap 6 (loop 150): delta=0 energy=30
+[   9.75s]   snap 7 (loop 172): delta=1 energy=31
+[   9.75s]   final h: [-+---+-++-++--+---+0--++---++++-]
+[   9.75s]   Total loops: 172
+[   9.75s]   OK
+[   9.75s] 
+[   9.75s] -- TEST 3: Per-neuron dot accuracy (single loop) --
+[   9.75s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[   9.75s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[   9.75s] [DIAG] gdma2: fifo=0x61 state=0x2e7648(dscr_st=3 out_st=2) eof_addr=0x40827624
+[   9.76s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[   9.76s]   After warmup: 3 loops, base=4, cnt=69
+[   9.76s]   Snapshot at loop 4 (base=4, cnt=69)
+[   9.76s]   Raw captures [0..11]:
+[   9.76s]     idx  agree  disagree  d_agree  d_disagree
+[   9.76s]     [0]      0      0        +0       +0 (dummy)
+[   9.76s]     [1]      0      0        +0       +0 (dummy)
+[   9.76s]     [2]      0      0        +0       +0 (dummy)
+[   9.76s]     [3]      0      0        +0       +0 (dummy)
+[   9.76s]     [4]      0      0        +0       +0 (dummy)
+[   9.76s]     [5]     21     32       +21      +32 (neuron 0)
+[   9.76s]     [6]     53     61       +32      +29
+[   9.76s]     [7]     81     84       +28      +23
+[   9.76s]     [8]    107    115       +26      +31
+[   9.76s]     [9]    138    142       +31      +27
+[   9.76s]     [10]    166    178       +28      +36
+[   9.77s]     [11]    199    201       +33      +23
+[   9.77s] 
+[   9.77s]   Dot errors: 0 / 64
+[   9.77s]   Sign errors: 0 / 64
+[   9.77s]   GIE dots[0..7]: -11 3 5 -5 4 -8 10 -16
+[   9.77s]   CPU dots[0..7]: -11 3 5 -5 4 -8 10 -16
+[   9.77s]   Sign match with offset 0: 64 / 64
+[   9.77s]   Sign match with offset 1: 26 / 63
+[   9.77s]   Sign match with offset 2: 29 / 62
+[   9.77s]   Sign match with offset 3: 26 / 61
+[   9.77s]   Sign match with offset 4: 20 / 60
+[   9.77s]   OK
+[   9.77s] 
+[   9.77s] -- TEST 4: LP Core Geometric Processor --
+[   9.77s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11039348 cpu_agree=20 loop=0
+[   9.77s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[   9.77s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[   9.77s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[   9.77s]   Phase 1: GIE + LP core integration (300ms)...
+[  10.07s]   4a: LP running: YES (steps=27)
+[  10.07s]   4c: LP hidden energy: 15/16
+[  10.07s]   LP hidden: [--++-++-+0+--+-+]
+[  10.07s]   LP decision: 1
+[  10.07s] 
+[  10.07s]   Phase 2: Deterministic single-step verification...
+[  10.08s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[  10.08s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[  10.08s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[  10.08s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[  10.13s]   Known GIE hidden energy: 30/32
+[  10.13s]   Known GIE hidden: [+-+--+-+---+-+--+++---+0-+-+-++0]
+[  10.14s]   LP steps: 28 → 29 (delta=1)
+[  10.14s]   4b: f-dots exact: 16/16, g-dots exact: 16/16
+[  10.14s]   4b: f-dots sign:  14/14, g-dots sign:  11/11
+[  10.14s]   LP  f-dots: -5 2 4 4 -2 1 2 2 0 2 -1 1 0 -4 5 -9
+[  10.14s]   CPU f-dots: -5 2 4 4 -2 1 2 2 0 2 -1 1 0 -4 5 -9
+[  10.14s]   LP  g-dots: 2 0 5 2 0 -3 2 0 2 2 1 0 0 -4 6 -2
+[  10.14s]   CPU g-dots: 2 0 5 2 0 -3 2 0 2 2 1 0 0 -4 6 -2
+[  10.14s]   OK
+[  10.14s] 
+[  10.14s] -- TEST 5: Ternary VDB — NSW Graph (M=7), 64 Nodes --
+[  10.14s]   5a: Inserting 64 nodes (graph-aware, cmd=3)...
+[  10.93s]   5a: Inserted 64 nodes — OK
+[  10.93s] 
+[  10.93s]   5b: Self-match recall@1 (64 queries)...
+[  11.79s]   5b: 64/64 self-match recall@1 — OK
+[  11.79s] 
+[  11.79s]   5c: Recall measurement (20 random queries)...
+[  11.80s]     q0: LP=[35,11,48,37] CPU=[35,11,37,48]
+[  11.82s]     q1: LP=[15,63,31,53] CPU=[15,31,63,26]
+[  11.83s]     q2: LP=[49,61,36,25] CPU=[49,36,61,25]
+[  12.06s]   Recall@1: 19/20 = 95%
+[  12.06s]   Recall@4: 72/80 = 90%
+[  12.06s]   5c: OK (thresholds: r@1>=95%, r@4>=90%)
+[  12.06s] 
+[  12.06s]   5d: Visit count (graph vs brute-force)...
+[  12.07s]   Graph search visited: 60 / 64 nodes
+[  12.07s]   5d: OK (sub-linear: YES)
+[  12.07s] 
+[  12.07s]   5e: Connectivity (BFS from node 0)...
+[  12.07s]   Reachable from node 0: 64 / 64
+[  12.07s]   5e: OK
+[  12.07s] 
+[  12.07s]   5f: Latency benchmark (10 searches, N=64)...
+[  12.21s]   Round-trip (includes LP wake jitter up to 10ms):
+[  12.21s]     min=9987 us, max=14988 us, avg=13411 us
+[  12.21s]   5f: OK
+[  12.21s] 
+[  12.21s]   OK
+[  12.21s] 
+[  12.21s] -- TEST 6: CfC -> VDB Pipeline (CMD 4) --
+[  12.21s]   Setup: Inserting 32 vectors into VDB...
+[  12.58s]   VDB has 32 nodes
+[  12.58s] 
+[  12.58s]   6a: Pipeline basic operation...
+[  12.59s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[  12.59s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[  12.59s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[  12.59s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[  12.64s]   step_count: 29 -> 30 (delta=1)
+[  12.64s]   search_count: 95 -> 96 (delta=1)
+[  12.64s]   Pipeline return: 0
+[  12.64s]   Top-4 results: [5,17,30,24] scores=[7,7,6,6]
+[  12.64s]   6a: OK
+[  12.64s] 
+[  12.64s]   6b: CfC determinism (cmd=4 vs cmd=1)...
+[  12.67s]   cmd=1 hidden: [-0++0-+00+-00+++]
+[  12.67s]   cmd=4 hidden: [-0++0-+00+-00+++]
+[  12.67s]   Hidden match: YES
+[  12.67s]   f-dots match: YES, g-dots match: YES
+[  12.67s]   6b: OK
+[  12.67s] 
+[  12.67s]   6c: VDB consistency (pipeline vs standalone search)...
+[  12.68s]   Pipeline: [5,17,30,24] scores=[7,7,6,6]
+[  12.68s]   Standalone: [5,17,30,24] scores=[7,7,6,6]
+[  12.68s]   Results match: YES
+[  12.68s]   6c: OK
+[  12.68s] 
+[  12.68s]   6d: Sustained pipeline operation (10 steps)...
+[  12.69s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[  12.69s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[  12.69s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[  12.69s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[  12.86s]   Pipeline steps completed: 10 / 10
+[  12.86s]   step_count delta: 10
+[  12.86s]   search_count delta: 10
+[  12.86s]   Final LP hidden: [--+++---+++--+-0]
+[  12.86s]   Final LP hidden energy: 15/16
+[  12.86s]   6d: OK
+[  12.86s] 
+[  12.86s]   OK
+[  12.86s] 
+[  12.86s] -- TEST 7: Reflex Channel Coordination --
+[  12.86s]   7a: Channel signals match loop count...
+[  12.86s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[  12.86s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[  12.86s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[  12.86s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[  12.98s]   Signals received: 50 / 50
+[  12.98s]   Value mismatches: 0
+[  12.98s]   Final loop_count: 51, channel value: 51, channel seq: 51
+[  12.98s]   7a: OK
+[  12.98s] 
+[  12.98s]   7b: Signal latency (ISR -> main loop)...
+[  12.99s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[  12.99s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[  12.99s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[  12.99s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[  13.22s]   Samples: 100
+[  13.22s]   Latency (cycles): min=1991, max=2822, avg=2290
+[  13.22s]   Latency (ns):     min=12443, max=17637, avg=14312
+[  13.22s]   7b: OK
+[  13.22s] 
+[  13.22s]   7c: Hidden state consistency after channel wait...
+[  13.23s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[  13.23s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[  13.23s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[  13.23s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[  13.24s]   Dot match: 64 / 64
+[  13.24s]   Channel signaled: YES (seq 6 -> 7)
+[  13.24s]   7c: OK
+[  13.24s] 
+[  13.24s]   7d: Channel-driven LP feeding (20 cycles)...
+[  13.25s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[  13.25s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[  13.25s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[  13.25s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[  13.51s]   Channel-driven feeds: 20 / 20
+[  13.51s]   LP step_count delta: 20
+[  13.51s]   7d: OK
+[  13.51s] 
+[  13.51s]   OK
+[  13.51s] 
+[  13.51s] -- TEST 8: VDB -> CfC Feedback Loop (CMD 5) --
+[  13.51s]   Setup: Inserting 32 vectors into VDB...
+[  13.89s]   VDB has 32 nodes
+[  13.89s] 
+[  13.89s]   8a: Single feedback step (cmd=5)...
+[  13.89s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11039348 cpu_agree=20 loop=0
+[  13.89s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[  13.89s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[  13.90s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[  13.96s]   cmd=5 return: 0
+[  13.96s]   step_count: 62 -> 63 (delta=1)
+[  13.96s]   search_count: 108 -> 109 (delta=1)
+[  13.96s]   fb_total_blends: 0 -> 0
+[  13.96s]   fb_applied: 0
+[  13.96s]   fb_source_id: 255
+[  13.96s]   fb_score: 0
+[  13.96s]   fb_blend_count: 0 trits modified
+[  13.96s]   Top-4 results: [5,17,30,24] scores=[7,7,6,6]
+[  13.96s]   LP hidden after feedback: [-0++0-+00+-00+++]
+[  13.96s]   8a: OK
+[  13.96s] 
+[  13.96s]   8b: Feedback observability...
+[  13.96s]   Applied: NO (best score 0 < threshold 8)
+[  13.96s]   This is acceptable if no stored memory is similar enough.
+[  13.96s]   8b: OK
+[  13.96s] 
+[  13.96s]   8c: Stability under sustained feedback (50 steps)...
+[  13.97s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[  13.97s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[  13.97s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[  13.97s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[  14.03s]     step 0: e=10, delta=10, fb=0, score=0, src=255
+[  14.16s]     step 10: e=10, delta=7, fb=1, score=9, src=9
+[  14.29s]     step 20: e=9, delta=9, fb=1, score=15, src=5
+[  14.41s]     step 30: e=12, delta=10, fb=1, score=14, src=17
+[  14.54s]     step 40: e=9, delta=8, fb=1, score=14, src=17
+[  14.66s]   Steps completed: 50 / 50
+[  14.66s]   Feedback applied: 49 / 50 steps
+[  14.66s]   Total blend operations: 49
+[  14.66s]   Max change per step: 12 / 16 trits
+[  14.66s]   Energy range: [8, 15] / 16
+[  14.66s]   Unique states visited: 50
+[  14.66s]   Final LP hidden: [-0++-0--+-+++--+]
+[  14.66s]   8c: OK
+[  14.66s] 
+[  14.66s]   8d: Feedback vs no-feedback divergence...
+[  14.91s]     step 0: hamming distance = 0
+[  14.91s]     step 1: hamming distance = 5
+[  14.91s]     step 2: hamming distance = 7
+[  14.91s]     step 3: hamming distance = 8
+[  14.91s]     step 4: hamming distance = 7
+[  14.91s]     step 5: hamming distance = 9
+[  14.91s]     step 6: hamming distance = 11
+[  14.91s]     step 7: hamming distance = 10
+[  14.91s]     step 8: hamming distance = 10
+[  14.91s]     step 9: hamming distance = 10
+[  14.91s]   First divergence at step: 1
+[  14.91s]   Steps with different states: 9 / 10
+[  14.91s]   No-feedback final: [--+++-+--+-+-+++]
+[  14.91s]   Feedback final   : [0+++0-++0+0-+0+0]
+[  14.91s]   8d: OK
+[  14.92s] 
+[  14.92s]   OK
+[  14.92s] 
+[  14.92s] -- TEST 9: ESP-NOW Receive from Board B --
+[  14.92s]   Listening for 10 seconds...
+[  24.91s]   Packets received: 81
+[  24.91s]   RSSI range: [-51, -51] dBm
+[  24.91s]   Last pattern_id: 0, seq: 9204
+[  24.91s]   Source MAC: b4:3a:45:8a:c7:d4
+[  24.91s]   Unique patterns seen: 3/4
+[  24.91s]   OK (81 packets in 10s)
+[  24.91s] 
+[  24.91s] -- TEST 10: ESP-NOW -> GIE Live Input --
+[  24.91s]   10a: Input encoding from live ESP-NOW data...
+[  27.91s]   Input updates from ESP-NOW: 9 in 3s
+[  27.92s]   First encoded input energy: 96 / 128 trits active
+[  27.92s]   Input sample [0..15] RSSI: ++++++++--------
+[  27.92s]   Input sample [16..23] pattern: 00000000
+[  27.92s]   Input sample [24..31] payload: --------
+[  27.92s]   10a: OK
+[  27.92s] 
+[  27.92s]   10b: GIE hidden state with live ESP-NOW input...
+[  27.92s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[  27.92s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[  27.92s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[  27.92s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[  28.93s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11038348 cpu_agree=20 loop=0
+[  28.93s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[  28.93s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[  28.93s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[  29.94s]   Static input: 430 loops, hidden energy=30
+[  29.94s]   Live input: 433 loops, 3 input updates, hidden energy=32
+[  29.94s]   Hamming distance (static vs live): 21 / 32
+[  29.94s]   Static hidden: [+-+--+-----+-0-+++++-++0-+-+-++-]
+[  29.94s]   Live hidden  : [-+---++++-+--+++-----+-++--+---+]
+[  29.94s]   10b: OK
+[  29.94s] 
+[  29.94s]   10c: Pattern-dependent hidden state trajectories...
+[  29.94s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11039348 cpu_agree=20 loop=0
+[  29.94s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[  29.94s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[  29.94s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[  30.96s]     window 0: pattern=1 (count=6), energy=29
+[  30.96s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[  30.96s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[  30.96s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[  30.96s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[  31.97s]     window 1: pattern=1 (count=3), energy=32
+[  31.97s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[  31.97s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[  31.97s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[  31.98s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[  32.98s]     window 2: pattern=1 (count=3), energy=31
+[  32.99s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[  32.99s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[  32.99s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[  32.99s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[  33.99s]     window 3: pattern=2 (count=2), energy=31
+[  33.99s]   Cross-pattern pairs: 3, divergent: 3, max hamming: 19
+[  33.99s]   Same-pattern pairs: 3
+[  33.99s]   10c: OK
+[  33.99s] 
+[  34.00s]   10d: Full stack: ESP-NOW -> GIE -> LP core...
+[  34.00s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[  34.00s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[  34.00s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[  34.00s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[  36.01s]   GIE loops: 862, LP feeds: 20, LP steps: 19
+[  36.01s]   LP hidden energy: 14 / 16
+[  36.01s]   LP final hidden: [----+++++00--++-]
+[  36.01s]   10d: OK
+[  36.01s] 
+[  36.01s]   OK
+[  36.01s] 
+[  36.01s] -- TEST 11: Pattern Classification (Stream CfC) --
+[  36.02s] [DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[  36.02s] [DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27468(park=0) peri=9
+[  36.02s] [DIAG] gdma2: fifo=0x61 state=0x2e763c(dscr_st=3 out_st=2) eof_addr=0x40827624
+[  36.02s] [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[  36.02s]   Phase 0a: Observing input signatures (30s)...
+[  36.16s] TRAIN p=2 v=++++++++--------00000000+-+-+-+-++--++----++--++-++--++-+--++--+++++--------++++--++++------------------+++++---+-++-+--00000000
+[  36.66s] TRAIN p=2 v=++++++++--------00000000+-+-+-+-++--++----++--++-++--++-+--++--+++++--------++++--++++--------------0+0++++++----+++-+--00000000
+[  37.17s] TRAIN p=2 v=++++++++--------00000000+-+-+-+-++--++----++--++-++--++-+--++--+++++--------++++--++++-----------0+00+0++++++---++++-+--00000000
+[  37.66s] TRAIN p=2 v=++++++++--------00000000+-+-+-+-++--++----++--++-++--++-+--++--+++++--------++++--++++--------0+00+00+0+----+-------++--00000000
+[  38.16s] TRAIN p=3 v=++++++++--------00000000+---++---+--++--++--++----+-++--+-+-++---++-++--+++-++-----+++-----0+00+00+00+0++---+---+---++--00000000
+[  38.26s] TRAIN p=3 v=++++++++--------00000000-+--++--++--++----+-++--+-+-++---++-++--+++-++-----+++--+--+++--0+00+00+00+0-+0++---+----+--++--00000000
+[  38.37s] TRAIN p=3 v=++++++++--------00000000++--++----+-++--+-+-++---++-++--+++-++-----+++--+--+++---+-+++--0+00+00+0-+0-+-++---+---++--++--00000000
+[  38.46s] TRAIN p=3 v=++++++++--------00000000--+-++--+-+-++---++-++--+++-++-----+++--+--+++---+-+++--++-+++--0+00+0-+0-+--+-++---+-----+-++--00000000
+[  38.56s] TRAIN p=3 v=++++++++--------00000000+-+-++---++-++--+++-++-----+++--+--+++---+-+++--++-+++----++++--0+0-+0-+--+--+-+++--+---+-+-++--00000000
+[  38.66s] TRAIN p=3 v=++++++++--------00000000-++-++--+++-++-----+++--+--+++---+-+++--++-+++----++++--+-++++---+0-+--+--+--+0-++--+----++-++--00000000
+[  38.76s] TRAIN p=3 v=++++++++--------00000000+++-++-----+++--+--+++---+-+++--++-+++----++++--+-++++---+++++---+--+--+--+0-+0-++--+---+++-++--00000000
+[  38.86s] TRAIN p=3 v=++++++++--------00000000---+++--+--+++---+-+++--++-+++----++++--+-++++---+++++--++++++---+--+--+0-+0-+--++--+------+++--00000000
+[  38.96s] TRAIN p=3 v=++++++++--------00000000+--+++---+-+++--++-+++----++++--+-++++---+++++--++++++--------+--+--+0-+0-+--+0-+++-+---+--+++--00000000
+[  39.06s] TRAIN p=3 v=++++++++--------00000000-+-+++--++-+++----++++--+-++++---+++++--++++++--------+-+-----+--+0-+0-+--+0-+0-+++-+----+-+++--00000000
+[  39.16s] TRAIN p=3 v=++++++++--------00000000++-+++----++++--+-++++---+++++--++++++--------+-+-----+--+----+--+0-+--+0-+0-+--+++-+---++-+++--00000000
+[  39.26s] TRAIN p=3 v=++++++++--------00000000--++++--+-++++---+++++--++++++--------+-+-----+--+----+-++----+--+--+0-+0-+--+0-+++-+-----++++--00000000
+[  39.36s] TRAIN p=3 v=++++++++--------00000000+-++++---+++++--++++++--------+-+-----+--+----+-++----+---+---+--+0-+0-+--+0-+0-+++++---+-++++--00000000
+[  39.46s] TRAIN p=3 v=++++++++--------00000000-+++++--++++++--------+-+-----+--+----+-++----+---+---+-+-+---+--+0-+--+0-+0-+--+++++----+++++--00000000
+[  39.56s] TRAIN p=3 v=++++++++--------00000000++++++--------+-+-----+--+----+-++----+---+---+-+-+---+--++---+--+--+0-+0-+--+0-+++++---++++++--00000000
+[  39.66s] TRAIN p=3 v=++++++++--------00000000------+-+-----+--+----+-++----+---+---+-+-+---+--++---+-+++---+--+0-+0-+--+0-+------+---------+-00000000
+[  39.76s] TRAIN p=3 v=++++++++--------00000000+-----+--+----+-++----+---+---+-+-+---+--++---+-+++---+----+--+--+0-+--+0-+--+--+---+---+-----+-00000000
+[  39.86s] TRAIN p=3 v=++++++++--------00000000-+----+-++----+---+---+-+-+---+--++---+-+++---+----+--+-+--+--+--+--+0-+--+--+--+---+----+----+-00000000
+[  39.96s] TRAIN p=3 v=++++++++--------00000000++----+---+---+-+-+---+--++---+-+++---+----+--+-+--+--+--+-+--+--+0-+--+--+--+0-+---+---++----+-00000000
+[  40.06s] TRAIN p=3 v=++++++++--------00000000--+---+-+-+---+--++---+-+++---+----+--+-+--+--+--+-+--+-++-+--+--+--+--+--+0-+0-+---+-----+---+-00000000
+[  40.16s] TRAIN p=3 v=++++++++--------00000000+-+---+--++---+-+++---+----+--+-+--+--+--+-+--+-++-+--+---++--+--+--+--+0-+0-+--++--+---+-+---+-00000000
+[  40.26s] TRAIN p=3 v=++++++++--------00000000-++---+-+++---+----+--+-+--+--+--+-+--+-++-+--+---++--+-+-++--+--+--+0-+0-+--+0-++--+----++---+-00000000
+[  40.36s] TRAIN p=3 v=++++++++--------00000000+++---+----+--+-+--+--+--+-+--+-++-+--+---++--+-+-++--+--+++--+--+0-+0-+--+0-+0-++--+---+++---+-00000000
+[  40.46s] TRAIN p=3 v=++++++++--------00000000---+--+-+--+--+--+-+--+-++-+--+---++--+-+-++--+--+++--+-++++--+--+0-+--+0-+0-+--++--+------+--+-00000000
+[  40.56s] TRAIN p=3 v=++++++++--------00000000+--+--+--+-+--+-++-+--+---++--+-+-++--+--+++--+-++++--+-----+-+--+--+0-+0-+--+0-+++-+---+--+--+-00000000
+[  40.66s] TRAIN p=3 v=++++++++--------00000000-+-+--+-++-+--+---++--+-+-++--+--+++--+-++++--+-----+-+-+---+-+--+0-+0-+--+0-+0-+++-+----+-+--+-00000000
+[  40.76s] TRAIN p=3 v=++++++++--------00000000++-+--+---++--+-+-++--+--+++--+-++++--+-----+-+-+---+-+--+--+-+--+0-+--+0-+0-+--+++-+---++-+--+-00000000
+[  40.86s] TRAIN p=3 v=++++++++--------00000000--++--+-+-++--+--+++--+-++++--+-----+-+-+---+-+--+--+-+-++--+-+--+--+0-+0-+--+0-+++-+-----++--+-00000000
+[  40.96s] TRAIN p=3 v=++++++++--------00000000+-++--+--+++--+-++++--+-----+-+-+---+-+--+--+-+-++--+-+---+-+-+--+0-+0-+--+0-+0-+++++---+-++--+-00000000
+[  41.06s] TRAIN p=3 v=++++++++--------00000000-+++--+-++++--+-----+-+-+---+-+--+--+-+-++--+-+---+-+-+-+-+-+-+--+0-+--+0-+0-+--+++++----+++--+-00000000
+[  41.16s] TRAIN p=3 v=++++++++--------00000000++++--+-----+-+-+---+-+--+--+-+-++--+-+---+-+-+-+-+-+-+--++-+-+--+--+0-+0-+--+0-+++++---++++--+-00000000
+[  41.26s] TRAIN p=3 v=++++++++--------00000000----+-+-+---+-+--+--+-+-++--+-+---+-+-+-+-+-+-+--++-+-+-+++-+-+--+0-+0-+--+0-+------++------+-+-00000000
+[  41.36s] TRAIN p=3 v=++++++++--------00000000+---+-+--+--+-+-++--+-+---+-+-+-+-+-+-+--++-+-+-+++-+-+----++-+--+0-+--+0-+--+0-+---++--+---+-+-00000000
+[  41.46s] TRAIN p=3 v=++++++++--------00000000-+--+-+-++--+-+---+-+-+-+-+-+-+--++-+-+-+++-+-+----++-+-+--++-+--+--+0-+--+0-+0-+---++---+--+-+-00000000
+[  41.56s] TRAIN p=3 v=++++++++--------00000000++--+-+---+-+-+-+-+-+-+--++-+-+-+++-+-+----++-+-+--++-+--+-++-+--+0-+--+0-+0-+0-+---++--++--+-+-00000000
+[  41.66s] TRAIN p=3 v=++++++++--------00000000--+-+-+-+-+-+-+--++-+-+-+++-+-+----++-+-+--++-+--+-++-+-++-++-+--+--+0-+0-+0-+0-+---++----+-+-+-00000000
+[  41.76s] TRAIN p=3 v=++++++++--------00000000+-+-+-+--++-+-+-+++-+-+----++-+-+--++-+--+-++-+-++-++-+---+++-+--+0-+0-+0-+0-+--++--++--+-+-+-+-00000000
+[  41.86s] TRAIN p=3 v=++++++++--------00000000-++-+-+-+++-+-+----++-+-+--++-+--+-++-+-++-++-+---+++-+-+-+++-+--+0-+0-+0-+--+--++--++---++-+-+-00000000
+[  41.96s] TRAIN p=3 v=++++++++--------00000000+++-+-+----++-+-+--++-+--+-++-+-++-++-+---+++-+-+-+++-+--++++-+--+0-+0-+--+--+--++--++--+++-+-+-00000000
+[  42.06s] TRAIN p=3 v=++++++++--------00000000---++-+-+--++-+--+-++-+-++-++-+---+++-+-+-+++-+--++++-+-+++++-+--+0-+--+--+--+0-++--++-----++-+-00000000
+[  42.16s] TRAIN p=3 v=++++++++--------00000000+--++-+--+-++-+-++-++-+---+++-+-+-+++-+--++++-+-+++++-+------++--+--+--+--+0-+--+++-++--+--++-+-00000000
+[  42.26s] TRAIN p=3 v=++++++++--------00000000-+-++-+-++-++-+---+++-+-+-+++-+--++++-+-+++++-+------++-+----++--+--+--+0-+--+--+++-++---+-++-+-00000000
+[  42.36s] TRAIN p=3 v=++++++++--------00000000++-++-+---+++-+-+-+++-+--++++-+-+++++-+------++-+----++--+---++--+--+0-+--+--+0-+++-++--++-++-+-00000000
+[  42.46s] TRAIN p=3 v=++++++++--------00000000--+++-+-+-+++-+--++++-+-+++++-+------++-+----++--+---++-++---++--+0-+--+--+0-+--+++-++----+++-+-00000000
+[  42.56s] TRAIN p=3 v=++++++++--------00000000+-+++-+--++++-+-+++++-+------++-+----++--+---++-++---++---+--++--+--+--+0-+--+0-++++++--+-+++-+-00000000
+[  42.66s] TRAIN p=3 v=++++++++--------00000000-++++-+-+++++-+------++-+----++--+---++-++---++---+--++-+-+--++--+--+0-+--+0-+0-++++++---++++-+-00000000
+[  42.76s] TRAIN p=3 v=++++++++--------00000000+++++-+------++-+----++--+---++-++---++---+--++-+-+--++--++--++--+0-+--+0-+0-+--++++++--+++++-+-00000000
+[  42.86s] TRAIN p=3 v=++++++++--------00000000-----++-+----++--+---++-++---++---+--++-+-+--++--++--++-+++--++--+--+0-+0-+--+------++-------++-00000000
+[  42.96s] TRAIN p=3 v=++++++++--------00000000+----++--+---++-++---++---+--++-+-+--++--++--++-+++--++----+-++--+0-+0-+--+--+0-+---++--+----++-00000000
+[  43.06s] TRAIN p=3 v=++++++++--------00000000-+---++-++---++---+--++-+-+--++--++--++-+++--++----+-++-+--+-++--+0-+--+--+0-+0-+---++---+---++-00000000
+[  43.16s] TRAIN p=3 v=++++++++--------00000000++---++---+--++-+-+--++--++--++-+++--++----+-++-+--+-++--+-+-++--+--+--+0-+0-+0-+---++--++---++-00000000
+[  43.26s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+0-+0-+0-+---++----+--++-00000000
+[  43.36s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+0-+0-+0-+--++--++--+-+--++-00000000
+[  43.46s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+0-+0-+--+0-++--++---++--++-00000000
+[  43.56s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+0-+--+0-+--++--++--+++--++-00000000
+[  43.66s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+0-+--+0-++--++-----+-++-00000000
+[  43.76s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+--+0-+--+++-++--+--+-++-00000000
+[  43.86s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+0-+--+--+++-++---+-+-++-00000000
+[  43.97s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+--+--+0-+++-++--++-+-++-00000000
+[  44.06s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+--+0-+--+++-++----++-++-00000000
+[  44.16s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+--+0-+--+--++++++--+-++-++-00000000
+[  44.26s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+--+--+--++++++---+++-++-00000000
+[  44.36s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+--+--+0-++++++--++++-++-00000000
+[  44.46s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+--+--+0-+------++------+++-00000000
+[  44.56s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+--+0-+--+0-+---++--+---+++-00000000
+[  44.66s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+--+0-+--+---++---+--+++-00000000
+[  44.76s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+0-+--+0-+---++--++--+++-00000000
+[  44.86s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+--+0-+0-+---++----+-+++-00000000
+[  44.96s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+0-+0-+0-++--++--+-+-+++-00000000
+[  45.06s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+0-+0-+--++--++---++-+++-00000000
+[  45.16s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+0-+0-+--+--++--++--+++-+++-00000000
+[  45.26s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+0-+--+--+0-++--++-----++++-00000000
+[  45.36s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+--+0-+--+++-++--+--++++-00000000
+[  45.46s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+--+0-+--+0-+++-++---+-++++-00000000
+[  45.56s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+--+0-+0-+++-++--++-++++-00000000
+[  45.66s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+0-+0-+--+++-++----+++++-00000000
+[  45.76s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+0-+--+--++++++--+-+++++-00000000
+[  45.86s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+0-+--+--+0-++++++---++++++-00000000
+[  45.96s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+--+0-+--++++++--+++++++-00000000
+[  46.06s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+--+0-+--+0-----++---------+00000000
+[  46.16s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+--+0-+--+---++--+------+00000000
+[  46.26s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+0-+--+--+---++---+-----+00000000
+[  46.36s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+--+--+0-+---++--++-----+00000000
+[  46.46s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+--+0-+--+---++----+----+00000000
+[  46.56s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+--+0-+--+0-++--++--+-+----+00000000
+[  46.66s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+--+0-+0-++--++---++----+00000000
+[  46.76s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+0-+0-+0-++--++--+++----+00000000
+[  46.86s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+0-+0-+--++--++-----+---+00000000
+[  46.96s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+0-+0-+--+0-+++-++--+--+---+00000000
+[  47.06s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+0-+--+0-+0-+++-++---+-+---+00000000
+[  47.16s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+0-+0-+--+++-++--++-+---+00000000
+[  47.26s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+0-+--+0-+++-++----++---+00000000
+[  47.36s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+0-+--+0-+--++++++--+-++---+00000000
+[  47.46s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+0-+--+0-++++++---+++---+00000000
+[  47.56s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+--+0-+--++++++--++++---+00000000
+[  47.66s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+0-+--+------+++-----+--+00000000
+[  47.76s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+--+--+0-+---+++-+---+--+00000000
+[  47.86s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+--+0-+0-+---+++--+--+--+00000000
+[  47.96s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+--+0-+0-+--+---+++-++--+--+00000000
+[  48.06s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+0-+--+0-+---+++---+-+--+00000000
+[  48.16s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+0-+--+0-+--++--+++-+-+-+--+00000000
+[  48.26s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+0-+--+--++--+++--++-+--+00000000
+[  48.37s] TRAIN p=1 v=++++++++--------00000000++++++++---------------------------------------------------------+--+0-+--+--+0-++--+++-+++-+--+00000000
+[  48.41s] TRAIN p=1 v=++++++++--------00000000+++++++++--------------------------------------------------------+0-+--+--+0-00-++--+++----++--+00000000
+[  48.46s] TRAIN p=1 v=++++++++--------00000000++++++++-+-------------------------------------------------------+--+--+0-00-00-+++-+++-+--++--+00000000
+[  49.01s] TRAIN p=1 v=++++++++--------00000000++++++++---------------------------------------------------------+--+0-00-000++++++-+++--+-++--+00000000
+[  49.06s] TRAIN p=1 v=++++++++--------00000000+++++++++--------------------------------------------------------+0-00-000++-00++++-+++-++-++--+00000000
+[  49.11s] TRAIN p=1 v=++++++++--------00000000++++++++-+-------------------------------------------------------00-000++-00-00++++-+++---+++--+00000000
+[  49.66s] TRAIN p=1 v=++++++++--------00000000++++++++---------------------------------------------------------000++-00-000++++++++++-+-+++--+00000000
+[  49.71s] TRAIN p=1 v=++++++++--------00000000+++++++++-------------------------------------------------------0++-00-000++-00++++++++--++++--+00000000
+[  49.76s] TRAIN p=1 v=++++++++--------00000000++++++++-+-------------------------------------------------------00-000++-00-00++++++++-+++++--+00000000
+[  50.31s] TRAIN p=1 v=++++++++--------00000000++++++++---------------------------------------------------------000++-00-000+++----+++------+-+00000000
+[  50.36s] TRAIN p=1 v=++++++++--------00000000+++++++++-------------------------------------------------------0++-00-000++-00++---+++-+----+-+00000000
+[  50.41s] TRAIN p=1 v=++++++++--------00000000++++++++-+-------------------------------------------------------00-000++-00-00++---+++--+---+-+00000000
+[  50.96s] TRAIN p=1 v=++++++++--------00000000++++++++---------------------------------------------------------000++-00-000++++---+++-++---+-+00000000
+[  51.01s] TRAIN p=1 v=++++++++--------00000000+++++++++-------------------------------------------------------0++-00-000++-00++---+++---+--+-+00000000
+[  51.06s] TRAIN p=1 v=++++++++--------00000000++++++++-+-------------------------------------------------------00-000++-00-00+++--+++-+-+--+-+00000000
+[  51.61s] TRAIN p=1 v=++++++++--------00000000++++++++---------------------------------------------------------000++-00-000+++++--+++--++--+-+00000000
+[  51.66s] TRAIN p=1 v=++++++++--------00000000+++++++++-------------------------------------------------------0++-00-000++-00+++--+++-+++--+-+00000000
+[  51.71s] TRAIN p=1 v=++++++++--------00000000++++++++-+-------------------------------------------------------00-000++-00-00+++--+++----+-+-+00000000
+[  52.26s] TRAIN p=1 v=++++++++--------00000000++++++++---------------------------------------------------------000++-00-000++++++-+++-+--+-+-+00000000
+[  52.31s] TRAIN p=1 v=++++++++--------00000000+++++++++-------------------------------------------------------0++-00-000++-00++++-+++--+-+-+-+00000000
+[  52.36s] TRAIN p=1 v=++++++++--------00000000++++++++-+-------------------------------------------------------00-000++-00-00++++-+++-++-+-+-+00000000
+[  52.91s] TRAIN p=1 v=++++++++--------00000000++++++++---------------------------------------------------------000++-00-000++++++-+++---++-+-+00000000
+[  52.96s] TRAIN p=1 v=++++++++--------00000000+++++++++-------------------------------------------------------0++-00-000++-00++++++++-+-++-+-+00000000
+[  53.01s] TRAIN p=1 v=++++++++--------00000000++++++++-+-------------------------------------------------------00-000++-00-00++++++++--+++-+-+00000000
+[  53.56s] TRAIN p=2 v=++++++++--------00000000+-+-+-+-++--++----++--++-++--++-+--++--+++++--------++++--++++---000++-00-000++++++++++-++++-+-+00000000
+[  54.06s] TRAIN p=2 v=++++++++--------00000000+-+-+-+-++--++----++--++-++--++-+--++--+++++--------++++--++++--0++-00-000++0+0+----+++-----++-+00000000
+[  54.56s] TRAIN p=2 v=++++++++--------00000000+-+-+-+-++--++----++--++-++--++-+--++--+++++--------++++--++++---00-000++0+00+0++---+++-+---++-+00000000
+[  55.06s] TRAIN p=2 v=++++++++--------00000000+-+-+-+-++--++----++--++-++--++-+--++--+++++--------++++--++++---000++0+00+00+0++---+++--+--++-+00000000
+[  55.56s] TRAIN p=2 v=++++++++--------00000000+-+-+-+-++--++----++--++-++--++-+--++--+++++--------++++--++++--0++0+00+00+00+0-+---+++-++--++-+00000000
+[  56.06s] TRAIN p=2 v=++++++++--------00000000+-+-+-+-++--++----++--++-++--++-+--++--+++++--------++++--++++--0+00+00+00+00+0-+---+++---+-++-+00000000
+[  56.56s] TRAIN p=2 v=++++++++--------00000000+-+-+-+-++--++----++--++-++--++-+--++--+++++--------++++--++++--0+00+00+00+00+0-++--+++-+-+-++-+00000000
+[  57.06s] TRAIN p=2 v=++++++++--------00000000+-+-+-+-++--++----++--++-++--++-+--++--+++++--------++++--++++--0+00+00+00+00+0-++--+++--++-++-+00000000
+[  57.56s] TRAIN p=2 v=++++++++--------00000000+-+-+-+-++--++----++--++-++--++-+--++--+++++--------++++--++++--0+00+00+00+00+0-++--+++-+++-++-+00000000
+[  58.06s] TRAIN p=2 v=++++++++--------00000000+-+-+-+-++--++----++--++-++--++-+--++--+++++--------++++--++++--0+00+00+00+00+0-++--+++----+++-+00000000
+[  58.56s] TRAIN p=2 v=++++++++--------00000000+-+-+-+-++--++----++--++-++--++-+--++--+++++--------++++--++++--0+00+00+00+00+0-+++-+++-+--+++-+00000000
+[  59.06s] TRAIN p=3 v=++++++++--------00000000-+-+++-+++-+++-+--++++-++-++++-+-+++++-+++++++-+------+++-----++0+00+00+00+00+0-+++-+++--+-+++-+00000000
+[  59.16s] TRAIN p=3 v=++++++++--------00000000++-+++-+--++++-++-++++-+-+++++-+++++++-+------+++-----++-+----++0+00+00+00+0-+-++++-+++-++-+++-+00000000
+[  59.26s] TRAIN p=3 v=++++++++--------00000000--++++-++-++++-+-+++++-+++++++-+------+++-----++-+----++++----++0+00+00+0-+--+-++++-+++---++++-+00000000
+[  59.36s] TRAIN p=3 v=++++++++--------00000000+-++++-+-+++++-+++++++-+------+++-----++-+----++++----++--+---++0+00+0-+--+--+0++++++++-+-++++-+00000000
+[  59.46s] TRAIN p=3 v=++++++++--------00000000-+++++-+++++++-+------+++-----++-+----++++----++--+---+++-+---++0+0-+--+--+0-+-++++++++--+++++-+00000000
+[  59.56s] TRAIN p=3 v=++++++++--------00000000++++++-+------+++-----++-+----++++----++--+---+++-+---++-++---++-+--+--+0-+--+0-+++++++-++++++-+00000000
+[  59.66s] TRAIN p=3 v=++++++++--------00000000------+++-----++-+----++++----++--+---+++-+---++-++---+++++---++-+--+0-+--+0-+------+++-------++00000000
+[  59.76s] TRAIN p=3 v=++++++++--------00000000+-----++-+----++++----++--+---+++-+---++-++---+++++---++---+--++-+0-+--+0-+--+0-+---+++-+-----++00000000
+[  59.86s] TRAIN p=3 v=++++++++--------00000000-+----++++----++--+---+++-+---++-++---+++++---++---+--+++--+--++-+--+0-+--+0-+0-+---+++--+----++00000000
+[  59.96s] TRAIN p=3 v=++++++++--------00000000++----++--+---+++-+---++-++---+++++---++---+--+++--+--++-+-+--++-+0-+--+0-+0-+0-+---+++-++----++00000000
+[  60.06s] TRAIN p=3 v=++++++++--------00000000--+---+++-+---++-++---+++++---++---+--+++--+--++-+-+--++++-+--++-+--+0-+0-+0-+--+---+++---+---++00000000
+[  60.16s] TRAIN p=3 v=++++++++--------00000000+-+---++-++---+++++---++---+--+++--+--++-+-+--++++-+--++--++--++-+0-+0-+0-+--+0-++--+++-+-+---++00000000
+[  60.26s] TRAIN p=3 v=++++++++--------00000000-++---+++++---++---+--+++--+--++-+-+--++++-+--++--++--+++-++--++-+0-+0-+--+0-+--++--+++--++---++00000000
+[  60.36s] TRAIN p=3 v=++++++++--------00000000+++---++---+--+++--+--++-+-+--++++-+--++--++--+++-++--++-+++--++-+0-+--+0-+--+--++--+++-+++---++00000000
+[  60.46s] TRAIN p=3 v=++++++++--------00000000---+--+++--+--++-+-+--++++-+--++--++--+++-++--++-+++--++++++--++-+--+0-+--+--+--++--+++----+--++00000000
+[  60.56s] TRAIN p=3 v=++++++++--------00000000+--+--++-+-+--++++-+--++--++--+++-++--++-+++--++++++--++----+-++-+0-+--+--+--+0-+++-+++-+--+--++00000000
+[  60.66s] TRAIN p=3 v=++++++++--------00000000-+-+--++++-+--++--++--+++-++--++-+++--++++++--++----+-+++---+-++-+--+--+--+0-+0-+++-+++--+-+--++00000000
+[  60.75s] TRAIN p=3 v=++++++++--------00000000++-+--++--++--+++-++--++-+++--++++++--++----+-+++---+-++-+--+-++-+--+--+0-+0-+--+++-+++-++-+--++00000000
+[  60.86s] TRAIN p=3 v=++++++++--------00000000--++--+++-++--++-+++--++++++--++----+-+++---+-++-+--+-++++--+-++-+--+0-+0-+--+0-+++-+++---++--++00000000
+[  60.96s] TRAIN p=3 v=++++++++--------00000000+-++--++-+++--++++++--++----+-+++---+-++-+--+-++++--+-++--+-+-++-+0-+0-+--+0-+--+++++++-+-++--++00000000
+[  61.06s] TRAIN p=3 v=++++++++--------00000000-+++--++++++--++----+-+++---+-++-+--+-++++--+-++--+-+-+++-+-+-++-+0-+--+0-+--+0-+++++++--+++--++00000000
+[  61.16s] TRAIN p=3 v=++++++++--------00000000++++--++----+-+++---+-++-+--+-++++--+-++--+-+-+++-+-+-++-++-+-++-+--+0-+--+0-+--+++++++-++++--++00000000
+[  61.26s] TRAIN p=3 v=++++++++--------00000000----+-+++---+-++-+--+-++++--+-++--+-+-+++-+-+-++-++-+-+++++-+-++-+0-+--+0-+--+------++++----+-++00000000
+[  61.36s] TRAIN p=3 v=++++++++--------00000000+---+-++-+--+-++++--+-++--+-+-+++-+-+-++-++-+-+++++-+-++---++-++-+--+0-+--+--+0-+---+++++---+-++00000000
+[  61.46s] TRAIN p=3 v=++++++++--------00000000-+--+-++++--+-++--+-+-+++-+-+-++-++-+-+++++-+-++---++-+++--++-++-+0-+--+--+0-+0-+---++++-+--+-++00000000
+[  61.56s] TRAIN p=3 v=++++++++--------00000000++--+-++--+-+-+++-+-+-++-++-+-+++++-+-++---++-+++--++-++-+-++-++-+--+--+0-+0-+0-+---++++++--+-++00000000
+[  61.66s] TRAIN p=3 v=++++++++--------00000000--+-+-+++-+-+-++-++-+-+++++-+-++---++-+++--++-++-+-++-++++-++-++-+--+0-+0-+0-+--+---++++--+-+-++00000000
+[  61.76s] TRAIN p=3 v=++++++++--------00000000+-+-+-++-++-+-+++++-+-++---++-+++--++-++-+-++-++++-++-++--+++-++-+0-+0-+0-+--+--++--+++++-+-+-++00000000
+[  61.86s] TRAIN p=3 v=++++++++--------00000000-++-+-+++++-+-++---++-+++--++-++-+-++-++++-++-++--+++-+++-+++-++-+0-+0-+--+--+--++--++++-++-+-++00000000
+[  61.96s] TRAIN p=3 v=++++++++--------00000000+++-+-++---++-+++--++-++-+-++-++++-++-++--+++-+++-+++-++-++++-++-+0-+--+--+--+0-++--+++++++-+-++00000000
+[  62.06s] TRAIN p=3 v=++++++++--------00000000---++-+++--++-++-+-++-++++-++-++--+++-+++-+++-++-++++-+++++++-++-+--+--+--+0-+--++--++++---++-++00000000
+[  62.16s] TRAIN p=3 v=++++++++--------00000000+--++-++-+-++-++++-++-++--+++-+++-+++-++-++++-+++++++-++-----+++-+--+--+0-+--+0-+++-+++++--++-++00000000
+[  62.26s] TRAIN p=3 v=++++++++--------00000000-+-++-++++-++-++--+++-+++-+++-++-++++-+++++++-++-----++++----+++-+--+0-+--+0-+0-+++-++++-+-++-++00000000
+[  62.35s] TRAIN p=3 v=++++++++--------00000000++-++-++--+++-+++-+++-++-++++-+++++++-++-----++++----+++-+---+++-+0-+--+0-+0-+--+++-++++++-++-++00000000
+[  62.46s] TRAIN p=3 v=++++++++--------00000000--+++-+++-+++-++-++++-+++++++-++-----++++----+++-+---+++++---+++-+--+0-+0-+--+0-+++-++++--+++-++00000000
+[  62.56s] TRAIN p=3 v=++++++++--------00000000+-+++-++-++++-+++++++-++-----++++----+++-+---+++++---+++--+--+++-+0-+0-+--+0-+0-+++++++++-+++-++00000000
+[  62.66s] TRAIN p=3 v=++++++++--------00000000-++++-+++++++-++-----++++----+++-+---+++++---+++--+--++++-+--+++-+0-+--+0-+0-+--++++++++-++++-++00000000
+[  62.76s] TRAIN p=3 v=++++++++--------00000000+++++-++-----++++----+++-+---+++++---+++--+--++++-+--+++-++--+++-+--+0-+0-+--+--+++++++++++++-++00000000
+[  62.86s] TRAIN p=3 v=++++++++--------00000000-----++++----+++-+---+++++---+++--+--++++-+--+++-++--++++++--+++-+0-+0-+--+--+------++++-----+++00000000
+[  62.96s] TRAIN p=3 v=++++++++--------00000000+----+++-+---+++++---+++--+--++++-+--+++-++--++++++--+++---+-+++-+0-+--+--+--+0-+---+++++----+++00000000
+[  63.06s] TRAIN p=3 v=++++++++--------00000000-+---+++++---+++--+--++++-+--+++-++--++++++--+++---+-++++--+-+++-+--+--+--+0-+0-+---++++-+---+++00000000
+[  63.16s] TRAIN p=3 v=++++++++--------00000000++---+++--+--++++-+--+++-++--++++++--+++---+-++++--+-+++-+-+-+++-+--+--+0-+0-+0-+---++++++---+++00000000
+[  63.26s] TRAIN p=3 v=++++++++--------00000000--+--++++-+--+++-++--++++++--+++---+-++++--+-+++-+-+-+++++-+-+++-+--+0-+0-+0-+--+---++++--+--+++00000000
+[  63.36s] TRAIN p=3 v=++++++++--------00000000+-+--+++-++--++++++--+++---+-++++--+-+++-+-+-+++++-+-+++--++-+++-+0-+0-+0-+--+--++--+++++-+--+++00000000
+[  63.46s] TRAIN p=3 v=++++++++--------00000000-++--++++++--+++---+-++++--+-+++-+-+-+++++-+-+++--++-++++-++-+++-+0-+0-+--+--+--++--++++-++--+++00000000
+[  63.56s] TRAIN p=3 v=++++++++--------00000000+++--+++---+-++++--+-+++-+-+-+++++-+-+++--++-++++-++-+++-+++-+++-+0-+--+--+--+0-++--+++++++--+++00000000
+[  63.66s] TRAIN p=3 v=++++++++--------00000000---+-++++--+-+++-+-+-+++++-+-+++--++-++++-++-+++-+++-+++++++-+++-+--+--+--+0-+--++--++++---+-+++00000000
+[  63.76s] TRAIN p=3 v=++++++++--------00000000+--+-+++-+-+-+++++-+-+++--++-++++-++-+++-+++-+++++++-+++----++++-+--+--+0-+--+0-+++-+++++--+-+++00000000
+[  63.86s] TRAIN p=3 v=++++++++--------00000000-+-+-+++++-+-+++--++-++++-++-+++-+++-+++++++-+++----+++++---++++-+--+0-+--+0-+0-+++-++++-+-+-+++00000000
+[  63.96s] TRAIN p=3 v=++++++++--------00000000++-+-+++--++-++++-++-+++-+++-+++++++-+++----+++++---++++-+--++++-+0-+--+0-+0-+0-+++-++++++-+-+++00000000
+[  64.06s] TRAIN p=3 v=++++++++--------00000000--++-++++-++-+++-+++-+++++++-+++----+++++---++++-+--++++++--++++-+--+0-+0-+0-+0-+++-++++--++-+++00000000
+[  64.16s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+0-+0-+0-+0-+++++++++-++-+++00000000
+[  64.26s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+0-+0-+0-+--++++++++-+++-+++00000000
+[  64.36s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+0-+0-+--+--++++++++++++-+++00000000
+[  64.46s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+0-+--+--+------++++----++++00000000
+[  64.56s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+--+--+0-+---+++++---++++00000000
+[  64.66s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+--+--+0-+0-+---++++-+--++++00000000
+[  64.76s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+--+0-+0-+0-+---++++++--++++00000000
+[  64.86s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+0-+0-+--+---++++--+-++++00000000
+[  64.96s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+0-+0-+--+0-++--+++++-+-++++00000000
+[  65.06s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+0-+--+0-+--++--++++-++-++++00000000
+[  65.16s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+0-+--+0-++--+++++++-++++00000000
+[  65.26s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+--+0-+--++--++++---+++++00000000
+[  65.36s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+0-+--+--+++-+++++--+++++00000000
+[  65.46s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+--+--+--+++-++++-+-+++++00000000
+[  65.55s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+--+--+--+0-+++-++++++-+++++00000000
+[  65.66s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+--+--+0-+0-+++-++++--++++++00000000
+[  65.76s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+--+0-+0-+0-+++++++++-++++++00000000
+[  65.86s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+--+0-+0-+0-+--++++++++-+++++++00000000
+[  65.96s] TRAIN p=0 v=++++++++--------00000000-----------------------------------------------------------------+0-+0-+0-+--+0-++++++++++++++++00000000
+[  66.02s]   Observed: 211 packets, 211 encoded, 12885 GIE loops
+[  66.02s]   Per-pattern counts: P0=70 P1=24 P2=15 P3=102
+[  66.02s]   Phase 0b: Computing TriX signatures...
+[  66.02s]   sig[0]: [++++++++--------00000000--------...] nz=96/128 (from 70 samples, seq trits masked)
+[  66.02s]   sig[1]: [++++++++--------00000000++++++++...] nz=96/128 (from 24 samples, seq trits masked)
+[  66.03s]   sig[2]: [++++++++--------00000000+-+-+-+-...] nz=95/128 (from 15 samples, seq trits masked)
+[  66.03s]   sig[3]: [++++++++--------000000000+-0+-+0...] nz=68/128 (from 102 samples, seq trits masked)
+[  66.03s]   Signature pattern-ID trits [16..23]:
+[  66.03s]     sig[0][16..23]: 00000000
+[  66.03s]     sig[1][16..23]: 00000000
+[  66.03s]     sig[2][16..23]: 00000000
+[  66.03s]     sig[3][16..23]: 00000000
+[  66.03s]   Signature cross-dots:
+[  66.03s]     sig[0] vs: s0=96 s1=68 s2=31 s3=40
+[  66.03s]     sig[1] vs: s0=68 s1=96 s2=21 s3=30
+[  66.03s]     sig[2] vs: s0=31 s1=21 s2=95 s3=31
+[  66.03s]     sig[3] vs: s0=40 s1=30 s2=31 s3=68
+[  66.03s]   Ring drops: 74
+[  66.03s] 
+[  66.03s]   Phase 0c: Installing signatures as W_f gate weights...
+[  66.03s]   W_f weights set from signatures (8 neurons/pattern)
+[  66.03s]   Gate threshold: 2147483647 (Phase 3: blend DISABLED, all neurons HOLD)
+[  66.03s]   Neurons 0-7 → pattern 0
+[  66.03s]   Neurons 8-15 → pattern 1
+[  66.03s]   Neurons 16-23 → pattern 2
+[  66.03s]   Neurons 24-31 → pattern 3
+[  66.03s]   Gate selectivity: 0 fires / 64 steps = 0%
+[  66.03s] 
+[  66.03s]   GDMA offset calibration...
+[  66.06s]   GDMA offset mapping: G0→P0 G1→P1 G2→P2 G3→P3
+[  66.06s]   ISR groups:  [92, 72, 28, 36]
+[  66.06s]   CPU patterns: [92, 72, 28, 36]
+[  66.06s] 
+[  66.06s]   Phase 0d: TriX Cube face observation (15s)...

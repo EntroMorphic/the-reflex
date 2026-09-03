@@ -127,10 +127,20 @@ volatile int32_t gate_threshold = 0;
 volatile int32_t gate_fires_total = 0;  /* diagnostic: count gate fires */
 volatile int32_t gate_steps_total = 0;  /* diagnostic: count total neurons checked */
 
-/* Phase 5: per-group gate bias + per-group fire counters */
+/* Phase 5: per-pattern gate bias + per-pattern fire counters.
+ * Both are indexed by PATTERN ID, not by ISR group index. The ISR resolves
+ * group → pattern via trix_group_to_pattern[] before touching either. */
 volatile int8_t gie_gate_bias[TRIX_NUM_PATTERNS] = {0};
+volatile int32_t gie_gate_fires_per_pattern[TRIX_NUM_PATTERNS] = {0};
+
+/* RESERVED — NOT WIRED. Per-neuron gate bias for the projection-aware bias
+ * experiment. The storage exists; no code reads or writes it. The experiment
+ * was specified and then deliberately not implemented — see
+ * journal/projection_aware_bias_reflect.md ("The per-neuron bias idea is
+ * sound... Don't implement it ourselves. Ship the honest result.").
+ * Writing to this array currently has NO effect on the ISR. If you wire it up,
+ * change the ISR blend in isr_loop_boundary() and delete this notice. */
 volatile int8_t gie_gate_bias_pn[CFC_HIDDEN_DIM] = {0};
-volatile int32_t gie_gate_fires_per_group[TRIX_NUM_PATTERNS] = {0};
 
 /* TriX GDMA offset mapping — group index → pattern ID.
  * Initialized to identity (g→g). HP core overwrites after enrollment. */
@@ -449,11 +459,23 @@ static void IRAM_ATTR isr_loop_boundary(void) {
     for (int n = 0; n < CFC_HIDDEN_DIM; n++) {
         int f_dot = dots[n];
         int8_t f;
+        /* Resolve this neuron's dots-space group to its pattern ID.
+         * AUDIT FIX (Sep 2026): gie_gate_bias[] and gie_gate_fires_per_pattern[]
+         * are written by the test harness in PATTERN space (indexed off
+         * trix_pred, which has already been mapped through
+         * trix_group_to_pattern[]). The ISR indexes dots[] in GROUP space.
+         * These coincide only when the GDMA offset mapping is the identity.
+         * Every recorded run to date resolves to identity, so this changes no
+         * historical result — but applying the map here makes the bias and the
+         * fire counters correct under any permutation, which is the entire
+         * reason trix_group_to_pattern[] exists. */
+        int group = n / TRIX_NEURONS_PP;
+        int pat = trix_group_to_pattern[group];
+        if (pat < 0 || pat >= TRIX_NUM_PATTERNS) pat = group;  /* unmapped */
         if (thresh > 0) {
-            /* Phase 5: per-group gate bias. Positive bias → lower effective
+            /* Phase 5: per-pattern gate bias. Positive bias → lower effective
              * threshold → fires more easily. Bias is subtracted. */
-            int group = n / TRIX_NEURONS_PP;
-            int32_t eff = thresh - (int32_t)gie_gate_bias[group];
+            int32_t eff = thresh - (int32_t)gie_gate_bias[pat];
             if (eff < MIN_GATE_THRESHOLD) eff = MIN_GATE_THRESHOLD;
             f = (f_dot > eff || f_dot < -eff) ? tsign(f_dot) : T_ZERO;
         } else {
@@ -465,7 +487,7 @@ static void IRAM_ATTR isr_loop_boundary(void) {
         } else {
             h_new[n] = tmul(f, g);
             fires++;
-            gie_gate_fires_per_group[n / TRIX_NEURONS_PP]++;
+            gie_gate_fires_per_pattern[pat]++;
         }
     }
     gate_fires_total += fires;
@@ -1319,9 +1341,14 @@ int espnow_encode_input(const espnow_state_t *st) {
      * Sequence counter is monotonic and not pattern-specific.
      * Previously encoded as binary thermometer + bit extraction.
      * Already masked in classification signatures (commit 5735119).
-     * Now silenced at the source: zero trits contribute nothing to
+     * Silenced at the source: zero trits contribute nothing to
      * the GIE dot product (tmul(0, x) = 0), eliminating ~661K
-     * unnecessary AND+popcount operations per second. */
+     * unnecessary AND+popcount operations per second.
+     *
+     * SCOPE (audit, Sep 2026): this silencing applies to THIS encoder only.
+     * espnow_encode_rx_entry() — the encoder used by every load-bearing test —
+     * still writes sequence features unless built with MASK_SEQUENCE_INPUT=1.
+     * See the corresponding note there. */
     /* (Already zeroed by memset at top of function) */
 
     /* Check if input actually changed */
@@ -1386,7 +1413,28 @@ int espnow_encode_rx_entry(const espnow_rx_entry_t *entry,
 
     encode_gap_history((int)gap_ms, new_input);
 
-    /* [104..119] Sequence features */
+    /* ── [104..119] Sequence features ──
+     *
+     * AUDIT NOTE (Sep 2026): this diverges from espnow_encode_input(), which
+     * zeroes [104..127] on the grounds that "sequence is monotonic and not
+     * pattern-specific". That fix was applied only to the legacy encoder,
+     * which is used solely by test_espnow.c. THIS function is the one every
+     * load-bearing test uses (test_live_input, test_kinetic, test_memory,
+     * test_hebbian), so the sequence trits are in fact present in the input
+     * for all reported results.
+     *
+     * Signatures mask trits >= 104 at enrollment (test_live_input.c), so this
+     * does not give the classifier a direct route to the label. It does,
+     * however, carry sequence into the GIE hidden state, and from there into
+     * the VDB snapshots and the LP path — which is where the divergence
+     * measurements are taken. Sequence advances monotonically while patterns
+     * cycle, so a correlation with pattern order is possible in principle.
+     *
+     * Build with -DMASK_SEQUENCE_INPUT=1 to zero these trits and run the
+     * ablation. Default is OFF so that this firmware continues to match the
+     * committed data in data/apr9_2026 and data/apr11_2026; the divergence
+     * numbers in the papers were measured with sequence present. */
+#ifndef MASK_SEQUENCE_INPUT
     uint32_t seq_lo = pkt->sequence & 0x0F;
     for (int i = 0; i < 8; i++) {
         int idx = 104 + i;
@@ -1401,6 +1449,7 @@ int espnow_encode_rx_entry(const espnow_rx_entry_t *entry,
         uint32_t bit = (pkt->sequence >> i) & 1;
         new_input[112 + i] = bit ? T_POS : T_NEG;
     }
+#endif
 
     /* [120..127] Reserved — zeroed */
 
@@ -1470,6 +1519,28 @@ void update_gie_input(void) {
  * ══════════════════════════════════════════════════════════════════ */
 
 /**
+ * NOT WIRED — no callers anywhere in the tree (audit, Sep 2026).
+ *
+ * Retained deliberately: the sleep-consolidation design in
+ * journal/pillar3_concerns_synth.md reuses this routine (VDB replay + a
+ * single-trit flip per neuron with the ISR stopped). It is infrastructure for
+ * planned work, not leftover code.
+ *
+ * Two consequences of it being unwired are load-bearing elsewhere:
+ *   1. This is the only routine that writes cfc.W_f at an arbitrary index.
+ *      Because it never runs, the structural wall (W_f[hidden] = 0) holds by
+ *      construction and not merely by convention. If you wire it up, note
+ *      that it only selects indices where W_f[n][i] != T_ZERO, so the wall
+ *      survives — but re-verify that before relying on it.
+ *   2. It draws from the same PRNG stream as cfc_seed()/cfc_rand(), so
+ *      enabling it would shift every subsequent random draw and break seed
+ *      reproducibility against the committed datasets.
+ *
+ * Known issue if enabled: the "pick pseudo-randomly among contributing
+ * weights" selection below is biased toward later indices — it overwrites
+ * best_i with probability 1/3 on every subsequent match rather than doing
+ * reservoir sampling.
+ *
  * Apply one step of homeostatic learning to W_f.
  *
  * The goal: tune W_f so that dot(W_f[n], concat) ≈ 0 for familiar

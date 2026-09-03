@@ -30,8 +30,15 @@ embedded/.cache/
 # Transient logs and captures
 esp32_monitor_output.txt
 reflex_*.txt
-*.log
 *.bin
+
+# Build logs only. NOT a global *.log rule: the raw silicon capture logs under
+# data/ are the evidence base for the papers and must be version-controlled.
+# (Audit Sep 2026, finding D1 — a global *.log had left every experiment log
+# untracked while the papers cited them by name.)
+embedded/build/**/*.log
+build/**/*.log
+**/log/*.log
 
 # Firmware backups (binary blobs)
 backups/

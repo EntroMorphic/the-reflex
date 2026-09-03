@@ -353,7 +353,11 @@ The answer is almost certainly yes. The question is how to build it.
 
 4. **Disagreement detection:** Ternary disagree-count per trit. When 4+ of 16 trits disagree, prior and evidence are in conflict. The disagreement signal is structurally reliable because the TriX classification that feeds it is immune to the prior (W_f hidden = 0).
 
-5. **Evidence-deference policy:** When prediction flips (step +1 post-switch), the LP feedback dispatch switches to the new pattern's accumulator. The bias magnitude decays geometrically (×0.9/step, half-life ~6.6 steps). **Honest negative:** the specific gate-bias implementation of evidence deference (kinetic attention) is harmful at MTFP resolution (-5.5/80) — the bias saturates the GIE hidden state, reducing LP magnitude diversity. The PRINCIPLE (evidence overrides prior) is intact. The IMPLEMENTATION (gate bias as the deference mechanism) needs revision. The five-component architecture holds; component 5's specific mechanism does not help.
+5. **Evidence-deference policy:** When prediction flips (step +1 post-switch), the LP feedback dispatch switches to the new pattern's accumulator. The bias magnitude decays geometrically (×0.9/step, half-life ~6.6 steps).
+
+   **UNVERIFIED (Sep 2026 audit).** This is the weakest link in the chain and the one the argument most depends on. Three facts constrain what can be claimed: (a) the immediate-deference branch (`n_disagree ≥ 4` → bias = 0) is **not entered on any clean seed** in the recorded data, so what the hardware demonstrates is graceful decay, not deference at the point of conflict; (b) neuron group 3 never fires the gate in any recorded condition, so the mechanism was exercised on 3 of 4 pattern groups; (c) the measured effect is -5.5 ± 5.3/80 at n=3, not distinguishable from zero.
+
+   Components 1–4 are verified (component 4 in its *detection* role only). Component 5 is **unverified rather than falsified.** The gate-bias result is weak evidence about deference in general, because gate bias is a poor instantiation of it: it applies the prior to the perceptual gate, which is precisely the coupling this architecture exists to prevent. A deference mechanism consistent with the architecture would modulate the retrieval-and-blend path — how much accumulated past is admitted into the temporal state — and leave the perceptual threshold alone. That experiment has not been run.
 
 **Companion papers:**
 - Stratum 1 (Engineering): `PAPER_KINETIC_ATTENTION.md` — ternary peripheral-fabric neural computation with VDB temporal context (rewritten April 12)

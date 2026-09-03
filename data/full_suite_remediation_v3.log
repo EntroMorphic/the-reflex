@@ -1,0 +1,521 @@
+I (175) esp_image: segment 3: paddr=000d50f0 vaddr=408069a0 size  Known GIE hidden energy: 30/32
+  Known GIE hidden: [+-+--+-+---+-+--+++---+0-+-+-++0]
+  LP steps: 28 → 29 (delta=1)
+  4b: f-dots exact: 16/16, g-dots exact: 16/16
+  4b: f-dots sign:  14/14, g-dots sign:  11/11
+  LP  f-dots: -5 2 4 4 -2 1 2 2 0 2 -1 1 0 -4 5 -9
+  CPU f-dots: -5 2 4 4 -2 1 2 2 0 2 -1 1 0 -4 5 -9
+  LP  g-dots: 2 0 5 2 0 -3 2 0 2 2 1 0 0 -4 6 -2
+  CPU g-dots: 2 0 5 2 0 -3 2 0 2 2 1 0 0 -4 6 -2
+  OK
+
+-- TEST 5: Ternary VDB — NSW Graph (M=7), 64 Nodes --
+  5a: Inserting 64 nodes (graph-aware, cmd=3)...
+  5a: Inserted 64 nodes — OK
+
+  5b: Self-match recall@1 (64 queries)...
+  5b: 64/64 self-match recall@1 — OK
+
+  5c: Recall measurement (20 random queries)...
+    q0: LP=[35,11,48,37] CPU=[35,11,37,48]
+    q1: LP=[15,63,31,53] CPU=[15,31,63,26]
+    q2: LP=[49,61,36,25] CPU=[49,36,61,25]
+  Recall@1: 19/20 = 95%
+  Recall@4: 72/80 = 90%
+  5c: OK (thresholds: r@1>=95%, r@4>=90%)
+
+  5d: Visit count (graph vs brute-force)...
+  Graph search visited: 60 / 64 nodes
+  5d: OK (sub-linear: YES)
+
+  5e: Connectivity (BFS from node 0)...
+  Reachable from node 0: 64 / 64
+  5e: OK
+
+  5f: Latency benchmark (10 searches, N=64)...
+  Round-trip (includes LP wake jitter up to 10ms):
+    min=9988 us, max=14988 us, avg=13915 us
+  5f: OK
+
+  OK
+
+-- TEST 6: CfC -> VDB Pipeline (CMD 4) --
+  Setup: Inserting 32 vectors into VDB...
+  VDB has 32 nodes
+
+  6a: Pipeline basic operation...
+[DIAG] 500us: agree=256 disagree=291 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11039348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  step_count: 29 -> 30 (delta=1)
+  search_count: 95 -> 96 (delta=1)
+  Pipeline return: 0
+  Top-4 results: [5,17,30,24] scores=[7,7,6,6]
+  6a: OK
+
+  6b: CfC determinism (cmd=4 vs cmd=1)...
+  cmd=1 hidden: [-0++0-+00+-00+++]
+  cmd=4 hidden: [-0++0-+00+-00+++]
+  Hidden match: YES
+  f-dots match: YES, g-dots match: YES
+  6b: OK
+
+  6c: VDB consistency (pipeline vs standalone search)...
+  Pipeline: [5,17,30,24] scores=[7,7,6,6]
+  Standalone: [5,17,30,24] scores=[7,7,6,6]
+  Results match: YES
+  6c: OK
+
+  6d: Sustained pipeline operation (10 steps)...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  Pipeline steps completed: 10 / 10
+  step_count delta: 10
+  search_count delta: 10
+  Final LP hidden: [--++--0-++-++-++]
+  Final LP hidden energy: 15/16
+  6d: OK
+
+  OK
+
+-- TEST 7: Reflex Channel Coordination --
+  7a: Channel signals match loop count...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11039348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  Signals received: 50 / 50
+  Value mismatches: 0
+  Final loop_count: 51, channel value: 51, channel seq: 51
+  7a: OK
+
+  7b: Signal latency (ISR -> main loop)...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  Samples: 100
+  Latency (cycles): min=1988, max=2820, avg=2285
+  Latency (ns):     min=12425, max=17625, avg=14281
+  7b: OK
+
+  7c: Hidden state consistency after channel wait...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  Dot match: 64 / 64
+  Channel signaled: YES (seq 6 -> 7)
+  7c: OK
+
+  7d: Channel-driven LP feeding (20 cycles)...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  Channel-driven feeds: 20 / 20
+  LP step_count delta: 20
+  7d: OK
+
+  OK
+
+-- TEST 8: VDB -> CfC Feedback Loop (CMD 5) --
+  Setup: Inserting 32 vectors into VDB...
+  VDB has 32 nodes
+
+  8a: Single feedback step (cmd=5)...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  cmd=5 return: 0
+  step_count: 62 -> 63 (delta=1)
+  search_count: 108 -> 109 (delta=1)
+  fb_total_blends: 0 -> 0
+  fb_applied: 0
+  fb_source_id: 255
+  fb_score: 0
+  fb_blend_count: 0 trits modified
+  Top-4 results: [5,17,30,24] scores=[7,7,6,6]
+  LP hidden after feedback: [-0++0-+00+-00+++]
+  8a: OK
+
+  8b: Feedback observability...
+  Applied: NO (best score 0 < threshold 8)
+  This is acceptable if no stored memory is similar enough.
+  8b: OK
+
+  8c: Stability under sustained feedback (50 steps)...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+    step 0: e=10, delta=10, fb=0, score=0, src=255
+    step 10: e=10, delta=4, fb=1, score=14, src=17
+    step 20: e=12, delta=6, fb=1, score=15, src=5
+    step 30: e=9, delta=8, fb=1, score=11, src=6
+    step 40: e=8, delta=12, fb=1, score=9, src=17
+  Steps completed: 50 / 50
+  Feedback applied: 49 / 50 steps
+  Total blend operations: 49
+  Max change per step: 12 / 16 trits
+  Energy range: [7, 14] / 16
+  Unique states visited: 50
+  Final LP hidden: [00++++++++--00++]
+  8c: OK
+
+  8d: Feedback vs no-feedback divergence...
+    step 0: hamming distance = 0
+    step 1: hamming distance = 5
+    step 2: hamming distance = 7
+    step 3: hamming distance = 8
+    step 4: hamming distance = 7
+    step 5: hamming distance = 9
+    step 6: hamming distance = 11
+    step 7: hamming distance = 10
+    step 8: hamming distance = 10
+    step 9: hamming distance = 10
+  First divergence at step: 1
+  Steps with different states: 9 / 10
+  No-feedback final: [--+++-+--+-+-+++]
+  Feedback final   : [0+++0-++0+0-+0+0]
+  8d: OK
+
+  OK
+
+-- TEST 9: ESP-NOW Receive from Board B --
+  Listening for 10 seconds...
+  Packets received: 88
+  RSSI range: [-55, -52] dBm
+  Last pattern_id: 1, seq: 88427
+  Source MAC: b4:3a:45:8a:c8:24
+  Unique patterns seen: 3/4
+  OK (88 packets in 10s)
+
+-- TEST 10: ESP-NOW -> GIE Live Input --
+  10a: Input encoding from live ESP-NOW data...
+  Input updates from ESP-NOW: 10 in 3s
+  First encoded input energy: 104 / 128 trits active
+  Input sample [0..15] RSSI: +++++++---------
+  Input sample [16..23] pattern: --++----
+  Input sample [24..31] payload: ++++++++
+  10a: OK
+
+  10b: GIE hidden state with live ESP-NOW input...
+[DIAG] 500us: agree=256 disagree=291 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x6603a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  Static input: 430 loops, hidden energy=30
+  Live input: 432 loops, 2 input updates, hidden energy=31
+  Hamming distance (static vs live): 14 / 32
+  Static hidden: [+-+--+-----+-0-+++++-++0-+-+-++-]
+  Live hidden  : [++++--+0++-+-+-+-+-+-++-++-+-+-+]
+  10b: OK
+
+  10c: Pattern-dependent hidden state trajectories...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11039348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+    window 0: pattern=2 (count=3), energy=31
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+    window 1: pattern=2 (count=2), energy=28
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11039348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+    window 2: pattern=2 (count=2), energy=28
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x11038348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+    window 3: pattern=3 (count=7), energy=30
+  Cross-pattern pairs: 3, divergent: 3, max hamming: 19
+  Same-pattern pairs: 3
+  10c: OK
+
+  10d: Full stack: ESP-NOW -> GIE -> LP core...
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  GIE loops: 875, LP feeds: 20, LP steps: 19
+  LP hidden energy: 15 / 16
+  LP final hidden: [++---++++0--+-++]
+  10d: OK
+
+  OK
+
+-- TEST 11: Pattern Classification (Stream CfC) --
+[DIAG] 500us: agree=254 disagree=289 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  Phase 0a: Observing input signatures (30s)...
+  Observed: 220 packets, 220 encoded, 12886 GIE loops
+  Per-pattern counts: P0=102 P1=33 P2=11 P3=74
+  Phase 0b: Computing TriX signatures...
+  sig[0]: [+++++++---------++--------------...] nz=104/128 (from 102 samples, seq trits masked)
+  sig[1]: [+++++++-----------++----++++++++...] nz=104/128 (from 33 samples, seq trits masked)
+  sig[2]: [+++++++-------------++---+-+-+-+...] nz=103/128 (from 11 samples, seq trits masked)
+  sig[3]: [+++++++---------------++0-+-++--...] nz=89/128 (from 74 samples, seq trits masked)
+  Signature pattern-ID trits [16..23]:
+    sig[0][16..23]: ++------
+    sig[1][16..23]: --++----
+    sig[2][16..23]: ----++--
+    sig[3][16..23]: ------++
+  Signature cross-dots:
+    sig[0] vs: s0=104 s1=68 s2=63 s3=39
+    sig[1] vs: s0=68 s1=104 s2=71 s3=25
+    sig[2] vs: s0=63 s1=71 s2=103 s3=24
+    sig[3] vs: s0=39 s1=25 s2=24 s3=89
+  Ring drops: 74
+
+  Phase 0c: Installing signatures as W_f gate weights...
+  W_f weights set from signatures (8 neurons/pattern)
+  Gate threshold: 2147483647 (Phase 3: blend DISABLED, all neurons HOLD)
+  Neurons 0-7 → pattern 0
+  Neurons 8-15 → pattern 1
+  Neurons 16-23 → pattern 2
+  Neurons 24-31 → pattern 3
+  Gate selectivity: 0 fires / 64 steps = 0%
+
+  GDMA offset calibration...
+  GDMA offset mapping: G0→P0 G1→P1 G2→P2 G3→P3
+  ISR groups:  [64, 94, 62, 21]
+  CPU patterns: [64, 94, 62, 21]
+
+  Phase 0d: TriX Cube face observation (15s)...
+  TriX Cube face signatures:
+    +x:recent: 88 samples [P0=12 P1=14 P2=11 P3=51]
+    -x:prior: 74 samples [P0=0 P1=11 P2=51 P3=12]
+    +y:stable: 42 samples [P0=0 P1=4 P2=7 P3=31]
+    -y:transient: 13 samples [P0=5 P1=2 P2=1 P3=5]
+    +z:confident: 12 samples [P0=12 P1=0 P2=0 P3=0]
+    -z:uncertain: 52 samples [P0=0 P1=0 P2=1 P3=51]
+  Face divergence from core (avg Hamming across patterns):
+    +x:recent: 27 avg (4 patterns with data)
+    -x:prior: 47 avg (3 patterns with data)
+    +y:stable: 29 avg (3 patterns with data)
+    -y:transient: 31 avg (4 patterns with data)
+    +z:confident: 14 avg (1 patterns with data)
+    -z:uncertain: 44 avg (2 patterns with data)
+  Ring drops: 74
+
+  Phase 1: TriX Cube ensemble (up to 32 samples, 60s)...
+    s01: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[13,105,105,14,13,105]
+    s02: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[4,118,118,4,4,118]
+    s03: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[4,118,118,4,4,118]
+    s04: truth=0 core=0 isr=0 | cv=[9,2,0,0] iv=[9,2,0,0] xor=[6,29,27,7,4,30]
+    s05: truth=1 core=1 isr=1 | cv=[0,4,0,0] iv=[0,4,0,0] xor=[15,26,13,19,104,104]
+    s06: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[15,26,13,19,104,104]
+    s07: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[12,23,11,16,108,108]
+    s08: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[8,19,7,12,117,117]
+    s09: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[9,11,7,12,117,117]
+    s10: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[23,61,31,31,-,33]
+    s11: truth=2 core=0 isr=0 | cv=[1,0,1,0] iv=[1,0,1,0] xor=[13,33,18,18,53,19]
+    s12: truth=2 core=0 isr=0 | cv=[1,0,1,0] iv=[1,0,1,0] xor=[13,33,18,18,53,19]
+    s13: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[14,53,23,22,118,25]
+    s14: truth=2 core=2 isr=2 | cv=[0,0,2,0] iv=[0,0,2,0] xor=[14,53,23,22,118,25]
+    s15: truth=3 core=3 isr=3 | cv=[0,0,0,10] iv=[0,0,0,10] xor=[49,48,33,53,101,49]
+    s16: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[4,4,4,6,4,4]
+    s17: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[3,6,6,5,3,6]
+    s18: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[4,2,2,4,4,2]
+    s19: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[7,3,3,8,7,3]
+    s20: truth=0 core=0 isr=0 | cv=[7,3,0,0] iv=[7,3,0,0] xor=[4,5,4,8,37,37]
+    s21: truth=1 core=1 isr=1 | cv=[0,3,0,0] iv=[0,3,0,0] xor=[9,11,9,12,117,117]
+    s22: truth=1 core=1 isr=1 | cv=[0,6,0,0] iv=[0,6,0,0] xor=[5,7,6,6,42,42]
+    s23: truth=1 core=1 isr=1 | cv=[0,4,0,0] iv=[0,4,0,0] xor=[5,7,6,6,4,4]
+    s24: truth=1 core=1 isr=1 | cv=[0,5,0,0] iv=[0,5,0,0] xor=[5,7,6,6,4,4]
+    s25: truth=1 core=1 isr=1 | cv=[0,4,0,0] iv=[0,4,0,0] xor=[6,8,7,7,5,5]
+    s26: truth=2 core=1 isr=1 | cv=[0,1,1,0] iv=[0,1,1,0] xor=[10,31,15,15,62,15]
+    s27: truth=2 core=1 isr=1 | cv=[0,1,1,0] iv=[0,1,1,0] xor=[9,31,15,15,62,15]
+    s28: truth=2 core=1 isr=1 | cv=[0,1,1,0] iv=[0,1,1,0] xor=[9,31,15,15,62,15]
+    s29: truth=2 core=1 isr=1 | cv=[0,1,1,0] iv=[0,1,1,0] xor=[9,31,15,15,62,15]
+    s30: truth=2 core=1 isr=1 | cv=[0,1,1,0] iv=[0,1,1,0] xor=[9,18,15,15,62,15]
+    s31: truth=0 core=0 isr=0 | cv=[6,0,0,0] iv=[8,2,0,0] xor=[2,3,3,3,2,3]
+    s32: truth=0 core=0 isr=0 | cv=[10,0,0,0] iv=[10,0,0,0] xor=[3,3,3,3,3,3]
+
+  ═══ CLASSIFICATION RESULTS (TriX Cube) ═══
+  Total GIE loops: 41211
+  TriX ISR classifications: 28301 (at 671 Hz)
+  Test samples: 32
+  Ring drops: 74
+  Core (CPU per-pkt vote):   25/32 = 78%
+  ISR  (HW 430 Hz TriX):     25/32 = 78% (all samples)
+  ISR  (windows w/ data):    25/32 = 78% (278 pkts clean, 0 pkts timeout)
+  TriX channel signals:      28301 (seq=28301)
+  Baseline (packet-rate):    28/32 = 87%
+
+  ── Novelty Detection ──
+  Novel packets: 81 / 278 (29%)
+  Novel windows: 10
+
+  ── Online Maintenance ──
+  Core re-signs: 12
+  Core drift (Hamming):
+    sig[0]: 13/128 trits
+    sig[1]: 13/128 trits
+    sig[2]: 15/128 trits
+    sig[3]: 20/128 trits
+
+  ── XOR Masks (temporal displacement per face) ──
+    Face              avg  | rssi patid payload timing
+    +x:recent            9/128 |  0/16  0/8   2/64    6/40
+    -x:prior            31/128 |  2/16  2/8  15/64   11/40
+    +y:stable           27/128 |  2/16  1/8  12/64   10/40
+    -y:transient        11/128 |  0/16  0/8   3/64    8/40
+    +z:confident        35/128 |  4/16  2/8  17/64   10/40
+    -z:uncertain        45/128 |  5/16  2/8  24/64   12/40
+    ── Signal distribution ──
+    RSSI:    9% of mask weight
+    PatID:   5% of mask weight
+    Payload: 47% of mask weight
+    Timing:  37% of mask weight
+
+  ── TriX Cube Geometry ──
+    +x:recent: 285 samples, 12 avg hamming from core
+    -x:prior: 271 samples, 17 avg hamming from core
+    +y:stable: 239 samples, 17 avg hamming from core
+    -y:transient: 210 samples, 21 avg hamming from core
+    +z:confident: 209 samples, 58 avg hamming from core
+    -z:uncertain: 249 samples, 15 avg hamming from core
+  Gate firing: 0%
+
+  Architecture:
+  - TriX ISR: HW classifies at 430 Hz (CfC blend DISABLED — Phase 3)
+  - 7-voxel TriX Cube: core + 6 temporal faces
+  - Faces: recent, prior, stable, transient, confident, uncertain
+  - Core classifies alone. Faces compute XOR masks (intervention sensors)
+  - XOR mask = trit positions where face sig != core sig
+  - Online maintenance + novelty detection
+  - Gate threshold=2147483647, novelty=60
+  OK
+
+-- TEST 12: Memory-Modulated Adaptive Attention --
+[DIAG] 500us: agree=1331 disagree=139 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  blend re-enabled (threshold=90), VDB cleared, LP reset
+  running 120s: classify → insert snapshot → LP feedback
+
+  ── LP Hidden State by Pattern ──
+    P0: 301 samples, sign=16/16, mtfp=80/80 [-+---+-++---+-+-]
+    P1: 158 samples, sign=16/16, mtfp=80/80 [-+---+-++---+-+-]
+    P2: 41 samples, sign=16/16, mtfp=80/80 [-+-----++---+-+-]
+    P3: 21 samples, sign=16/16, mtfp=79/80 [-+-----++--++-+-]
+
+  ── LP Divergence Matrix — sign-space (Hamming, /16) ──
+       P0  P1  P2  P3
+  P0:   0   0   1   2
+  P1:   0   0   1   2
+  P2:   1   1   0   1
+  P3:   2   2   1   0
+
+  ── LP Divergence Matrix — MTFP-space (Hamming, /80) ──
+       P0  P1  P2  P3
+  P0:   0   3   5  15
+  P1:   3   0   6  16
+  P2:   5   6   0  15
+  P3:  15  16  15   0
+  P1 vs P3: sign=2/16, mtfp=16/80
+  P1 vs P2: sign=1/16, mtfp=6/80
+
+  ── Summary ──
+  Confirmed: P0=301 P1=158 P2=41 P3=21 (total=521)
+  VDB inserts: 64 (VDB count: 64/64)
+  LP feedback steps: 521, feedback applied: 513
+  Gate firing: 15%
+  P1 vs P3 Hamming: DIVERGED (memory modulated)
+  Cross-pattern LP divergence: YES — sub-conscious state reflects pattern history
+
+  Architecture note:
+  - TriX classification unchanged (W_f hidden=0, ISR step 3b
+    runs before blend step 4 — scores are always input-driven)
+  - LP hidden = episodic memory of pattern exposure
+  - VDB retrieval shapes LP trajectory via ternary blend
+  - This closes the loop: perceive → classify → remember
+    → retrieve → modulate — without CPU or multiplication
+
+  ── Split-Half Null Test (P0, n=301) ──
+  Analytical null bound: ~1/80 MTFP trits (at n=301)
+  Cross-pattern P1-P2 MTFP: 6/80
+  SIGNAL > NULL: MTFP separation exceeds noise floor
+  WARNING: P0 vs P1 Hamming=0 (need >=1)
+  Sufficient patterns: 4/4 (need >=3 with >=15 samples each)
+  FAIL
+
+-- TEST 13: CMD 4 Ablation (CfC only, no VDB blend) --
+[DIAG] 500us: agree=785 disagree=698 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+  CMD 4 (no VDB blend), VDB cleared, LP reset
+  running 120s: classify → feed LP → CfC step only
+
+  ── LP Hidden State by Pattern (CMD 4, no blend) ──
+    P0: 324 samples, energy=16/16 [-+---+-++---+-+-]
+    P1: 157 samples, energy=16/16 [++-----++---+-+-]
+    P2: 41 samples, energy=16/16 [-+-----++---+-+-]
+    P3: 53 samples, energy=15/16 [-+0----++---+-+-]
+
+  ── LP Divergence Matrix (CMD 4 — ablation) ──
+       P0  P1  P2  P3
+  P0:   0   2   1   2
+  P1:   2   0   1   2
+  P2:   1   1   0   1
+  P3:   2   2   1   0
+
+  ── Attribution Analysis (P1 vs P2 primary pair) ──
+  CMD 5 (TEST 12) P1 vs P2 Hamming: 1
+  CMD 4 (TEST 13) P1 vs P2 Hamming: 1
+  CMD 5 (TEST 12) P1 vs P3 Hamming: 2
+  CMD 4 (TEST 13) P1 vs P3 Hamming: 2
+  VDB feedback contribution (P1 vs P2): +0 trits
+  RESULT: P1 vs P2 Hamming identical under CMD 4 and CMD 5.
+          CfC integration of GIE hidden is sufficient.
+  Sufficient patterns: 4/4 (need >=3)
+  OK
+
+-- TEST 14: Kinetic Attention (Agreement-Weighted Gate Bias) --
+
+  ── Condition: 14A (no bias) ──
+[DIAG] 500us: agree=1188 disagree=204 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x50 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+    step 100 (17s): bias=[0 0 0 0] p=1 vdb=12
+    step 200 (40s): bias=[0 0 0 0] p=1 vdb=25
+    step 300 (60s): bias=[0 0 0 0] p=1 vdb=37
+    step 400 (86s): bias=[0 0 0 0] p=2 vdb=50
+    step 500 (114s): bias=[0 0 0 0] p=0 vdb=62
+
+  LP Hidden State (14A (no bias)):
+    P0: 313 samples, energy=16/16 [++-+---++---+---]
+    P1: 141 samples, energy=16/16 [++-+---++---+-+-]
+    P2: 39 samples, energy=16/16 [++-+---++---+---]
+    P3: 56 samples, energy=16/16 [---+---++---+---]
+  Confirms: 549, max_bias: 0, gate_firing: 15%, bias_duty: 0% (0/549 confirms)
+  Per-group fires: [104520 93185 51720 336]
+
+  ── Condition: 14C (full bias) ──
+[DIAG] 500us: agree=1203 disagree=207 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x273e8(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e75c8(dscr_st=3 out_st=2) eof_addr=0x408275a4
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+    step 100 (22s): bias=[2 7 0 0] p=1 vdb=12
+    step 200 (45s): bias=[1 13 0 0] p=1 vdb=25
+    step 300 (69s): bias=[0 10 0 0] p=1 vdb=37
+    step 400 (90s): bias=[11 6 12 0] p=0 vdb=50

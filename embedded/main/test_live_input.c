@@ -607,6 +607,16 @@ int run_test_11(void) {
             int g_xor_count[TVOX_TOTAL] = {0};
             int64_t test_start = esp_timer_get_time();
             int64_t test_timeout_us = 60LL * 1000000LL;
+            /* AUDIT FIX (Sep 2026): snapshot the counters at test_start.
+             * The rate printed below previously divided the ALL-TIME trix_count
+             * (reset in start_freerun(), i.e. before the 30 s Phase 0a window,
+             * and accumulating since trix_enabled was set in Phase 0c) by the
+             * elapsed time since test_start only. Numerator and denominator
+             * covered different windows, so the printed "Hz" figure was an
+             * overestimate of unknown size and was NOT a valid rate. Snapshot
+             * both counters here so the deltas below span exactly one window. */
+            int32_t trix_count_at_start = trix_count;
+            int32_t loop_count_at_start = loop_count;
 
             while (sig_total < MAX_TEST_SAMPLES &&
                    (esp_timer_get_time() - test_start) < test_timeout_us) {
@@ -921,10 +931,23 @@ int run_test_11(void) {
             int base_pct = (sig_total > 0) ? (baseline_correct * 100 / sig_total) : 0;
 
             printf("\n  ═══ CLASSIFICATION RESULTS (TriX Cube) ═══\n");
-            printf("  Total GIE loops: %d\n", (int)loop_count);
-            printf("  TriX ISR classifications: %d (at %d Hz)\n",
-                   (int)trix_count, sig_total > 0 ? (int)(trix_count * 1000000LL /
-                   (esp_timer_get_time() - test_start)) : 0);
+            {
+                /* Both counters measured over the SAME window: test_start..now. */
+                int64_t win_us   = esp_timer_get_time() - test_start;
+                int32_t d_loops  = loop_count - loop_count_at_start;
+                int32_t d_trix   = trix_count - trix_count_at_start;
+                int loop_hz = (win_us > 0) ? (int)(d_loops * 1000000LL / win_us) : 0;
+                int trix_hz = (win_us > 0) ? (int)(d_trix  * 1000000LL / win_us) : 0;
+                printf("  Window: %d ms\n", (int)(win_us / 1000));
+                printf("  GIE loops in window: %d (%d Hz) — classification mode,\n"
+                       "    CfC blend disabled (gate_threshold = INT32_MAX)\n",
+                       (int)d_loops, loop_hz);
+                printf("  TriX classifications in window: %d (%d Hz, %d%% of loops clean)\n",
+                       (int)d_trix, trix_hz,
+                       d_loops > 0 ? (int)(d_trix * 100LL / d_loops) : 0);
+                printf("  Total GIE loops since start_freerun: %d (spans Phase 0a-0c too;\n"
+                       "    not a rate denominator)\n", (int)loop_count);
+            }
             printf("  Test samples: %d\n", sig_total);
             printf("  Ring drops: %d\n", (int)espnow_ring_drops());
             printf("  Core (CPU per-pkt vote):   %d/%d = %d%%\n",

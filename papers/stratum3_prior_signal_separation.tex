@@ -104,13 +104,19 @@ All five components verified on silicon (April 9--12, 2026):
 
 \textbf{Component 1:} LP CfC hidden state. 8.5--9.7/80 MTFP divergence from VDB episodic retrieval alone. VDB causally necessary (TEST~13 ablation).
 
-\textbf{Component 2:} GIE peripheral hardware. 430\,Hz, 100\% label-free TriX accuracy (32/32). Zero prior influence on classification.
+\textbf{Component 2:} GIE peripheral hardware, 430\,Hz measured with the CfC blend active. Label-free TriX accuracy 96--100\% on windowed classification (31--32/32 across 15 runs) and 90.5--96.4\% per admitted packet. Zero prior influence on classification.
 
-\textbf{Component 3:} $W_f[\text{hidden}] = 0$. Verified across all experiments, including Hebbian weight learning, kinetic attention, and label-free operation. The project's most robust finding.
+\textbf{Component 3:} $W_f[\text{hidden}] = 0$. Verified by inspection of every write path in the firmware, and holding across all experiments, including Hebbian weight learning, kinetic attention, and label-free operation. The project's most robust finding.
 
-\textbf{Component 4:} Ternary disagree-count per trit. The disagreement signal is structurally reliable because TriX classification is immune to the prior.
+Its scope must be stated exactly, because the scope is what makes Component~5's result interpretable. The wall guarantees that the \emph{classification} pathway cannot read the temporal state. It does not isolate the \emph{hidden state}, which gate bias does modulate and which is the LP layer's input. Prior influence is therefore excluded from the evidence-reader and admitted to the representation---which is the correct division, and also the reason a bias mechanism can damage the temporal model while leaving classification untouched.
 
-\textbf{Component 5:} When prediction flips (step~+1 post-switch), LP feedback dispatch switches to the new pattern's accumulator. Bias decays geometrically. \textbf{Honest negative:} the specific gate-bias implementation (kinetic attention) is harmful at MTFP resolution ($-5.5$/80). The \textit{principle} (evidence overrides prior) is intact. The \textit{implementation} needs revision.
+\textbf{Component 4:} Ternary disagree-count per trit. The disagreement signal is structurally reliable because TriX classification is immune to the prior. \textbf{Partially verified:} the detector is implemented and computes a per-trit agree/disagree count every confirmation, but the hard-disagreement branch ($n_{\text{disagree}} \ge 4$, which zeroes the bias immediately) is not entered on any clean seed in the recorded data. What runs in practice is the soft path.
+
+\textbf{Component 5:} When prediction flips (step~+1 post-switch), LP feedback dispatch switches to the new pattern's accumulator, and the bias decays geometrically ($\times 0.9$ per step, half-life $\sim$6.6 steps).
+
+\textbf{Not verified.} This is the weakest link in the chain and we state it plainly. Three facts constrain what can be claimed: (i)~the immediate-deference path (Component~4's hard branch) was never exercised, so what the hardware demonstrates is graceful decay, not deference at the point of conflict; (ii)~the bias never reaches neuron group~3, which does not fire the gate in any recorded condition, so the mechanism was tested on 3 of 4 pattern groups; and (iii)~the measured effect of the mechanism on the temporal representation is $-5.5 \pm 5.3$/80 at $n=3$, which is not distinguishable from zero.
+
+We therefore claim Components~1--4 as verified (Component~4 in its detection role only) and Component~5 as \emph{unverified rather than falsified}. The gate-bias implementation is not evidence against the deference principle, because gate bias is a poor instantiation of it: it applies the prior to the perceptual gate, which is precisely the coupling the architecture exists to prevent. A deference mechanism consistent with the architecture would modulate the retrieval-and-blend path---how much accumulated past is admitted into the temporal state---and leave the perceptual threshold alone. That experiment has not been run.
 
 \section{Comparison to Existing Approaches}
 
@@ -163,9 +169,25 @@ A language model implementing prior-signal separation would need two distinct pr
 
 The wall need not be absolute to be useful. A ``soft wall''---a regularization penalty that keeps prior-path gradients from reaching the evidence encoder during training---would produce a weaker guarantee than $W_f[\text{hidden}] = 0$ but a stronger one than standard attention, where no separation exists at all.
 
+\section{Limitations}
+
+\begin{enumerate}
+\item \textbf{Component~5 is unverified.} The evidence-deference policy---the component that makes the prior a voice rather than a verdict---has not been demonstrated doing its job. The immediate-deference branch is never entered on any recorded clean seed; the geometric decay path is what runs; the mechanism reaches only 3 of 4 neuron groups; and its measured effect on the representation is indistinguishable from zero at $n=3$. Four of five components are verified. The fifth is the one the argument most depends on.
+
+\item \textbf{The tested implementation contradicts the architecture it was built to serve.} Gate bias routes the prior into the perceptual gate. The architecture's own thesis is that the prior must not reach the evidence-reader. That the tested mechanism failed is therefore weak evidence about deference in general and better read as the architecture asserting its own constraint.
+
+\item \textbf{Four patterns, one sender, one board pair.} The disagreement signal has been exercised on a single P1$\to$P2 transition protocol.
+
+\item \textbf{The wall is verified, its scope is narrower than ``no prior influence.''} $W_f[\text{hidden}] = 0$ isolates classification, not the hidden state.
+
+\item \textbf{Power claim unverified.} All runs use USB-JTAG for serial and power; the $\sim$30\,\textmu A figure is from the datasheet, not from direct measurement.
+
+\item \textbf{The LLM analogy is structural, not empirical.} No language-model experiment is reported here.
+\end{enumerate}
+
 \section{What This Does Not Claim}
 
-This is not a claim that the Reflex solves hallucination in language models. The architectures are not directly comparable. The claim is narrower: the Reflex provides a concrete, silicon-verified example of a system where prior-signal conflict is detected structurally and resolved in favor of the signal.
+This is not a claim that the Reflex solves hallucination in language models. The architectures are not directly comparable. The claim is narrower: the Reflex provides a concrete, silicon-verified example of a system in which prior-signal conflict \emph{can} be detected structurally, because the evidence-reader is architecturally incapable of reading the prior. Whether the conflict is then resolved in favor of the signal is, on the present data, unverified---see Limitations.
 
 A language model with structural prior-signal separation would resist hallucination by design rather than by statistical training. Whether such an architecture is feasible at the scale of large language models is an open question. Whether it is the right question is not.
 
@@ -175,7 +197,9 @@ Hallucination in language models is not primarily a training problem or a data p
 
 The Reflex demonstrates, on fifty cents of hardware drawing thirty microamps, that structural separation is achievable---not by eliminating the prior, but by building the evidence-reader in a different substrate with a fixed architectural wall between them. The wall is what makes the agreement signal real information: when TriX and the LP prior disagree, the disagreement cannot be circular, because TriX cannot access the LP prior.
 
-The five-component architecture is the abstraction: prior-holder, evidence-reader, structural separation guarantee, disagreement detection, evidence-deference policy. The Reflex is one instantiation. The research program is to find others---and to ask whether a language model with structural prior-signal separation would behave differently from one without.
+The five-component architecture is the abstraction: prior-holder, evidence-reader, structural separation guarantee, disagreement detection, evidence-deference policy. The Reflex is one instantiation, and an incomplete one: it verifies the first four components and leaves the fifth open. The deference policy we tested applied the prior to the perceptual gate---the one coupling this architecture exists to forbid---and it did not help. The next instantiation should apply deference where the architecture permits it: to the retrieval-and-blend path, gating how much accumulated past is admitted into the temporal state, with the perceptual threshold untouched.
+
+The research program is to run that experiment, to find other instantiations---and to ask whether a language model with structural prior-signal separation would behave differently from one without.
 
 The answer is almost certainly yes. The question is how to build it.
 

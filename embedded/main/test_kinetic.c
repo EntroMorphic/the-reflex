@@ -27,7 +27,8 @@ int run_test_14(void) {
      *  MECHANISM (from March 22 LMM synthesis):
      *  - agreement = trit_dot(lp_now, tsign(lp_running_sum[p_hat]))
      *  - gate_bias[p_hat] = BASE_GATE_BIAS * max(0, agreement)
-     *  - ISR: effective_threshold = gate_threshold - gate_bias[group]
+     *  - ISR: effective_threshold = gate_threshold - gate_bias[pattern]
+     *    (ISR maps its group index through trix_group_to_pattern[] first)
      *  - Floor at MIN_GATE_THRESHOLD
      *  - Decay all biases by 0.9 on each confirmation
      *  - Cold-start: bias = 0 until lp_sample_count >= T14_MIN_SAMPLES
@@ -106,8 +107,8 @@ int run_test_14(void) {
             gate_fires_total  = 0;
             gate_steps_total  = 0;
             memset((void *)gie_gate_bias, 0, sizeof(gie_gate_bias));
-            memset((void *)gie_gate_fires_per_group, 0,
-                   sizeof(gie_gate_fires_per_group));
+            memset((void *)gie_gate_fires_per_pattern, 0,
+                   sizeof(gie_gate_fires_per_pattern));
             vdb_clear();
             memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
             ulp_fb_threshold    = T14_FB_THRESHOLD;
@@ -142,6 +143,13 @@ int run_test_14(void) {
             build_circular_chain();
             start_freerun();
             trix_enabled = 1;
+            /* AUDIT (Sep 2026): the GDMA group->pattern mapping is calibrated
+             * once, in Test 11, and the engine has been stopped and restarted
+             * since. Echo the installed mapping at each condition start so any
+             * drift is visible in the log rather than silent. */
+            printf("    group->pattern map: G0->P%d G1->P%d G2->P%d G3->P%d\n",
+                   (int)trix_group_to_pattern[0], (int)trix_group_to_pattern[1],
+                   (int)trix_group_to_pattern[2], (int)trix_group_to_pattern[3]);
             espnow_ring_flush();
             loop_snap_start = loop_count;
 
@@ -189,43 +197,31 @@ int run_test_14(void) {
                         t14_confusion[cond][(int)gt][pred]++;
                     }
 
-                    /* TriX ISR vs core_pred agreement.
-                     * Wait for a fresh trix_channel signal (the ISR
-                     * signals on each clean loop after re-encode). */
+                    /* TriX ISR vs CPU core_pred agreement.
+                     *
+                     * AUDIT FIX (Sep 2026): this previously took the MAXIMUM
+                     * ISR group score and then searched for the CPU pattern
+                     * whose dot was numerically closest to that maximum,
+                     * calling the result "the ISR's prediction". With
+                     * near-tied dots (routine, e.g. [50, 54, 54, 19]) that
+                     * misattributes, so the reported agreement rate was an
+                     * artifact of the estimator in both directions. The ISR
+                     * already publishes its prediction in pattern space via
+                     * trix_pred (mapped through trix_group_to_pattern[]), and
+                     * core_pred is the CPU's prediction in the same space.
+                     * Compare them directly.
+                     *
+                     * We still wait for a fresh trix_channel signal so that
+                     * the comparison uses an ISR classification computed from
+                     * the current input, not a stale one. */
                     {
                         uint32_t seq_before = trix_channel.sequence;
                         uint32_t new_seq = reflex_wait_timeout(
                             &trix_channel, seq_before, 8000000);
-                        uint32_t packed = (new_seq != 0)
-                            ? reflex_read(&trix_channel) : 0;
-                        if (new_seq != 0 && packed != 0) {
-                            int32_t isr_d[4];
-                            for (int g = 0; g < 4; g++)
-                                isr_d[g] = (int8_t)(
-                                    (packed >> (g*8)) & 0xFF);
-                            int isr_best_val = -9999;
-                            for (int g = 0; g < 4; g++)
-                                if (isr_d[g] > isr_best_val)
-                                    isr_best_val = isr_d[g];
-                            /* Match ISR max to CPU pattern */
-                            int isr_p = -1, best_dist = 9999;
-                            int cpu_d[4] = {0};
-                            for (int pp = 0; pp < NUM_TEMPLATES; pp++)
-                                for (int j = 0; j < CFC_INPUT_DIM; j++)
-                                    if (sig[pp][j] != T_ZERO &&
-                                        cfc.input[j] != T_ZERO)
-                                        cpu_d[pp] += tmul(
-                                            sig[pp][j], cfc.input[j]);
-                            for (int pp = 0; pp < 4; pp++) {
-                                int dist = isr_best_val - cpu_d[pp];
-                                if (dist < 0) dist = -dist;
-                                if (dist < best_dist) {
-                                    best_dist = dist;
-                                    isr_p = pp;
-                                }
-                            }
-                            if (isr_p >= 0 && isr_p < 4) {
-                                if (isr_p == pred)
+                        if (new_seq != 0) {
+                            int isr_p = (int)trix_pred;
+                            if (isr_p >= 0 && isr_p < NUM_TEMPLATES) {
+                                if (isr_p == core_pred)
                                     t14_trix_agree[cond]++;
                                 else
                                     t14_trix_disagree[cond]++;
@@ -357,7 +353,7 @@ int run_test_14(void) {
 
             /* Capture per-group fire counts and loop count */
             for (int p = 0; p < TRIX_NUM_PATTERNS; p++)
-                t14_fires[cond][p] = gie_gate_fires_per_group[p];
+                t14_fires[cond][p] = gie_gate_fires_per_pattern[p];
             t14_bias_active_loops[cond] = bias_active_count;
             t14_total_loops[cond] = loop_count - loop_snap_start;
 
@@ -573,7 +569,14 @@ int run_test_14(void) {
         printf("  If 14A@60s ~ 14C@60s:     confound (maturity, not formation)\n");
 
         /* ── Classification accuracy ── */
-        printf("\n  Classification Accuracy (CPU core_pred vs sender ground truth):\n");
+        /* AUDIT FIX (Sep 2026): this block scores `pred`, which is trix_pred
+         * (the TriX ISR prediction), NOT core_pred. The old label said
+         * "CPU core_pred" and mislabelled every published figure derived from
+         * it. Also note the denominator: packets are admitted only if the CPU
+         * signature score passes NOVELTY_THRESHOLD, so this is accuracy over
+         * novelty-admitted packets, not over all received packets. */
+        printf("\n  Classification Accuracy (TriX ISR vs sender ground truth,\n"
+               "  over novelty-admitted packets only):\n");
         int all_correct = 1;
         for (int c = 0; c < T14_N_COND; c++) {
             int total_cls = t14_correct[c] + t14_misclass[c];
@@ -593,7 +596,7 @@ int run_test_14(void) {
             if (!has_data) continue;
 
             printf("\n  Confusion Matrix — %s (rows=ground truth, "
-                   "cols=predicted):\n", t14_cond_name[c]);
+                   "cols=TriX ISR predicted):\n", t14_cond_name[c]);
             printf("       P0   P1   P2   P3\n");
             for (int p = 0; p < 4; p++) {
                 printf("  P%d:", p);
@@ -750,8 +753,8 @@ int run_test_14c(void) {
         gate_fires_total  = 0;
         gate_steps_total  = 0;
         memset((void *)gie_gate_bias, 0, sizeof(gie_gate_bias));
-        memset((void *)gie_gate_fires_per_group, 0,
-               sizeof(gie_gate_fires_per_group));
+        memset((void *)gie_gate_fires_per_pattern, 0,
+               sizeof(gie_gate_fires_per_pattern));
         vdb_clear();
         memset(ulp_addr(&ulp_lp_hidden), 0, LP_HIDDEN_DIM);
         ulp_fb_threshold = T14C_FB_THRESHOLD;

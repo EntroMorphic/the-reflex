@@ -3,7 +3,9 @@
 **Tripp Josserand-Austin**
 EntroMorphic Research
 
-*Rewritten: April 12, 2026. Original title was "Kinetic Attention in a Ternary Reflex Arc." The kinetic attention mechanism was found to be harmful at MTFP resolution (-5.5/80, 3 runs). Reframed around the system's demonstrated capability: 100% label-free classification + 8.5-9.7/80 MTFP temporal divergence from VDB episodic memory alone.*
+*Rewritten: April 12, 2026. Original title was "Kinetic Attention in a Ternary Reflex Arc." The kinetic attention mechanism was found not to improve on the VDB baseline (-5.5 ± 5.3/80, n=3). Reframed around the system's demonstrated capability: label-free classification + 8.5-9.7/80 MTFP temporal divergence from VDB episodic memory alone.*
+*Audit remediation, September 2, 2026 (`docs/AUDIT_SEP2026.md`), with a red-team pass the same day: kinetic attention restated as harmful in 2 of 3 runs (−5.5 ± 5.3/80, n=3, p ≈ 0.21 — not distinguishable from zero); classification split into windowed (31–32/32, 96–100% across 15 runs) and per-admitted-packet (90.5–96.4%, TriX ISR); the only clean rate measurement is 430 Hz with the CfC blend active — the classification-mode rate is **unmeasured**, the previously printed "664 Hz" figure having been computed from counters spanning different windows. **The LaTeX sources in `papers/` are canonical.***
+
 
 *Data: `data/apr11_2026/SUMMARY.md` (authoritative label-free dataset). Firmware commit `ebc65a4`. ESP32-C6FH4, ESP-IDF v5.4. Build: `MASK_PATTERN_ID=1`, `MASK_PATTERN_ID_INPUT=1`.*
 
@@ -11,13 +13,13 @@ EntroMorphic Research
 
 ## Abstract
 
-We present a three-layer ternary neural computing system on a $0.50 microcontroller that classifies wireless signals at 100% label-free accuracy in peripheral hardware at 430 Hz and accumulates a temporal model of what it has perceived — pattern-specific internal representations that develop from episodic memory retrieval over 120 seconds of live operation. The system draws approximately 30 microamps in autonomous mode. No floating point. No multiplication. No backpropagation. No training. Signatures enrolled from a 30-second observation window (sign of mean). CfC weights random and never updated.
+We present a three-layer ternary neural computing system on a $0.50 microcontroller that classifies wireless signals at 96-100% label-free accuracy on windowed classification (90.5-96.4% per admitted packet) in peripheral hardware at 430 Hz and accumulates a temporal model of what it has perceived — pattern-specific internal representations that develop from episodic memory retrieval over 120 seconds of live operation. The system draws approximately 30 microamps in autonomous mode. No floating point. No multiplication. No backpropagation. No training. Signatures enrolled from a 30-second observation window (sign of mean). CfC weights random and never updated.
 
 The temporal model emerges from a 64-node Navigable Small World graph (2KB of LP SRAM) that stores and retrieves episodic snapshots of the system's perceptual state. The retrieval-and-blend mechanism alone — without any gate bias or weight learning — produces 8.5-9.7/80 MTFP divergence across 4 wireless signal patterns. The episodic memory is causally necessary: ablation (CfC without VDB blend) collapses pattern pairs that VDB feedback separates.
 
 We also report two honest negative results from mechanisms designed to improve on the VDB baseline:
 
-1. **Kinetic attention** (agreement-weighted gate bias): consistently harmful at MTFP resolution (mean -5.5/80, 3 runs). The bias saturates the GIE hidden state, reducing LP dot magnitude diversity. The sign-space metric (+1.3/16) incorrectly showed improvement by masking the magnitude damage.
+1. **Kinetic attention** (agreement-weighted gate bias): harmful in 2 of 3 runs (mean -5.5 ± 5.3/80, n=3, t(2) = -1.80, p ≈ 0.21 — not distinguishable from zero). Where the bias acts it plausibly saturates the GIE hidden state, reducing LP dot magnitude diversity; the sign-space metric (+1.3/16) showed improvement by trading magnitude diversity for sign diversity. Scope: neuron group 3 never fires the gate, so the bias reaches 3 of 4 pattern groups.
 
 2. **Hebbian weight learning** (3 iterations with ablation control): +0.1 ± 1.1/80 MTFP at n=3. Indistinguishable from zero. The 16-neuron LP with random ternary weights has insufficient representational capacity for single-trit Hebbian flips to find useful structure.
 
@@ -48,12 +50,12 @@ The operations used throughout are AND, popcount (byte lookup table), add, subtr
 This paper demonstrates three things and honestly reports two failures:
 
 **Demonstrated:**
-1. Peripheral-hardware ternary dot products at 430 Hz classify 4 wireless signal patterns at 100% label-free accuracy (TEST 11)
+1. Peripheral-hardware ternary dot products at 430 Hz classify 4 wireless signal patterns at 96-100% label-free accuracy windowed, 90.5-96.4% per admitted packet (TEST 11, TEST 14)
 2. A 64-node episodic memory layer produces pattern-discriminative temporal states at 8.5-9.7/80 MTFP divergence from VDB feedback alone (TEST 12)
 3. The episodic memory is causally necessary — ablation collapses what VDB feedback separates (TEST 13)
 
 **Failed:**
-4. Agreement-weighted gate bias (kinetic attention) degrades LP representation at MTFP resolution: -5.5/80 mean across 3 runs (TEST 14)
+4. Agreement-weighted gate bias (kinetic attention) does not improve LP representation at MTFP resolution: -5.5 ± 5.3/80, n=3, harmful in 2 of 3 runs (TEST 14)
 5. Hebbian LP weight learning produces no improvement: +0.1 ± 1.1/80 at n=3 (TEST 15)
 
 The architecture was motivated by a minimum-assumptions approach — build what the hardware can do, measure what emerges. Kinetic attention and Hebbian learning were hypothesized to improve on the VDB baseline. They didn't. The VDB baseline IS the finding.
@@ -91,9 +93,9 @@ The three blend modes create non-gradient dynamics: HOLD provides inertia, UPDAT
 
 **Label-free operation:** The `MASK_PATTERN_ID=1` flag zeros pattern_id trits [16..23] in the enrollment signatures. The `MASK_PATTERN_ID_INPUT=1` flag zeros them in the runtime GIE input. Under both flags, no label information exists anywhere in the system — not in the TriX signatures, not in the GIE hidden state, not in the VDB nodes, not in the LP CfC input. Classification relies entirely on payload content and inter-packet timing.
 
-**TriX classification (ISR, 430 Hz):** Four ternary signature vectors are installed as W_f gate weights, with 8 neurons per pattern group. The ISR extracts per-group dot products and publishes the argmax. Accuracy: 32/32 = 100% label-free on the authoritative dataset (`data/apr11_2026/full_suite_label_free_final.log`). The structural guarantee `W_f hidden = 0` ensures classification is independent of the LP prior, gate bias, or temporal accumulation.
+**TriX classification (ISR, 430 Hz):** Four ternary signature vectors are installed as W_f gate weights, with 8 neurons per pattern group. The ISR extracts per-group dot products and publishes the argmax. Accuracy: 32/32 = 100% label-free on the authoritative dataset (`data/apr11_2026/full_suite_label_free_final.log`); 31-32/32 (96-100%) across all 15 label-free runs, and 90.5-96.4% per admitted packet. The structural guarantee `W_f hidden = 0` ensures classification is independent of the LP prior, gate bias, or temporal accumulation.
 
-**Prior P1-P2 confusion (resolved):** With the original P2 payload (`{0xAA, alt, ...}`), label-free accuracy was 71% — P2 shared 48/64 payload trits with P1 (bytes 2-7 were 0x00 in both). P0, P1, and P3 were already 100% label-free. The P2 payload was redesigned to `{0x55, 0x33, 0xCC, 0x66, 0x99, 0x0F, 0xF0, 0x3C}`, reducing the P1-P2 signature cross-dot from 78/96 (81%) to 29/96 (30%). This made the test FAIR (all 4 patterns have distinct payload content), not easy. 100% label-free accuracy was restored.
+**Prior P1-P2 confusion (resolved):** With the original P2 payload (`{0xAA, alt, ...}`), label-free accuracy was 71% — P2 shared 48/64 payload trits with P1 (bytes 2-7 were 0x00 in both). P0, P1, and P3 were already 100% label-free. The P2 payload was redesigned to `{0x55, 0x33, 0xCC, 0x66, 0x99, 0x0F, 0xF0, 0x3C}`, reducing the P1-P2 signature cross-dot from 78/96 (81%) to 29/96 (30%). This made the test FAIR (all 4 patterns have distinct payload content), not easy. Label-free windowed accuracy was restored to 31-32/32.
 
 ### 2.3 The LP Core: Geometric CfC + Episodic Memory
 
@@ -186,7 +188,9 @@ VDB feedback contribution: +1 sign trit, +8 MTFP trits for the P1-P2 pair. The V
 | 1 | 9.8 | 10.2 | +0.4 |
 | 2 | 15.5 | 8.5 | **-7.0** |
 | 3 | 15.5 | 5.7 | **-9.8** |
-| Mean | 13.6 | 8.1 | **-5.5** |
+| Mean | 13.6 | 8.1 | **-5.5 ± 5.3** |
+
+At n=3: t(2) = -1.80, two-tailed p ≈ 0.21. Not statistically distinguishable from zero; held to the same standard as the Hebbian result.
 
 **Diagnosis:** The bias lowers the gate threshold for one neuron group. More neurons in that group fire. More firing = more non-zero trits in the GIE hidden state = more saturation. A saturated GIE hidden state is MORE UNIFORM across patterns (all patterns produce high-firing states), which makes the LP input LESS discriminative. The bias improves GIE sensitivity but degrades GIE discriminability.
 
@@ -233,7 +237,7 @@ The classification guarantee `W_f hidden = 0` was verified across every experime
 - Hebbian weight learning (LP W_f and W_g modified, GIE W_f untouched)
 - Multiple seeds (3 seeds for Test 14, single seed for Hebbian replication)
 
-TriX accuracy remains 100% label-free in every configuration. The structural wall — the guarantee that the classifier cannot be influenced by the temporal model — is the project's most robust finding.
+TriX windowed accuracy is 31-32/32 (96-100%) across every label-free configuration tested, and does not vary with the state of the temporal model. The structural wall — the guarantee that the classifier cannot be influenced by the temporal model — is the project's most robust finding.
 
 This guarantee enables the honest negative results. We could test kinetic attention and Hebbian learning because the structural wall guaranteed that no matter how badly those mechanisms performed, they could not degrade the 100% classification accuracy. The classifier is immune to the prior. The prior can be wrong, the bias can be harmful, the weights can be random — the classifier still reports what it sees, not what the system believes.
 
@@ -273,7 +277,7 @@ See companion paper (Stratum 3): `PRIOR_SIGNAL_SEPARATION.md`. The `W_f hidden =
 
 ## 8. Conclusion
 
-A ternary peripheral-fabric classifier at 430 Hz on a $0.50 microcontroller discriminates 4 wireless signal patterns at 100% label-free accuracy and builds a temporal context layer with 8.5-9.7/80 MTFP divergence — from episodic memory retrieval alone, without gate bias, without weight learning, without labels, without training, without floating point.
+A ternary peripheral-fabric classifier at 430 Hz on a $0.50 microcontroller discriminates 4 wireless signal patterns at 96-100% label-free windowed accuracy (90.5-96.4% per admitted packet) and builds a temporal context layer with 8.5-9.7/80 MTFP divergence — from episodic memory retrieval alone, without gate bias, without weight learning, without labels, without training, without floating point.
 
 The system draws approximately 30 microamps. The classification is structurally separated from the temporal model by a zero-weight wall that holds across every experiment. The episodic memory (64 nodes, 2KB, NSW graph, 100 Hz search) is causally necessary for LP divergence.
 
@@ -290,12 +294,12 @@ The hardware is the teacher. The memory is the model. Abstraction is the enemy.
 | Parameter | Value |
 |---|---|
 | Chip | ESP32-C6FH4 (QFN32) rev v0.2 |
-| GIE rate | 430.8 Hz (peripheral fabric) |
+| GIE rate | 430 Hz, CfC blend active (classification-mode rate unmeasured) |
 | LP core | 16 MHz RISC-V, ~30 µA |
 | LP CfC | 16 neurons, 48-trit input, fixed random weights |
 | VDB | 64 nodes, NSW graph (M=7), 48-trit vectors |
 | LP MTFP | 80 trits (5 per neuron: sign + 2 exp + 2 mant) |
-| TriX | 4 patterns, 8 neurons/pattern, 100% label-free |
+| TriX | 4 patterns, 8 neurons/pattern, 31-32/32 windowed |
 | Structural wall | `W_f[n][CFC_INPUT_DIM:] = 0` for all neurons |
 | Gate threshold | 90 (base), 30 (floor), bias=0 (recommended) |
 | Build flags | `MASK_PATTERN_ID=1`, `MASK_PATTERN_ID_INPUT=1` |

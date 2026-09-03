@@ -61,7 +61,7 @@ None. Can submit independently.
 
 ### The Claim
 
-A wireless signal classifier running on ESP32-C6 peripheral hardware at 430.8 Hz, drawing ~30 µA, with:
+A wireless signal classifier running on ESP32-C6 peripheral hardware at 430 Hz (measured, CfC blend active; classification-mode rate unmeasured), drawing ~30 µA, with:
 - 100% classification accuracy (4 patterns, TriX zero-shot signatures)
 - Pattern-specific LP hidden states after 90 seconds of live operation
 - VDB episodic memory causally necessary (CMD 4 ablation: P1=P2 without blend, P1≠P2 with blend)
@@ -73,7 +73,7 @@ A wireless signal classifier running on ESP32-C6 peripheral hardware at 430.8 Hz
 
 | Experiment | Result | Commit |
 |-----------|--------|--------|
-| GIE free-running | 430.8 Hz, 64 neurons, ~0 CPU | Multiple |
+| GIE free-running | 430 Hz (blend active), 64 neurons, ~0 CPU | Multiple |
 | LP CfC + VDB pipeline | CMD 1-5 verified, exact dot match | `06d5535` |
 | VDB NSW graph | 64 nodes, M=7, recall@1=95% | `7db919f` |
 | TEST 12: Memory-modulated attention | LP diverges by pattern, P1 vs P3 Hamming 5/16 | `38a0811` |
