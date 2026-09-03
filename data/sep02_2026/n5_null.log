@@ -1,0 +1,57 @@
+# REMEDIATION 2/5: n=5 NULL shuffle — matched comparator for n5_seq.log.
+# SAME session, SAME sender boot as n5_seq (no power cycle between).
+# Build: SKIP_TO_15=1 MASK_PATTERN_ID=1 MASK_PATTERN_ID_INPUT=1 T15_N_REPS=5
+#        NULL_SHUFFLE_BINS=1   (Control arm only is interpretable)
+# Captured 2026-09-02 22:22:33
+W (206) spi_flash: Detected size(4096k) larger than the size in the binary image header(2048k). Using the size in the binary image header.
+
+============================================================
+  FREE-RUNNING SUB-CPU NEURAL NETWORK
+  + LP CORE GEOMETRIC PROCESSOR
+  GIE (441 Hz HW) → LP core (100 Hz, 16MHz RISC-V, ~30uA)
+  Three-layer hierarchy: peripheral → geometric → CPU
+============================================================
+
+[INIT] GPIO 4-7...
+[INIT] ETM clock...
+[INIT] PARLIO TX (2-bit, 20MHz, loopback)...
+[INIT] PCNT (2 units)...
+[INIT] Timer...
+[INIT] GDMA channel detection...
+[GDMA] PARLIO owns CH0
+[INIT] GDMA ISR (free-running mode)...
+[GDMA ISR] OK — CH0 (source=69), LEVEL3
+[INIT] LP core binary (16320 bytes)...
+[INIT] LP core weights (after binary load)...
+[INIT] LP seed: 0xCAFE1234
+[LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
+[INIT] ESP-NOW receiver...
+W (8378) wifi:ACK_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
+W (8379) wifi:CTS_TAB0   :0x   90a0b, QAM16:0x9 (24Mbps), QPSK:0xa (12Mbps), BPSK:0xb (6Mbps)
+W (8379) wifi:(agc)0x600a7128:0xd2108800, min.avgNF:0xce->0xd2(dB), RCalCount:0x108, min.RRssi:0x800(-128.00)
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS0:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS1:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS2:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS3:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS4:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS5:19
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS6:18
+W (8380) wifi:(TB)WDEV_PWR_TB_MCS7:18
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS8:17
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS9:15
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS10:15
+W (8381) wifi:(TB)WDEV_PWR_TB_MCS11:15
+[ESPNOW] Listening on channel 1 (no AP connection)
+[INIT] Done.
+
+[PRIME] Warming pipeline...
+[PRIME] Done.
+
+[SWEEP] SKIP_TO_15: running Test 11 (enrollment) + Test 15 only
+
+-- TEST 11: Pattern Classification (Stream CfC) --
+[DIAG] 500us: agree=256 disagree=294 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x6603a348 cpu_agree=21 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27448(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7628(dscr_st=3 out_st=2) eof_addr=0x40827604
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x1(eof=0 rempty=1)
+  Phase 0a: Observing input signatures (30s)...

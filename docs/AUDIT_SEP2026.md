@@ -124,6 +124,7 @@ packets.
 | R5 | Secondary live docs never remediated | **Fixed** | `THE_PRIOR_AS_VOICE.md`, `KINETIC_ATTENTION.md`, `MEMORY_MODULATED_ATTENTION.md`, `PERIPHERALS-ONLY-COMPUTE.md`, `LCACHE_TEST14C_SIM.md` + a missed line in `PAPER_CLS_ARCHITECTURE.md` |
 | R6 | Withdrawn ISR rate figures (705/711 Hz) still cited | **Fixed** | Same root cause as R1; withdrawn in live docs, correction headers cover in-body labels |
 | R7 | Classification-mode rate now measured | **Fixed** | 490 Hz (97% of the 503 Hz PARLIO ceiling). The withdrawn 664 Hz exceeded the hardware ceiling by 32% — physically impossible |
+| R9 | Every ± in the papers is a within-session SD; between-session spread is several times larger | **OPEN — paper-blocking** | Same config, two sessions: sign 3.6±0.4 vs 0.6±0.4 (t=9.9), MTFP 11.3±3.4 vs 6.2±2.0. Discrepancy ≈7× the within-session SD |
 | R8 | Three measurements, three binning variables | **OPEN — paper-blocking** | TEST 12 bins by `core_pred`, TEST 13 by `trix_pred`, TEST 15 by `gt`. Claim 3's comparison subtracts across two different classifiers; the papers' "8.5–9.7/80" range spans two schemes |
 
 **Verification performed:** ESP-IDF v5.4 firmware builds clean before and after
@@ -164,6 +165,46 @@ The project had already found and documented this. The April 12 paper rewrites
 then published "100% label-free accuracy" anyway. The finding did not need to be
 discovered; it needed to survive the trip from the session record into the paper,
 and it did not. Worth noting as a process failure distinct from a measurement one.
+
+### R9. The reported error bars are the wrong error bars
+
+The n=5 resolution run used the **same nominal configuration** as the earlier
+n=3 run — same flags, same boards, same bench. Between them, the boards were
+disconnected and reconnected, which power-cycled the sender.
+
+| Metric | Session A (n=3) | Session B (n=5) | Welch |
+|---|---|---|---|
+| sign /16 | 3.57 ± 0.40 | **0.58 ± 0.43** | t = 9.86, df≈4.6 |
+| MTFP /80 | 11.33 ± 3.35 | **6.16 ± 1.96** | t = 2.44, df≈2.8 |
+
+The sign discrepancy is **≈7× the within-session SD**. These are not the same
+population.
+
+**Consequence: within-session SD is not a valid uncertainty estimate for any of
+these measurements.** Every "±" in the papers — 9.7 ± 0.6, +0.1 ± 1.1,
+−5.5 ± 5.3 — is computed from reps *inside one boot*, and the between-session
+term is several times larger than the within-session term it reports. The error
+bars are not merely underpowered; they are measuring the wrong source of
+variance.
+
+This also resolves a puzzle from earlier in the audit: the published baseline is
+9.7 ± 0.6, session A gave 11.3 ± 3.4, session B gave 6.2 ± 2.0. Three sessions,
+three means, with quoted SDs that do not span the differences between them.
+
+**Candidate causes, not separated:**
+
+1. **Sender power-cycle re-randomises the leak's phase.** The sender restarts its
+   sequence counter at zero and restarts the pattern cycle, so the alignment
+   between counter and 5 s pattern schedule is re-drawn at every sender boot. If
+   the leak's strength depends on that alignment — as the B5 result implies it
+   should — this predicts exactly the observed instability. Most likely cause.
+2. RF environment / time of day.
+3. Thermal or board state.
+
+**Fix:** every quoted figure needs ≥3 *independent sessions* with sender
+power-cycles between them, and the reported ± must be the between-session SD.
+Within-session reps estimate rep noise, not measurement uncertainty. This
+applies retroactively to every number in all three papers.
 
 ### R8. The divergence measurements do not share a binning variable
 
