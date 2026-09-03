@@ -124,6 +124,7 @@ packets.
 | R5 | Secondary live docs never remediated | **Fixed** | `THE_PRIOR_AS_VOICE.md`, `KINETIC_ATTENTION.md`, `MEMORY_MODULATED_ATTENTION.md`, `PERIPHERALS-ONLY-COMPUTE.md`, `LCACHE_TEST14C_SIM.md` + a missed line in `PAPER_CLS_ARCHITECTURE.md` |
 | R6 | Withdrawn ISR rate figures (705/711 Hz) still cited | **Fixed** | Same root cause as R1; withdrawn in live docs, correction headers cover in-body labels |
 | R7 | Classification-mode rate now measured | **Fixed** | 490 Hz (97% of the 503 Hz PARLIO ceiling). The withdrawn 664 Hz exceeded the hardware ceiling by 32% — physically impossible |
+| R11 | The episodic memory saturates mid-measurement and never forgets | **OPEN** | Every insert site gates on `vdb_count() < 64`; no eviction. TEST 12 reaches `vdb=64`; TEST 15 saturates early in Phase B, so Phase C measures against a frozen store. Retention is first-come-first-served |
 | R10 | The NSW graph provides no measurable search reduction at N=64 | **OPEN** | Visits 60/64 nodes every run; `EF_SEARCH=32`, `CAND_MAX=64` on a 64-node graph. Costs ~1.1 KB of LP SRAM and 5% recall versus a linear scan |
 | R9 | Every ± in the papers is a within-session SD; between-session spread is several times larger | **OPEN — paper-blocking** | Same config, two sessions: sign 3.6±0.4 vs 0.6±0.4 (t=9.9), MTFP 11.3±3.4 vs 6.2±2.0. Discrepancy ≈7× the within-session SD |
 | R8 | Three measurements, three binning variables | **FIXED** (impact being measured) | TEST 12 bins by `core_pred`, TEST 13 by `trix_pred`, TEST 15 by `gt`. Claim 3's comparison subtracts across two different classifiers; the papers' "8.5–9.7/80" range spans two schemes |
@@ -166,6 +167,59 @@ The project had already found and documented this. The April 12 paper rewrites
 then published "100% label-free accuracy" anyway. The finding did not need to be
 discovered; it needed to survive the trip from the session record into the paper,
 and it did not. Worth noting as a process failure distinct from a measurement one.
+
+### R11. The episodic memory stops accumulating during the measurement
+
+Every insert site in the tree is gated identically:
+
+```c
+if (total_confirms % INSERT_EVERY == 0 && vdb_count() < VDB_MAX_NODES)
+    vdb_insert(snap);
+```
+
+**There is no eviction anywhere.** Once the store reaches 64 nodes, inserts stop
+for the remainder of the run. Measured:
+
+```
+TEST 12:  vdb=64                            <- saturated
+TEST 15:  Phase B: ... VDB=52 / 49 / 50     <- and Phase B keeps inserting
+          Phase C: measuring (60s)          <- runs against a frozen store
+```
+
+TEST 15's Phase A ends at ~50 nodes with ~7 confirmations/second and an insert
+every 8, so the store hits 64 roughly 15 seconds into Phase B. **Phase C — the
+phase that produces the reported divergence, including the 9.7 ± 0.6 baseline
+and this campaign's numbers — measures entirely against a memory that stopped
+updating.**
+
+**Two consequences.**
+
+*The accumulation claim is time-bounded in a way the papers do not state.*
+Stratum 1 says the representations "develop from episodic memory retrieval over
+120 seconds of live operation" and that "over time, the LP state develops
+pattern-specific magnitude profiles." More precisely: the store accumulates for
+roughly the first 60–75 seconds and is static thereafter. Retrieval from a fixed
+store is still retrieval and the LP state does keep evolving — but there is no
+ongoing episodic accumulation during the measurement window.
+
+*Retention is first-come-first-served, so the store is biased toward the start
+of the run.* There is no novelty-, utility-, or recency-based retention: the
+surviving 64 episodes are simply the earliest 64. Whatever the sender happened
+to transmit first is permanently over-represented. This interacts with B5 — early
+in a run the VDB is sparse and the sequence counter is low, so the retained set
+is drawn from systematically unrepresentative conditions.
+
+**Partially disclosed, and mis-stated.** Stratum 2's limitations note says "the
+VDB fills in ~3 minutes" and frames it as a *future scaling* concern about
+adding patterns. The measured behaviour is that it fills **inside the 120-second
+measurement window**, which makes it a property of the results already reported
+rather than a limit on future ones.
+
+**Known and designed for, but unbuilt.** ROADMAP Pillar 1 ("Dynamic Scaffolding
+— Memory as Sliding Window") exists specifically to add pruning so "the 64-node
+limit becomes a sliding window on the frontier of experience." It is not
+implemented. Until it is, "episodic memory" in this system means "the first 64
+episodes."
 
 ### R10. The NSW graph is brute force with extra steps at N=64
 
