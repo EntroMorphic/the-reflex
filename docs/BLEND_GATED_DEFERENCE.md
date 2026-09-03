@@ -61,18 +61,35 @@ assembly, no ISR change, no new LP command, no change to the perceptual path.
 
 ### 2.2 Calibration — why 8 is the wrong constant
 
-From `test_lp_char` output in the committed logs:
+From `test_lp_char` output. `run_lp_char()` sets `ulp_fb_threshold = 1`
+deliberately ("maximises Path B observability"), so these are the *raw* score
+distributions, not filtered by the production gate.
+
+Re-measured on silicon September 2, 2026 (`data/sep02_2026/b5_seq_on.log`),
+which sharpens the April figures:
 
 | Regime | VDB best-match score | Blend effect |
 |---|---|---|
-| Established pattern, VDB mature | **26–32** / 48 | 1–5 trits modified |
+| Established pattern, VDB mature | **30–32** / 48 | 1–3 trits modified |
 | Early run, VDB sparse | 9–15 | 4–8 trits modified |
-| **Immediately post-switch** (P2 arriving, VDB holds P1) | **9–15** | **8–9 of 16 trits modified** |
+| **Immediately post-switch** (P2 arriving, VDB holds P1) | **6–15** | **7–11 of 16 trits modified** |
+
+The post-switch band is *lower* and the blend *deeper* than the April data
+suggested: up to 11 of 16 trits — roughly 70% of the LP hidden state —
+overwritten with stale P1 content, on every step, sustained for at least 20
+steps after the switch.
+
+**A partial version of this mechanism already exists by accident.** With the
+production threshold at 8, the bottom of the post-switch band (6–8) is already
+rejected. Deference is therefore not a new behaviour so much as an existing,
+unintentional, and incomplete one. `THRESH_DEFER = 20` clears the entire
+post-switch band (6–15) while leaving mature matches (30–32) untouched — and
+the 15-to-30 gap is wide, so the constant is not delicately placed.
 
 The critical row is the third. At the moment the pattern changes — the moment
-deference is supposed to engage — the VDB is still returning P1 memories at
-scores of 9–15, comfortably above the threshold of 8, and rewriting **more than
-half** of the LP hidden state with stale content.
+deference is supposed to engage — the VDB is still returning P1 memories, and
+the portion of that band above the threshold of 8 rewrites the majority of the
+LP hidden state with stale content.
 
 The prior is not a voice at that moment. It is a verdict, and it is loud.
 
@@ -83,12 +100,12 @@ if (lp_argmax == trix_pred)   fb_threshold = THRESH_AGREE   /*  8 — memory flo
 else                          fb_threshold = THRESH_DEFER   /* 20 — memory withheld */
 ```
 
-`THRESH_DEFER = 20` sits above the post-switch stale band (9–15) and below the
-mature-match band (26–32). The consequence:
+`THRESH_DEFER = 20` sits above the post-switch stale band (6–15) and below the
+mature-match band (30–32). The consequence:
 
-- **Agreement:** unchanged from today's behaviour. Mature matches (26–32) pass
+- **Agreement:** unchanged from today's behaviour. Mature matches (30–32) pass
   easily. The mechanism is inert when there is no conflict.
-- **Disagreement:** stale matches (9–15) are rejected. `lp_hidden` follows the
+- **Disagreement:** stale matches (6–15) are rejected. `lp_hidden` follows the
   fresh CfC output — the present signal — rather than retrieved past.
 - **Recovery:** as episodes of the *new* pattern accumulate in the VDB, matches
   for it climb past 20 and the blend re-engages on its own.

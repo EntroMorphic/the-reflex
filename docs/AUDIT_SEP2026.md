@@ -105,7 +105,7 @@ packets.
 | B2 | Calibration never re-run after restart | **Mitigated** | Mapping echoed at each condition start; drift now visible in logs. Full recalibration not added (costs a packet + settling time per condition) |
 | B3 | Group 3 never fires the gate | **Fixed** | Reported in all 3 papers, README, ROADMAP, `SUMMARY.md` as a scope limit |
 | B4 | Agreement metric didn't measure agreement | **Fixed** | `test_kinetic.c` now compares `trix_pred` to `core_pred` directly |
-| B5 | Load-bearing encoder still carries sequence | **Flag added, ablation not run** | `MASK_SEQUENCE_INPUT=1`, default OFF. Needs silicon time — see below |
+| B5 | Load-bearing encoder still carries sequence | **RUN — CONFIRMED** | Ablation on silicon Sep 2: VDB-only divergence collapses 82% MTFP / 93% sign with classification unchanged. `data/sep02_2026/SUMMARY.md`. **Escalates to a paper-blocking finding.** |
 | B6 | `gie_gate_bias_pn` dead public API | **Labelled** | Not deleted: deliberate scaffolding per `journal/projection_aware_bias_reflect.md` |
 | B7 | `cfc_homeostatic_step` dead code | **Labelled** | Not deleted: planned reuse per `journal/pillar3_concerns_synth.md` |
 | C1–C6 | Verified strengths | **No action** | C2 and C3 strengthened in Stratum 1/3 text |
@@ -123,6 +123,7 @@ packets.
 | R4 | Per-packet denominator is novelty-admitted only | **Fixed** | "per admitted packet" throughout, gate stated |
 | R5 | Secondary live docs never remediated | **Fixed** | `THE_PRIOR_AS_VOICE.md`, `KINETIC_ATTENTION.md`, `MEMORY_MODULATED_ATTENTION.md`, `PERIPHERALS-ONLY-COMPUTE.md`, `LCACHE_TEST14C_SIM.md` + a missed line in `PAPER_CLS_ARCHITECTURE.md` |
 | R6 | Withdrawn ISR rate figures (705/711 Hz) still cited | **Fixed** | Same root cause as R1; withdrawn in live docs, correction headers cover in-body labels |
+| R7 | Classification-mode rate now measured | **Fixed** | 490 Hz (97% of the 503 Hz PARLIO ceiling). The withdrawn 664 Hz exceeded the hardware ceiling by 32% — physically impossible |
 
 **Verification performed:** ESP-IDF v5.4 firmware builds clean before and after
 (exit 0, zero new warnings — the five project warnings present after the change
