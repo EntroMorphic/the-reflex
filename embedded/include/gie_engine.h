@@ -35,11 +35,29 @@ extern "C" {
 #define CFC_MAX_DIM     256
 
 #define NUM_NEURONS     64   /* 32 f + 32 g pathways */
+
+/* ── Buffer geometry ──────────────────────────────────────────────
+ * Default (2-bit PARLIO): the CPU pre-multiplies W x concat and streams the
+ * PRODUCT. 2 trits per byte (2 bits each, low/high nibble) = 80 bytes for
+ * 160 trits, emitted 4 clocks per byte.
+ *
+ * FABRIC_MUL (4-bit PARLIO): BOTH operands are streamed and PCNT performs the
+ * ternary multiply in hardware (verified 10/10 exact, docs/FABRIC_MULTIPLY.md).
+ * One byte per trit = 160 bytes, emitted 2 clocks per byte.
+ *
+ * Wire time is IDENTICAL: 80 x 4 == 160 x 2 == 320 clocks per neuron. The
+ * separator doubles for the same reason, to preserve the drain gap in clocks.
+ * ──────────────────────────────────────────────────────────────── */
+#ifdef FABRIC_MUL
+#define NEURON_BUF_SIZE 160  /* 160 trits, 1 byte each (X=weight, Y=concat) */
+#define SEP_SIZE        128  /* same clock-count gap as 64 bytes at 2-bit */
+#else
 #define NEURON_BUF_SIZE 80   /* 160 trits = 80 bytes */
+#define SEP_SIZE        64
+#endif
 
 /* DMA chain layout — shared between engine and test harness.
  * NUM_DUMMIES + NUM_NEURONS separator captures form one loop. */
-#define SEP_SIZE           64
 #define NUM_DUMMIES        5
 #define CAPTURES_PER_LOOP  (NUM_DUMMIES + NUM_NEURONS)
 
@@ -83,6 +101,7 @@ extern volatile int32_t loop_base;
 extern volatile int32_t loop_isr_count;
 
 /* TriX gate threshold — writable by test harness */
+extern volatile int32_t gie_pcnt_drain_loops;  /* PCNT settle busy-wait count */
 extern volatile int32_t gate_threshold;
 extern volatile int32_t gate_fires_total;
 extern volatile int32_t gate_steps_total;
@@ -179,6 +198,9 @@ int8_t rand_trit(int sparsity_pct);
 void cfc_init(uint32_t seed, int sparsity_pct);
 void premultiply_all(void);
 void encode_all_neurons(void);
+#ifdef FABRIC_MUL
+void encode_all_neurons_fabric(void);   /* builds operand buffers, no multiplies */
+#endif
 
 /* ══════════════════════════════════════════════════════════════════
  *  PERIPHERAL INITIALIZATION

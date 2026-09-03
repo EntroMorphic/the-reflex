@@ -101,6 +101,14 @@ else()
     if(DEFINED SKIP_TO_FABRIC AND SKIP_TO_FABRIC)
         add_compile_definitions(SKIP_TO_FABRIC=1)
     endif()
+    # FABRIC_MUL: stream BOTH ternary operands on 4-bit PARLIO so PCNT performs
+    # the multiply in hardware. Changes buffer geometry (160B/neuron, 128B sep)
+    # and the ISR update path. Wire time is unchanged: 80x4 == 160x2 clocks.
+    # Verified standalone 10/10 exact (docs/FABRIC_MULTIPLY.md); this flag is
+    # the port into the free-running engine.
+    if(DEFINED FABRIC_MUL AND FABRIC_MUL)
+        add_compile_definitions(FABRIC_MUL=1)
+    endif()
     # Skip to Test 14 (enrollment + kinetic attention only)
     if(DEFINED SKIP_TO_14 AND SKIP_TO_14)
         add_compile_definitions(SKIP_TO_14=1)

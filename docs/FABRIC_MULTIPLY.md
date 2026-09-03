@@ -90,6 +90,85 @@ Y — which pointed at the level-sampling race and gave the fix.
 - Makes "the CPU never computes a dot product" literally true *including the
   products*, which it is not today
 
+## PORTED TO THE FREE-RUNNING ENGINE — VERIFIED 64/64
+
+`data/sep02_2026/fabric_freerun_verified.log`, build `FABRIC_MUL=1`:
+
+```
+-- TEST 3: Per-neuron dot accuracy (single loop) --
+  After warmup: 3 loops, base=4, cnt=69
+  Dot errors:  0 / 64
+  Sign errors: 0 / 64
+  OK
+```
+
+Test 3 is the project's own M5/M8 standard: the free-running engine's
+ISR-decoded `loop_dots[]` against a CPU reference, all 64 neurons, exact.
+
+### What changed in the engine (all behind `FABRIC_MUL`, default OFF)
+
+| | default (2-bit) | `FABRIC_MUL` (4-bit) |
+|---|---|---|
+| `NEURON_BUF_SIZE` | 80 B (2 trits/byte) | 160 B (1 trit/byte) |
+| `SEP_SIZE` | 64 B | 128 B |
+| Buffer contents | CPU-premultiplied **products** | both **operands** |
+| Clocks per neuron | 80 × 4 = 320 | 160 × 2 = 320 |
+| `tmul()` per loop in ISR | 2048 | **0** |
+| PCNT settle drain | 200 | 100 |
+
+Wire time is identical by construction — `bytelen` doubles but each byte is two
+clocks instead of four, so the loop still costs 39,744 clocks.
+
+The ISR no longer re-premultiplies. It rewrites only the Y (concat) half of the
+hidden positions, extracting the weight nibble from the existing byte:
+
+```c
+static inline uint8_t fm_set_y(uint8_t prev, int8_t c) {
+    uint8_t xb = (prev >> 4) & 0x3;      /* weight, never overlaps Y's bits 2-3 */
+    uint8_t yb = fm_yb(c);
+    return (uint8_t)(yb | ((yb | xb) << 4));
+}
+```
+
+`premultiply_all()` and the per-packet 8192-multiply input re-encode are off the
+streaming path entirely.
+
+### The one number that blocked it
+
+The 2-bit-tuned PCNT settle delay. A byte is 2 PARLIO clocks at 4-bit instead of
+4, so the FIFO drains in half the wall-clock time and a drain of 200 samples
+past the neuron boundary. That spilled edges into the last dummy capture, which
+broke the base auto-detection ("last consecutive zero-delta pair" chose 3
+instead of 4), which shifted every neuron by one. Three symptoms, one cause.
+
+Measured window, all giving 64/64 exact:
+
+```
+drain= 40 base=4 : 64/64 exact      drain=130 base=4 : 64/64 exact
+drain= 60 base=4 : 64/64 exact      drain=160 base=4 : 64/64 exact
+drain= 80 base=4 : 64/64 exact      drain=200 base=3 :  2/64   <- 2-bit value
+drain=100 base=4 : 64/64 exact      drain=260 base=3 :  4/64
+```
+
+40..160 passes — a 4x window, not a knife edge. Default set to 100, mid-window
+and exactly half the 2-bit constant, which is what the clocks-per-byte
+arithmetic predicts. That derivation was available at design time and was found
+empirically instead.
+
+`gie_pcnt_drain_loops` is now a runtime-tunable global so the geometry can be
+re-swept without a reflash.
+
+## Still to do
+
+- Run the full suite under `FABRIC_MUL` (Tests 1-15), not just Test 3.
+- Confirm the Silicon Interlock (USB-JTAG on GPIO 4-7) is stable over long runs
+  now that PARLIO drives 6/7.
+- Measure the actual loop-rate gain. Predicted ~285 us/loop recovered, which
+  should move the blend-active rate from 430 Hz toward the 503 Hz ceiling.
+- Decide whether this becomes the default path. Every committed dataset was
+  captured on the 2-bit path, so flipping the default invalidates that
+  correspondence until the suite is re-run.
+
 ## Not yet done
 
 This used the PARLIO driver's blocking transmit. Production drives PARLIO

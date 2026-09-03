@@ -50,6 +50,55 @@ int run_test_1(void) {
         printf("  Period: %.1f us per loop\n", elapsed_s * 1e6 / loops);
 
         int ok = (loops > 100);  /* should be ~500+ */
+        /* ── PCNT drain sweep (diagnostic, Sep 2026) ──
+         * At 4-bit PARLIO a byte is 2 clocks not 4, so the FIFO drains in half
+         * the wall-clock time and the 2-bit-tuned settle delay may no longer
+         * align the capture with the neuron boundary. Sweep it and report
+         * exact dot matches. This MEASURES; it does not fix. */
+        {
+            int32_t drain_saved = gie_pcnt_drain_loops;   /* restore, don't hardcode */
+            static const int sweep[] = {40, 60, 80, 100, 130, 160, 200, 260};
+            printf("  PCNT drain sweep (exact dots / 64):\n");
+            for (unsigned si = 0; si < sizeof(sweep)/sizeof(sweep[0]); si++) {
+                gie_pcnt_drain_loops = sweep[si];
+                premultiply_all(); encode_all_neurons();
+                build_circular_chain(); start_freerun();
+                int tmo = 300;
+                while (loop_count < 4 && tmo > 0) { vTaskDelay(pdMS_TO_TICKS(1)); tmo--; }
+                int8_t hb[CFC_HIDDEN_DIM];
+                memcpy(hb, (void*)cfc.hidden, CFC_HIDDEN_DIM);
+                int32_t tgt = loop_count + 1; tmo = 300;
+                while (loop_count < tgt && tmo > 0) { vTaskDelay(pdMS_TO_TICKS(1)); tmo--; }
+                int32_t gd[NUM_NEURONS];
+                memcpy(gd, (void*)loop_dots, sizeof(gd));
+                int sb = loop_base;
+                stop_freerun();
+                int cd[NUM_NEURONS];
+                for (int n = 0; n < CFC_HIDDEN_DIM; n++) {
+                    int sf = 0, sg = 0;
+                    for (int i = 0; i < CFC_INPUT_DIM; i++) {
+                        sf += tmul(cfc.W_f[n][i], cfc.input[i]);
+                        sg += tmul(cfc.W_g[n][i], cfc.input[i]);
+                    }
+                    for (int i = 0; i < CFC_HIDDEN_DIM; i++) {
+                        sf += tmul(cfc.W_f[n][CFC_INPUT_DIM+i], hb[i]);
+                        sg += tmul(cfc.W_g[n][CFC_INPUT_DIM+i], hb[i]);
+                    }
+                    cd[n] = sf; cd[n+CFC_HIDDEN_DIM] = sg;
+                }
+                int ex = 0, sg2 = 0;
+                for (int n = 0; n < NUM_NEURONS; n++) {
+                    if (gd[n] == cd[n]) ex++;
+                    if (tsign(gd[n]) == tsign(cd[n])) sg2++;
+                }
+                printf("    drain=%3d base=%d : %2d/64 exact, %2d/64 sign\n",
+                       sweep[si], sb, ex, sg2);
+                fflush(stdout);
+            }
+            gie_pcnt_drain_loops = drain_saved;
+            printf("    (restored drain=%d)\n", (int)drain_saved);
+        }
+
         printf("  %s\n\n", ok ? "OK" : "FAIL");
         fflush(stdout);
         return ok;

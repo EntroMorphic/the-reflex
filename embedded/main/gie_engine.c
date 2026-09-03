@@ -123,6 +123,21 @@ volatile int32_t loop_isr_count;     /* diagnostic: isr_count at boundary */
 /* TriX gate threshold: f fires only if |f_dot| > gate_threshold.
  * 0 = original behavior (any nonzero dot fires the gate).
  * Set to ~90 after installing TriX signatures as W_f weights. */
+/* PCNT settle delay in busy-wait iterations before each capture read.
+ * 200 ~= 5us at 160MHz, tuned for the 2-bit geometry. Runtime-tunable so the
+ * 4-bit fabric-multiply geometry can be swept without a reflash. */
+#ifdef FABRIC_MUL
+/* 4-bit geometry: a byte is 2 PARLIO clocks instead of 4, so the FIFO drains
+ * in half the wall-clock time and the settle delay halves with it. Measured
+ * window giving 64/64 exact: 40..160 (data/sep02_2026/fabric_freerun_test3.log).
+ * 100 sits mid-window. At the 2-bit value of 200 the capture lands past the
+ * neuron boundary, which also spills edges into the last dummy and breaks the
+ * base auto-detection (base=3 instead of 4). */
+volatile int32_t gie_pcnt_drain_loops = 100;
+#else
+volatile int32_t gie_pcnt_drain_loops = 200;
+#endif
+
 volatile int32_t gate_threshold = 0;
 volatile int32_t gate_fires_total = 0;  /* diagnostic: count gate fires */
 volatile int32_t gate_steps_total = 0;  /* diagnostic: count total neurons checked */
@@ -264,6 +279,64 @@ static void IRAM_ATTR isr_reencode_hidden_portion(int neuron_idx, const int8_t *
     (void)start_byte;
 }
 
+#ifdef FABRIC_MUL
+/* ══════════════════════════════════════════════════════════════════
+ *  FABRIC MULTIPLY ENCODING (verified: docs/FABRIC_MULTIPLY.md)
+ *
+ *  One byte per trit position, carrying BOTH operands:
+ *      X = weight  -> GPIO4 (X_POS) / GPIO5 (X_NEG)   [PCNT edge source]
+ *      Y = concat  -> GPIO6 (Y_POS) / GPIO7 (Y_NEG)   [PCNT level gate]
+ *
+ *  Y is presented ONE NIBBLE EARLY. PARLIO drives all lanes off the same
+ *  clock edge, and PCNT samples the level input through GPIO-matrix
+ *  synchroniser flops -- so if Y transitions with X, Y still reads its
+ *  previous value at X's edge and every channel gates off (measured: exactly
+ *  zero counts). Emitting Y alone first gives it a full clock to settle.
+ *
+ *      low  nibble (first) : Y only, X = 0   -> Y settles, no edge
+ *      high nibble         : Y + X           -> X edge with Y stable
+ *
+ *  X returns to 0 at the next position's low nibble, preserving the
+ *  return-to-zero that PCNT's edge counting requires.
+ * ══════════════════════════════════════════════════════════════════ */
+static inline uint8_t fm_yb(int8_t c) {
+    return (uint8_t)((c > 0) ? 0x4 : (c < 0) ? 0x8 : 0x0);
+}
+static inline uint8_t fm_xb(int8_t w) {
+    return (uint8_t)((w > 0) ? 0x1 : (w < 0) ? 0x2 : 0x0);
+}
+static inline uint8_t fm_byte(int8_t w, int8_t c) {
+    uint8_t yb = fm_yb(c), xb = fm_xb(w);
+    return (uint8_t)(yb | ((yb | xb) << 4));
+}
+
+/* Rewrite only the Y (concat) half of an already-encoded byte, preserving the
+ * weight nibble. xb lives in the high nibble's low 2 bits and never overlaps
+ * yb's bits 2-3, so it extracts cleanly. This is the ISR's per-loop hot path:
+ * ~5 instructions instead of a tmul() call plus a re-encode. */
+static inline uint8_t IRAM_ATTR fm_set_y(uint8_t prev, int8_t c) {
+    uint8_t xb = (uint8_t)((prev >> 4) & 0x3);
+    uint8_t yb = fm_yb(c);
+    return (uint8_t)(yb | ((yb | xb) << 4));
+}
+
+/* Build every neuron buffer from weights + concat. Replaces
+ * premultiply_all() + encode_all_neurons(); performs NO multiplies. */
+void encode_all_neurons_fabric(void) {
+    for (int n = 0; n < NUM_NEURONS; n++) {
+        const int8_t *W = (n < CFC_HIDDEN_DIM)
+                        ? cfc.W_f[n] : cfc.W_g[n - CFC_HIDDEN_DIM];
+        uint8_t *buf = neuron_bufs[n];
+        for (int i = 0; i < CFC_INPUT_DIM; i++)
+            buf[i] = fm_byte(W[i], cfc.input[i]);
+        for (int i = 0; i < CFC_HIDDEN_DIM; i++)
+            buf[CFC_INPUT_DIM + i] = fm_byte(W[CFC_INPUT_DIM + i], cfc.hidden[i]);
+        for (int i = CFC_CONCAT_DIM; i < NEURON_BUF_SIZE; i++)
+            buf[i] = 0;                       /* tail inert: no edges */
+    }
+}
+#endif /* FABRIC_MUL */
+
 /* ══════════════════════════════════════════════════════════════════
  *  CfC INITIALIZATION & PREPARATION
  * ══════════════════════════════════════════════════════════════════ */
@@ -307,9 +380,15 @@ void premultiply_all(void) {
 }
 
 void encode_all_neurons(void) {
+#ifdef FABRIC_MUL
+    /* Buffers hold OPERANDS, not products. all_products[] is still maintained
+     * by premultiply_all() for the CPU reference paths, but is not streamed. */
+    encode_all_neurons_fabric();
+#else
     for (int n = 0; n < NUM_NEURONS; n++) {
         encode_neuron_buffer(neuron_bufs[n], all_products[n], CFC_CONCAT_DIM);
     }
+#endif
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -503,6 +582,22 @@ static void IRAM_ATTR isr_loop_boundary(void) {
         /* Commit new hidden state — this is the "register" the CPU reads */
         memcpy((void*)cfc.hidden, h_new, CFC_HIDDEN_DIM);
 
+#ifdef FABRIC_MUL
+        /* Fabric multiply: the buffers hold OPERANDS, not products. Only the
+         * Y (concat) half of the hidden positions changes. Rewrite those bytes
+         * in place; the weight nibble is preserved from the existing byte.
+         * No tmul(), no re-encode — this replaces 2048 calls per loop. */
+        for (int n = 0; n < NUM_NEURONS; n++) {
+            uint8_t *buf = neuron_bufs[n];
+            for (int i = 0; i < CFC_HIDDEN_DIM; i++) {
+                int k = CFC_INPUT_DIM + i;
+                buf[k] = fm_set_y(buf[k], cfc.hidden[i]);
+            }
+        }
+    }
+    if (0) {
+#endif
+
         /* Re-premultiply hidden portion and re-encode.
          * Only the hidden portion (indices CFC_INPUT_DIM..CFC_CONCAT_DIM) changes
          * between loops. The input portion stays the same.
@@ -527,7 +622,19 @@ static void IRAM_ATTR isr_loop_boundary(void) {
      * This eliminates the DMA race that corrupted dots when the main
      * loop called update_gie_input() while the DMA was mid-stream. */
     if (gie_input_pending) {
+#ifdef FABRIC_MUL
+        for (int n = 0; n < NUM_NEURONS; n++) {
+            uint8_t *buf = neuron_bufs[n];
+            for (int i = 0; i < CFC_INPUT_DIM; i++)
+                buf[i] = fm_set_y(buf[i], cfc.input[i]);
+        }
+        gie_input_pending = 0;
+    }
+    if (0) {
         for (int n = 0; n < CFC_HIDDEN_DIM; n++) {
+#else
+        for (int n = 0; n < CFC_HIDDEN_DIM; n++) {
+#endif
             /* f-pathway: neuron n */
             for (int ii = 0; ii < CFC_INPUT_DIM; ii++)
                 all_products[n][ii] = tmul(cfc.W_f[n][ii], cfc.input[ii]);
@@ -595,12 +702,16 @@ static void IRAM_ATTR gdma_eof_isr(void *arg) {
     if (status & GDMA_OUT_EOF_BIT) {
         REG32(GDMA_OUT_INT_CLR_CH(bare_ch)) = GDMA_OUT_EOF_BIT;
 
+        /* Drain length is runtime-tunable (audit Sep 2026): at 4-bit PARLIO a
+         * byte is 2 clocks instead of 4, so the FIFO drains in half the
+         * wall-clock time and the 2-bit-tuned constant no longer aligns the
+         * capture with the neuron boundary. See gie_pcnt_drain_loops. */
         /* Clock domain drain: ~5us for PCNT pipeline to settle.
          * PCNT reads GPIO through the matrix; after PARLIO outputs the
          * separator's last byte, the PCNT pipeline needs time to drain.
          * 200 volatile loops ≈ 5us at 160MHz. Increased from 100 loops
          * after gpio_func_sel() in the PCNT driver changed matrix timing. */
-        for (volatile int _d = 0; _d < 200; _d++) { }
+        { int lim = gie_pcnt_drain_loops; for (volatile int _d = 0; _d < lim; _d++) { } }
 
         int idx = isr_count;
         if (idx < ISR_CAPTURES) {
@@ -724,7 +835,11 @@ void gie_init_parlio(void) {
         .clk_src = PARLIO_CLK_SRC_DEFAULT,
         .clk_in_gpio_num = -1,
         .output_clk_freq_hz = 20000000,
+#ifdef FABRIC_MUL
+        .data_width = 4,          /* X=weight on GPIO4/5, Y=concat on GPIO6/7 */
+#else
         .data_width = 2,
+#endif
         .clk_out_gpio_num = -1,
         .valid_gpio_num = -1,
         .trans_queue_depth = 4,
@@ -734,7 +849,11 @@ void gie_init_parlio(void) {
         .flags = { .io_loop_back = 1 },
     };
     for (int i = 0; i < PARLIO_TX_UNIT_MAX_DATA_WIDTH; i++)
+#ifdef FABRIC_MUL
+        cfg.data_gpio_nums[i] = (i < 4) ? (4 + i) : -1;
+#else
         cfg.data_gpio_nums[i] = (i < 2) ? (4 + i) : -1;
+#endif
     ESP_ERROR_CHECK(parlio_new_tx_unit(&cfg, &parlio));
     ESP_ERROR_CHECK(parlio_tx_unit_enable(parlio));
 }
@@ -1041,9 +1160,15 @@ void start_freerun(void) {
     clear_all_pcnt();
     esp_rom_delay_us(50);
 
-    /* Set Y_POS high for PCNT level gating */
+#ifndef FABRIC_MUL
+    /* Set Y_POS high for PCNT level gating (static reference operand) */
     gpio_set_level(GPIO_Y_POS, 1);
     esp_rom_delay_us(50);
+#else
+    /* FABRIC_MUL: Y is STREAMED, not static. Leave both Y lines low here;
+     * PARLIO drives them from the buffer once tx_start is asserted. */
+    esp_rom_delay_us(50);
+#endif
 
     /* Setup GDMA + PARLIO — must happen before enabling GDMA interrupts.
      * After stop_freerun() the GDMA chain is reset (idle). If we enabled
@@ -1068,6 +1193,11 @@ void start_freerun(void) {
      * PARL_TX_DATA0_IDX=47, PARL_TX_DATA1_IDX=48 (from gpio_sig_map.h). */
     esp_rom_gpio_connect_out_signal(GPIO_X_POS, 47, false, false);
     esp_rom_gpio_connect_out_signal(GPIO_X_NEG, 48, false, false);
+#ifdef FABRIC_MUL
+    /* PARL_TX_DATA2/3 -> GPIO6/7 so the second operand is streamed too. */
+    esp_rom_gpio_connect_out_signal(GPIO_Y_POS, 49, false, false);
+    esp_rom_gpio_connect_out_signal(GPIO_Y_NEG, 50, false, false);
+#endif
 
     /* Disable PARLIO driver interrupt so its ISR doesn't disable our clock.
      * The driver's TX-done ISR calls parlio_ll_tx_enable_clock(false) after
