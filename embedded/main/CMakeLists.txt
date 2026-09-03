@@ -115,6 +115,11 @@ else()
     if(DEFINED BIN_BY_PRED AND BIN_BY_PRED)
         add_compile_definitions(BIN_BY_PRED=1)
     endif()
+    # R9 campaign: run only the TEST 15 Control arm (the divergence endpoint),
+    # halving each session. The Hebbian arm is not the endpoint here.
+    if(DEFINED T15_CONTROL_ONLY AND T15_CONTROL_ONLY)
+        add_compile_definitions(T15_CONTROL_ONLY=1)
+    endif()
     # Skip to Test 14 (enrollment + kinetic attention only)
     if(DEFINED SKIP_TO_14 AND SKIP_TO_14)
         add_compile_definitions(SKIP_TO_14=1)

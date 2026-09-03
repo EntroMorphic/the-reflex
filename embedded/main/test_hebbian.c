@@ -319,6 +319,11 @@ int run_test_15(void) {
 
     /* Run all reps of all conditions */
     for (int c = 0; c < T15_N_COND; c++) {
+#ifdef T15_CONTROL_ONLY
+            /* R9 campaign: only the Control (CMD5-only) arm is the endpoint.
+             * Skipping the Hebbian arm halves the run time per session. */
+            if (c != T15_CONTROL) continue;
+#endif
         for (int r = 0; r < T15_N_REPS; r++) {
             printf("\n  ══ %s — Rep %d/%d ══\n", t15_cond_name[c], r + 1, T15_N_REPS);
             fflush(stdout);

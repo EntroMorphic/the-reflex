@@ -124,6 +124,7 @@ packets.
 | R5 | Secondary live docs never remediated | **Fixed** | `THE_PRIOR_AS_VOICE.md`, `KINETIC_ATTENTION.md`, `MEMORY_MODULATED_ATTENTION.md`, `PERIPHERALS-ONLY-COMPUTE.md`, `LCACHE_TEST14C_SIM.md` + a missed line in `PAPER_CLS_ARCHITECTURE.md` |
 | R6 | Withdrawn ISR rate figures (705/711 Hz) still cited | **Fixed** | Same root cause as R1; withdrawn in live docs, correction headers cover in-body labels |
 | R7 | Classification-mode rate now measured | **Fixed** | 490 Hz (97% of the 503 Hz PARLIO ceiling). The withdrawn 664 Hz exceeded the hardware ceiling by 32% — physically impossible |
+| R10 | The NSW graph provides no measurable search reduction at N=64 | **OPEN** | Visits 60/64 nodes every run; `EF_SEARCH=32`, `CAND_MAX=64` on a 64-node graph. Costs ~1.1 KB of LP SRAM and 5% recall versus a linear scan |
 | R9 | Every ± in the papers is a within-session SD; between-session spread is several times larger | **OPEN — paper-blocking** | Same config, two sessions: sign 3.6±0.4 vs 0.6±0.4 (t=9.9), MTFP 11.3±3.4 vs 6.2±2.0. Discrepancy ≈7× the within-session SD |
 | R8 | Three measurements, three binning variables | **FIXED** (impact being measured) | TEST 12 bins by `core_pred`, TEST 13 by `trix_pred`, TEST 15 by `gt`. Claim 3's comparison subtracts across two different classifiers; the papers' "8.5–9.7/80" range spans two schemes |
 
@@ -165,6 +166,58 @@ The project had already found and documented this. The April 12 paper rewrites
 then published "100% label-free accuracy" anyway. The finding did not need to be
 discovered; it needed to survive the trip from the session record into the paper,
 and it did not. Worth noting as a process failure distinct from a measurement one.
+
+### R10. The NSW graph is brute force with extra steps at N=64
+
+Found by reading `ulp/main.S`, which the audit had not opened — the VDB search is
+what Claim 2 rests on and it had only ever been assessed from its output.
+
+**The design comment and the code disagree:**
+
+```
+comment: "Candidate list: ... up to CAND_MAX=32"      code: #define CAND_MAX  64
+comment: "Result list:   ... up to EF_SEARCH=8"       code: #define EF_SEARCH 32
+```
+
+Anyone reading the comment would picture a narrow beam. The actual beam holds
+32 results and 64 candidates — on a graph of **64 nodes**. There is nothing left
+to prune.
+
+**Measured, in all 19 logs in the corpus, without variation:**
+
+```
+Graph search visited: 60 / 64 nodes
+```
+
+94% of the graph, every time. The test reports "sub-linear: YES" because its
+criterion is:
+
+```c
+int ok_5d = (visits > 0 && visits < VDB_MAX_NODES);   /* 63 would also pass */
+```
+
+**What it costs.** Each node carries 8 bytes of graph metadata on top of its 24-byte
+vector (`VDB_NODE_BYTES 32 = 24 + 8`), so 512 B of LP SRAM holds edges. The
+two-list search needs a 608-byte stack frame. Insert maintains top-M selection
+and bidirectional edges. That is roughly 1.1 KB of a 16 KB budget, plus the
+assembly complexity, to skip four nodes.
+
+**And it costs accuracy.** Recall@1 is 19/20 = 95%: with 60 of 64 nodes visited,
+the one miss lay among the four skipped. A linear scan over 64 nodes would be
+exact — 20/20 — in 1536 B with a trivial stack frame.
+
+**Scope — what this does and does not say.** It does not say NSW is the wrong
+structure; it says the structure is not earning its cost *at the tested size*.
+Stratum 2's own scaling section already worries about per-pattern allocation at
+8 patterns, which is exactly the regime where a graph would start to pay. At
+N=64 with this beam width it is strictly worse than the obvious alternative.
+
+**Where this touches the papers.** Stratum 2 presents the NSW graph as an
+architectural contribution ("a 64-node Navigable Small World graph serves as the
+hippocampal episodic store"; "approximate nearest-neighbor retrieval... in 2 KB
+of LP SRAM"). Approximate NN retrieval implies sub-linear search. That should
+either be measured and reported honestly (60/64) or the claim reframed around
+what the structure actually buys at this scale.
 
 ### R9. The reported error bars are the wrong error bars
 
