@@ -1,0 +1,7 @@
+# TRUE NULL: divergence samples accumulated into a RANDOM pattern bin.
+# Input, GIE, VDB, LP dynamics, MTFP encoding, sample count all unchanged.
+# All four per-pattern means drawn from one distribution => reported
+# divergence is pure finite-sample noise. Tests README's asserted 'null ~1'.
+# Build: SKIP_TO_15=1 MASK_PATTERN_ID=1 MASK_PATTERN_ID_INPUT=1 NULL_SHUFFLE_BINS=1
+# Captured 2026-09-02 20:56:32
+W (206) spi_flash: Detected size(4096k) larger than the size in the binary image header(2048k). Using the size in the binary image header.

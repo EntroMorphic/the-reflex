@@ -98,8 +98,34 @@ VDB feedback contribution:        +3 trits
 ```
 
 Reproduces the published direction (papers report CMD 4 = 1, CMD 5 = 2,
-contribution +1). The masked counterpart is the open question: sign-space is the
-information-driven metric, so the VDB contribution may not survive.
+contribution +1).
+
+## Causal necessity under masking — THE CLAIM INVERTS
+
+`t13_seq_off.log`, identical build plus `MASK_SEQUENCE_INPUT=1`:
+
+| P1 vs P2 Hamming (sign, /16) | CMD 4 (no blend) | CMD 5 (VDB blend) | VDB contribution |
+|---|---|---|---|
+| sequence present | 1 | 4 | **+3 trits** |
+| sequence masked | 2 | **0** | **−2 trits** |
+
+With the sequence counter removed, CMD 5 collapses P1 and P2 to Hamming **0** —
+identical LP representations — while plain CMD 4, with no VDB blend at all,
+preserves 2 trits of separation. **The blend is not merely unnecessary here; it
+is actively destroying separation that survives without it.**
+
+Stratum 1's third Demonstrated claim — "the episodic memory is causally
+necessary; ablation collapses what VDB feedback separates" — does not survive
+the ablation of the sequence counter. It reverses.
+
+**Scope, stated plainly:** n=1 per condition, and these are small integer
+Hamming values. The published claim was itself only 2-of-3 runs, so single runs
+are known to be noisy at this resolution. This is not sufficient on its own to
+overturn the claim. It is, however, consistent in direction with the n=3 TEST 15
+result (sign divergence 3.6 → 0.2, t = 10.1), and the two together make
+replication mandatory before any causal-necessity claim is published.
+
+## Superseded framing
 
 ## Superseded framing
 
