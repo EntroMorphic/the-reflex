@@ -739,6 +739,70 @@ void gie_init_parlio(void) {
     ESP_ERROR_CHECK(parlio_tx_unit_enable(parlio));
 }
 
+/* ══════════════════════════════════════════════════════════════════
+ *  FABRIC-MULTIPLY EXPERIMENT (Sep 2026)
+ *
+ *  Reconfigure PARLIO from 2-bit to 4-bit so BOTH ternary operands are
+ *  streamed: GPIO4/5 carry operand A (pos,neg), GPIO6/7 carry operand B.
+ *  The existing PCNT wiring already implements the ternary product:
+ *
+ *    agree    = (X_POS edge & Y_POS level) | (X_NEG edge & Y_NEG level)   -> +1
+ *    disagree = (X_POS edge & Y_NEG level) | (X_NEG edge & Y_POS level)   -> -1
+ *    dot = agree - disagree
+ *
+ *  In the production engine Y is driven statically by gpio_set_level(), so
+ *  the fabric only population-counts a CPU-premultiplied stream. Streaming Y
+ *  moves the multiply into hardware and removes ~2048 tmul() calls per loop.
+ *
+ *  Returns ESP_OK on success. Safe to call after gie_init_parlio().
+ * ══════════════════════════════════════════════════════════════════ */
+esp_err_t gie_reinit_parlio_4bit(void) {
+    if (parlio) {
+        parlio_tx_unit_disable(parlio);
+        esp_err_t derr = parlio_del_tx_unit(parlio);
+        if (derr != ESP_OK) return derr;
+        parlio = NULL;
+    }
+    parlio_tx_unit_config_t cfg = {
+        .clk_src = PARLIO_CLK_SRC_DEFAULT,
+        .clk_in_gpio_num = -1,
+        .output_clk_freq_hz = 20000000,
+        .data_width = 4,                    /* was 2 */
+        .clk_out_gpio_num = -1,
+        .valid_gpio_num = -1,
+        .trans_queue_depth = 4,
+        .max_transfer_size = 1024,
+        .sample_edge = PARLIO_SAMPLE_EDGE_POS,
+        .bit_pack_order = PARLIO_BIT_PACK_ORDER_LSB,
+        .flags = { .io_loop_back = 1 },
+    };
+    for (int i = 0; i < PARLIO_TX_UNIT_MAX_DATA_WIDTH; i++)
+        cfg.data_gpio_nums[i] = (i < 4) ? (4 + i) : -1;   /* GPIO 4,5,6,7 */
+    esp_err_t err = parlio_new_tx_unit(&cfg, &parlio);
+    if (err != ESP_OK) return err;
+    err = parlio_tx_unit_enable(parlio);
+    if (err != ESP_OK) return err;
+
+    /* PCNT's gpio_config() calls clear the output-enable bits; restore them,
+     * and re-bind all four PARLIO data lanes in the GPIO matrix.
+     * PARL_TX_DATA0..3 = signal indices 47..50. */
+    REG32(0x60091020) |= (1UL << GPIO_X_POS) | (1UL << GPIO_X_NEG)
+                       | (1UL << GPIO_Y_POS) | (1UL << GPIO_Y_NEG);
+    esp_rom_gpio_connect_out_signal(GPIO_X_POS, 47, false, false);
+    esp_rom_gpio_connect_out_signal(GPIO_X_NEG, 48, false, false);
+    esp_rom_gpio_connect_out_signal(GPIO_Y_POS, 49, false, false);
+    esp_rom_gpio_connect_out_signal(GPIO_Y_NEG, 50, false, false);
+    return ESP_OK;
+}
+
+esp_err_t gie_parlio_transmit(const void *buf, size_t bitlen) {
+    if (!parlio) return ESP_ERR_INVALID_STATE;
+    parlio_transmit_config_t tcfg = { .idle_value = 0x0 };  /* idle low = RZ */
+    esp_err_t err = parlio_tx_unit_transmit(parlio, buf, bitlen, &tcfg);
+    if (err != ESP_OK) return err;
+    return parlio_tx_unit_wait_all_done(parlio, 1000);
+}
+
 void gie_init_pcnt(void) {
     pcnt_unit_config_t ucfg = { .low_limit = -32000, .high_limit = 32000 };
 
@@ -826,6 +890,13 @@ void gie_init_gdma_isr(void) {
     } else {
         printf("[GDMA ISR] OK — CH%d (source=%d), LEVEL3\n", bare_ch, intr_source);
     }
+}
+
+/* Fabric-multiply experiment: read both PCNT units. Uses the raw count
+ * registers, same as the ISR, so the values are directly comparable. */
+void gie_read_pcnt(int *agree, int *disagree) {
+    if (agree)    *agree    = (int)(int16_t)(REG32(PCNT_U0_CNT_REG) & 0xFFFF);
+    if (disagree) *disagree = (int)(int16_t)(REG32(PCNT_U1_CNT_REG) & 0xFFFF);
 }
 
 void clear_all_pcnt(void) {

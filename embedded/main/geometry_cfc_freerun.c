@@ -123,6 +123,9 @@ void app_main(void) {
     printf("[SWEEP] SKIP_TO_15: running Test 11 (enrollment) + Test 15 only\n\n");
     test_count++; pass_count += run_test_11();
     test_count++; pass_count += run_test_15();
+#elif defined(SKIP_TO_FABRIC)
+    printf("[SWEEP] SKIP_TO_FABRIC: fabric-multiply experiment only\n\n");
+    test_count++; pass_count += run_test_fabric_mul();
 #elif defined(SKIP_TO_13)
     /* Audit B5 (Sep 2026): isolate the causal-necessity measurement.
      * Test 13 compares CMD 4 (CfC + VDB search, no blend) against CMD 5

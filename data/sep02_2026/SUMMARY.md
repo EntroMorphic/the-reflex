@@ -237,3 +237,33 @@ fortunate draw.
 
 - `b5_seq_on.log` — sequence present (control)
 - `b5_seq_off.log` — sequence masked (`MASK_SEQUENCE_INPUT=1`)
+
+---
+
+## PRE-REGISTERED RESULT — n=5, same session, same sender boot
+
+| Condition | MTFP /80 | reps |
+|---|---|---|
+| sequence (published config) | 6.16 ± 1.96 | 4.5 3.8 7.7 8.3 6.5 |
+| NULL (shuffled bins) | 4.00 ± 1.29 | 6.3 3.5 3.5 3.2 3.5 |
+
+diff = +2.16, Welch t = 2.06, df ≈ 6.9, **two-tailed p = 0.079**
+
+**Verdict per `PREREGISTRATION.md`: UNDECIDED** (ambiguous band, 0.05 ≤ p < 0.10).
+Not "clears", not "falls". Required n for 80% power at the observed effect
+(Cohen's d = 1.30) is **10 per group**.
+
+Per the pre-registration, **n=5 was the declared stopping point** and no further
+reps were run. Extending to n=10 is a new study requiring its own
+pre-registration — it is not a continuation of this one.
+
+### What is decided regardless
+
+1. The null floor is real and non-trivial: **4.0–4.3/80**, not the ~1 asserted
+   in `README.md`.
+2. The published configuration's margin over that floor is **~2 trits**, not the
+   ~9 the "8.5–9.7/80 vs null ~1" framing implies.
+3. "From VDB feedback alone" remains unsupportable in every outcome — a field
+   with zero pattern information reproduces 68% of the MTFP effect.
+4. Sign-space is not a fallback: it clears its null but is the metric that
+   carries the sequence leak.

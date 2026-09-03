@@ -164,6 +164,9 @@ int run_test_14c(void);
 void run_lp_char(void);
 void run_lp_dot_diag(void);
 
+/* test_fabric_mul.c — fabric-side ternary multiply experiment (Sep 2026) */
+int run_test_fabric_mul(void);
+
 /* test_hebbian.c — Test 15 (Hebbian LP weight learning) */
 int run_test_15(void);
 

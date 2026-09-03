@@ -28,6 +28,7 @@ else()
         "test_kinetic.c"
         "test_lp_char.c"
         "test_hebbian.c"
+        "test_fabric_mul.c"
         "reflex_vdb.c"
         "reflex_espnow.c"
     )
@@ -94,6 +95,11 @@ else()
     # is underpowered against a measured null floor of 4.3/80).
     if(DEFINED T15_N_REPS)
         add_compile_definitions(T15_N_REPS=${T15_N_REPS})
+    endif()
+    # Fabric-multiply experiment: stream both ternary operands on 4-bit PARLIO
+    # so PCNT performs the multiply in hardware. Runs standalone.
+    if(DEFINED SKIP_TO_FABRIC AND SKIP_TO_FABRIC)
+        add_compile_definitions(SKIP_TO_FABRIC=1)
     endif()
     # Skip to Test 14 (enrollment + kinetic attention only)
     if(DEFINED SKIP_TO_14 AND SKIP_TO_14)

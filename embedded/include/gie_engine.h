@@ -16,6 +16,8 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include "esp_err.h"
 #include "reflex.h"
 #include "reflex_espnow.h"
 
@@ -183,6 +185,12 @@ void encode_all_neurons(void);
  * ══════════════════════════════════════════════════════════════════ */
 
 void gie_init_gpio(void);
+
+/* Fabric-multiply experiment (Sep 2026): stream BOTH ternary operands so the
+ * PCNT wiring performs the multiply in hardware instead of the CPU. */
+esp_err_t gie_reinit_parlio_4bit(void);
+esp_err_t gie_parlio_transmit(const void *buf, size_t bitlen);
+void gie_read_pcnt(int *agree, int *disagree);
 void gie_init_etm_clk(void);
 void gie_init_parlio(void);
 void gie_init_pcnt(void);
