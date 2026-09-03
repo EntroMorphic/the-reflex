@@ -125,9 +125,78 @@ overturn the claim. It is, however, consistent in direction with the n=3 TEST 15
 result (sign divergence 3.6 → 0.2, t = 10.1), and the two together make
 replication mandatory before any causal-necessity claim is published.
 
-## Superseded framing
+## Null-shuffle run — how to read it
 
-## Superseded framing
+`NULL_SHUFFLE_BINS=1` randomises the bin each divergence sample lands in.
+Verified by inspection *before* running:
+
+- **Control arm is valid.** With `enable_hebbian = 0`, `gt` is used *only* for
+  accumulation (`sum_a/c`, `mtfp_sum_a/c`, `count_a/c`). Shuffling draws all
+  four means from one distribution — a clean finite-sample null.
+- **Hebbian arm is NOT valid in this run and must not be quoted.**
+  `trix_agrees = (pred == gt)` sits inside the `if (enable_hebbian)` block and
+  gates the weight updates; shuffling `gt` randomises that gate, so that arm
+  reflects a corrupted learning signal, not a null.
+- Bin occupancy is comparable to the real condition: the shuffle is uniform
+  over 4 bins and the sender gives all four patterns equal airtime.
+
+**Report the Control arm only.**
+
+### THE FLOOR — measured
+
+`null_shuffle.log`, Control arm, n=3:
+
+| Condition | MTFP /80 | sign /16 |
+|---|---|---|
+| sequence (published config) | 11.3 ± 3.4 | 3.6 ± 0.4 |
+| random (variation, no info) | 8.4 ± 2.3 | 1.3 ± 1.2 |
+| **NULL (shuffled bins)** | **4.3 ± 1.9** | **0.5 ± 0.0** |
+| masked (no variation, no info) | 2.1 ± 2.1 | 0.2 ± 0.4 |
+
+**`README.md` asserts the null is ~1. It is 4.3 — off by more than 4×.**
+
+Does the published configuration clear its own noise floor?
+
+| Metric | Null | Published | Clears null? |
+|---|---|---|---|
+| sign /16 | 0.5 ± 0.0 | 3.6 ± 0.4 | **YES** — t(2) = 13.1 vs crit 4.30 |
+| MTFP /80 | 4.3 ± 1.9 | 11.3 ± 3.4 | **NO at n=3** — t = 3.15 vs crit 3.18 |
+
+Neither `random` (8.4, t = 2.36) nor `masked` (2.1, t = −1.39) is separable from
+the null in MTFP. `masked` sits numerically *below* the floor.
+
+### The trap this closes
+
+The two metrics fail in complementary ways, and there is no configuration in
+which the project currently holds a clean result:
+
+- **Sign-space clears its null decisively — but it is the metric that depends on
+  the sequence counter.** Masking the counter takes it from 3.6 to 0.2, and
+  pattern-agnostic noise recovers only 32% of it. The signal is largely the leak.
+- **MTFP is robust to the counter — but it does not clear its own null at n=3.**
+  It is 68% reproducible from noise, and the margin over the floor is t = 3.15
+  against a critical value of 3.18.
+
+The April decision to switch the papers from sign-space to MTFP ("when
+sign-space and MTFP disagree, trust MTFP") was correct about sign-space being
+misleading, but it moved the headline onto the metric with the *worse*
+signal-to-null ratio.
+
+**t = 3.15 vs 3.18 is a hair, and must not be read as "the result is noise."**
+It means the published number is not separable from its own sampling floor *at
+the sample size the papers use*. n=5 paired may well resolve it — which is
+precisely the power argument already written into
+`docs/BLEND_GATED_DEFERENCE.md` §7. Resolving it is now the single highest-value
+run available.
+
+**Caveat on the null itself:** the LP state evolves under real cycling input, so
+samples are not i.i.d.; temporal correlation could bias the floor in either
+direction. It is nonetheless a far better null than an asserted ~1, and it is
+the first one this project has measured.
+
+## Superseded framing — the two candidate mechanisms, now resolved
+
+*Retained for the record; the random control above settles between these.*
 
 The sender holds each pattern for **5 s** (`espnow_sender.c:288`) at ~7.5
 packets/s ≈ 37 packets per block, ~150 per four-pattern cycle. Input trits
