@@ -267,3 +267,39 @@ pre-registration — it is not a continuation of this one.
    with zero pattern information reproduces 68% of the MTFP effect.
 4. Sign-space is not a fallback: it clears its null but is the metric that
    carries the sequence leak.
+
+
+---
+
+## R8 A/B — one arm only (incomplete)
+
+The R8 binning fix was measured by re-running Tests 12/13 both ways. **Only the
+old-binning arm completed**; the fixed arm was interrupted before reaching the
+tests and produced no result.
+
+**Old binning** (`BIN_BY_PRED=1`, T12 by `core_pred`, T13 by `trix_pred`) —
+`r8_bin_by_pred.log`:
+
+```
+CMD 5 (TEST 12) P1 vs P2 Hamming: 3
+CMD 4 (TEST 13) P1 vs P2 Hamming: 2
+VDB feedback contribution:        +1 trits
+```
+
+**Fixed binning** (both by ground truth) — not measured.
+
+### What the single arm already shows
+
+This is the *same mixed-binning scheme the papers used*, and it now gives **+1**
+where the morning run gave **+3** and the published figure is **+1**. Three runs
+of one configuration spanning +1 to +3 — R9 (between-session variance dwarfing
+within-session SD) reappearing inside the measurement Claim 3 depends on,
+independently of the binning question.
+
+### Caveat on what this A/B could ever have shown
+
+n=1 per arm, on Hamming values of 0–7 over a 16-trit vector. A one-trit shift is
+a single neuron changing sign. Given the classifiers agree 94–96%, re-binning
+moves 4–6% of samples — an effect this instrument cannot resolve in one run.
+A conclusive R8 impact measurement needs the R9 treatment: ≥3 independent
+sessions per arm with sender power-cycles between them.
