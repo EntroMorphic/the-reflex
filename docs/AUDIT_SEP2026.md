@@ -124,6 +124,7 @@ packets.
 | R5 | Secondary live docs never remediated | **Fixed** | `THE_PRIOR_AS_VOICE.md`, `KINETIC_ATTENTION.md`, `MEMORY_MODULATED_ATTENTION.md`, `PERIPHERALS-ONLY-COMPUTE.md`, `LCACHE_TEST14C_SIM.md` + a missed line in `PAPER_CLS_ARCHITECTURE.md` |
 | R6 | Withdrawn ISR rate figures (705/711 Hz) still cited | **Fixed** | Same root cause as R1; withdrawn in live docs, correction headers cover in-body labels |
 | R7 | Classification-mode rate now measured | **Fixed** | 490 Hz (97% of the 503 Hz PARLIO ceiling). The withdrawn 664 Hz exceeded the hardware ceiling by 32% — physically impossible |
+| R8 | Three measurements, three binning variables | **OPEN — paper-blocking** | TEST 12 bins by `core_pred`, TEST 13 by `trix_pred`, TEST 15 by `gt`. Claim 3's comparison subtracts across two different classifiers; the papers' "8.5–9.7/80" range spans two schemes |
 
 **Verification performed:** ESP-IDF v5.4 firmware builds clean before and after
 (exit 0, zero new warnings — the five project warnings present after the change
@@ -163,6 +164,38 @@ The project had already found and documented this. The April 12 paper rewrites
 then published "100% label-free accuracy" anyway. The finding did not need to be
 discovered; it needed to survive the trip from the session record into the paper,
 and it did not. Worth noting as a process failure distinct from a measurement one.
+
+### R8. The divergence measurements do not share a binning variable
+
+Found by reading `test_memory.c` — which the original audit never opened,
+having worked from its output.
+
+| Test | Produces | Bins LP samples by |
+|---|---|---|
+| TEST 12 | 8.5/80 matrix (Stratum 1 Claim 2) | `core_pred` — CPU classifier |
+| TEST 13 | CMD 4 comparator (Claim 3) | `trix_pred` — TriX ISR |
+| TEST 15 | 9.7 ± 0.6 (the quoted baseline) | `gt` — sender ground truth |
+
+Two consequences:
+
+1. **Claim 3's comparison is not apples-to-apples.** "CMD 5 (TEST 12) P1-P2 = 4"
+   minus "CMD 4 (TEST 13) P1-P2 = 1" subtracts an ISR-binned measurement from a
+   CPU-binned one. The two classifiers agree 94–96%, so 4–6% of samples land in
+   different bins between the halves of the comparison — material at Hamming
+   values of 1 and 4.
+2. **The papers' "8.5–9.7/80" range spans two binning schemes.** 8.5 is TEST 12
+   (`core_pred`); 9.7 is TEST 15 (`gt`). They are quoted as one quantity.
+
+**Does this affect the Sep 2 results?** No, for the primary contrast. The
+null-shuffle floor (4.3) and every n=3/n=5 sequence-vs-null comparison are all
+measured inside TEST 15's `gt` framework and are internally consistent. But
+TEST 12's 8.5 has **no matching null**, and TEST 13's comparison is cross-scheme.
+
+**Fix:** bin all three on one variable. `gt` is the defensible choice for a
+divergence metric — binning by a classifier's own output makes the grouping a
+function of the input, and any input-derived structure then appears as
+"divergence". At minimum, TEST 12 and TEST 13 must agree with each other before
+their difference is called a VDB contribution.
 
 ### Three items deliberately left open
 

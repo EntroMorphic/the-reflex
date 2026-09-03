@@ -215,3 +215,30 @@ W (8382) wifi:(TB)WDEV_PWR_TB_MCS11:15
     step 600 (89s): vdb=64 flips=0 p=1 gt=3
     Phase C: measuring (60s)... flips=0 updates=0
     step 900 (132s): vdb=64 flips=0 p=3 gt=3
+    step 1200 (176s): vdb=64 flips=0 p=0 gt=0
+    Phase A (pre) divergence (/16):
+         P0  P1  P2  P3
+    P0:   0   2   2   3  (153)
+    P1:   2   0   2   3  (72)
+    P2:   2   2   0   1  (28)
+    P3:   3   3   1   0  (165)
+    Mean: 2.2
+    Phase C (post) divergence (/16):
+         P0  P1  P2  P3
+    P0:   0   0   1   1  (153)
+    P1:   0   0   1   1  (59)
+    P2:   1   1   0   0  (33)
+    P3:   1   1   0   0  (165)
+    Mean: 0.7
+    Confirms: 1239, Flips: 0, Updates: 0
+    Rep 1: sign=0.7/16 mtfp=4.5/80 (6 pairs) flips=0
+
+  ══ Control (CMD5 only) — Rep 2/5 ══
+
+  ── Condition: Control (CMD5 only) ──
+[DIAG] 500us: agree=1219 disagree=180 out_sel4=47 out_sel5=48 in101=0x84 in103=0x86 gpio_in=0x1103a348 cpu_agree=20 loop=0
+[DIAG] gdma: raw=0x1 st=0x0 ena=0x2 conf0=0x0 link=0x27448(park=0) peri=9
+[DIAG] gdma2: fifo=0x61 state=0x2e7628(dscr_st=3 out_st=2) eof_addr=0x40827604
+[DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
+[LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
+    step 300 (45s): vdb=37 flips=0 p=1 gt=1
