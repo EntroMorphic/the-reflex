@@ -210,3 +210,8 @@ W (8382) wifi:(TB)WDEV_PWR_TB_MCS11:15
 [DIAG] gdma2: fifo=0x61 state=0x2e7628(dscr_st=3 out_st=2) eof_addr=0x40827604
 [DIAG] parlio: cfg=0x1a089b40(tx_start=1 bytelen=9936) st=0x80000000(tx_ready=1) int_raw=0x5(eof=1 rempty=1)
 [LP] Geometric processor running (100 Hz, 16 MHz RISC-V)
+    step 300 (45s): vdb=37 flips=0 p=3 gt=3
+    Phase B: control (60s)... baseline=419 confirms, VDB=52
+    step 600 (89s): vdb=64 flips=0 p=1 gt=3
+    Phase C: measuring (60s)... flips=0 updates=0
+    step 900 (132s): vdb=64 flips=0 p=3 gt=3
