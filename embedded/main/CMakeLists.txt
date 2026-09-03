@@ -109,6 +109,12 @@ else()
     if(DEFINED FABRIC_MUL AND FABRIC_MUL)
         add_compile_definitions(FABRIC_MUL=1)
     endif()
+    # R8: restore pre-Sep-2026 divergence binning (TEST 12 by core_pred, 13/14 by
+    # trix_pred) for the single purpose of quantifying how much consistent
+    # ground-truth binning moves the published numbers. Default is gt.
+    if(DEFINED BIN_BY_PRED AND BIN_BY_PRED)
+        add_compile_definitions(BIN_BY_PRED=1)
+    endif()
     # Skip to Test 14 (enrollment + kinetic attention only)
     if(DEFINED SKIP_TO_14 AND SKIP_TO_14)
         add_compile_definitions(SKIP_TO_14=1)

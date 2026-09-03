@@ -41,6 +41,37 @@ extern "C" {
 #define BIAS_SCALE          10  /* 10x resolution for integer bias decay */
 
 /* ══════════════════════════════════════════════════════════════════
+ *  DIVERGENCE BINNING (audit finding R8, September 2026)
+ *
+ *  Until Sep 2026 the three divergence measurements binned LP samples by
+ *  three DIFFERENT variables:
+ *      TEST 12 -> core_pred   (CPU classifier)
+ *      TEST 13 -> trix_pred   (TriX ISR)
+ *      TEST 14 -> trix_pred
+ *      TEST 15 -> gt          (sender ground truth)
+ *  so Claim 3's headline comparison (CMD 5 from TEST 12 minus CMD 4 from
+ *  TEST 13) subtracted a CPU-binned measurement from an ISR-binned one, and
+ *  the papers quoted "8.5-9.7/80" as one range spanning two schemes.
+ *
+ *  All divergence binning now uses GROUND TRUTH. Binning by a classifier's own
+ *  output makes the grouping a function of the input, so any input-derived
+ *  structure re-appears as "divergence".
+ *
+ *  CRITICAL DISTINCTION — this applies to MEASUREMENT only. Runtime MECHANISMS
+ *  (kinetic attention's bias accumulator, Hebbian's target accumulator) must
+ *  keep using the classifier output: the system has no access to ground truth
+ *  at runtime, and feeding it gt would be cheating.
+ *
+ *  -DBIN_BY_PRED=1 restores the pre-fix behaviour, for the single purpose of
+ *  quantifying how much the correction moves the published numbers.
+ * ══════════════════════════════════════════════════════════════════ */
+#ifdef BIN_BY_PRED
+#define DIV_BIN(gt_, pred_)  (pred_)
+#else
+#define DIV_BIN(gt_, pred_)  (gt_)
+#endif
+
+/* ══════════════════════════════════════════════════════════════════
  *  SHARED STATE (defined in geometry_cfc_freerun.c)
  *
  *  sig[] is populated by Test 11 (enrollment) and read by Tests 12-14C.

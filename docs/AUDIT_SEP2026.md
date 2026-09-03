@@ -125,7 +125,7 @@ packets.
 | R6 | Withdrawn ISR rate figures (705/711 Hz) still cited | **Fixed** | Same root cause as R1; withdrawn in live docs, correction headers cover in-body labels |
 | R7 | Classification-mode rate now measured | **Fixed** | 490 Hz (97% of the 503 Hz PARLIO ceiling). The withdrawn 664 Hz exceeded the hardware ceiling by 32% — physically impossible |
 | R9 | Every ± in the papers is a within-session SD; between-session spread is several times larger | **OPEN — paper-blocking** | Same config, two sessions: sign 3.6±0.4 vs 0.6±0.4 (t=9.9), MTFP 11.3±3.4 vs 6.2±2.0. Discrepancy ≈7× the within-session SD |
-| R8 | Three measurements, three binning variables | **OPEN — paper-blocking** | TEST 12 bins by `core_pred`, TEST 13 by `trix_pred`, TEST 15 by `gt`. Claim 3's comparison subtracts across two different classifiers; the papers' "8.5–9.7/80" range spans two schemes |
+| R8 | Three measurements, three binning variables | **FIXED** (impact being measured) | TEST 12 bins by `core_pred`, TEST 13 by `trix_pred`, TEST 15 by `gt`. Claim 3's comparison subtracts across two different classifiers; the papers' "8.5–9.7/80" range spans two schemes |
 
 **Verification performed:** ESP-IDF v5.4 firmware builds clean before and after
 (exit 0, zero new warnings — the five project warnings present after the change

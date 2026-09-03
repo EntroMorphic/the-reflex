@@ -129,7 +129,10 @@ int run_test_12(void) {
                 if (core_best < NOVELTY_THRESHOLD) continue;
 
                 /* Confirmed classification */
-                int pred = core_pred;
+                int pred = core_pred;             /* classifier output: accuracy only */
+                int gt   = (int)drain_buf[i].pkt.pattern_id;   /* R8: binning */
+                if (gt < 0 || gt >= NUM_TEMPLATES) continue;
+                int bin  = DIV_BIN(gt, pred);
                 t12_confirmed[pred]++;
                 t12_confirmations++;
 
@@ -150,7 +153,7 @@ int run_test_12(void) {
                 int8_t lp_now[LP_HIDDEN_DIM];
                 memcpy(lp_now, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
                 for (int j = 0; j < LP_HIDDEN_DIM; j++)
-                    t12_lp_sum[pred][j] += lp_now[j];
+                    t12_lp_sum[bin][j] += lp_now[j];
 
                 /* MTFP encoding: read raw LP dots, encode as 80 trits */
                 int32_t lp_dots_snap[LP_HIDDEN_DIM];
@@ -159,9 +162,9 @@ int run_test_12(void) {
                 int8_t lp_mtfp[LP_MTFP_DIM];
                 encode_lp_mtfp(lp_dots_snap, lp_mtfp);
                 for (int j = 0; j < LP_MTFP_DIM; j++)
-                    t12_lp_sum_mtfp[pred][j] += lp_mtfp[j];
+                    t12_lp_sum_mtfp[bin][j] += lp_mtfp[j];
 
-                t12_lp_n[pred]++;
+                t12_lp_n[bin]++;
 
                 /* Periodic VDB snapshot: [gie_hidden (32) | lp_hidden (16)].
                  * This stores "what the system looked like at this
@@ -471,6 +474,9 @@ int run_test_13(void) {
                 if (core_best < NOVELTY_THRESHOLD) continue;
 
                 int pred = (int)trix_pred;  /* TriX ISR: GDMA offset resolved, trix_enabled set */
+                int gt   = (int)drain_buf[i].pkt.pattern_id;   /* R8: binning */
+                if (gt < 0 || gt >= NUM_TEMPLATES) continue;
+                int bin  = DIV_BIN(gt, pred);
                 t13_confirmed[pred]++;
 
                 /* CMD 4: CfC step + VDB search.
@@ -484,8 +490,8 @@ int run_test_13(void) {
                 int8_t lp_now[LP_HIDDEN_DIM];
                 memcpy(lp_now, ulp_addr(&ulp_lp_hidden), LP_HIDDEN_DIM);
                 for (int j = 0; j < LP_HIDDEN_DIM; j++)
-                    t13_lp_sum[pred][j] += lp_now[j];
-                t13_lp_n[pred]++;
+                    t13_lp_sum[bin][j] += lp_now[j];
+                t13_lp_n[bin]++;
             }
         }
 

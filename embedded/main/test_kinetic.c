@@ -114,7 +114,27 @@ int run_test_14(void) {
             ulp_fb_threshold    = T14_FB_THRESHOLD;
             ulp_fb_total_blends = 0;
 
-            /* LP accumulators for this condition */
+            /* LP accumulators for this condition.
+             *
+             * R8 SPLIT (Sep 2026): two distinct roles that were previously
+             * conflated in one array.
+             *   t14_lp_sum[]     — MECHANISM. Indexed by trix_pred, because the
+             *                      agreement-weighted bias must run on what the
+             *                      classifier believes; the system has no ground
+             *                      truth at runtime and feeding it gt would be
+             *                      cheating.
+             *   t14_lp_sum_meas[] — MEASUREMENT. Indexed by ground truth, so the
+             *                      reported divergence groups samples by what was
+             *                      actually transmitted rather than by a function
+             *                      of the input.
+             * TEST 15 already separated these (lp_hebbian_accumulate vs gt bins);
+             * this brings TEST 14 into line. */
+            static int16_t t14_lp_sum_meas[4][LP_HIDDEN_DIM];
+            static int16_t t14_lp_sum_meas_mtfp[4][LP_MTFP_DIM];
+            int t14_n_meas[4] = {0};
+            memset(t14_lp_sum_meas, 0, sizeof(t14_lp_sum_meas));
+            memset(t14_lp_sum_meas_mtfp, 0, sizeof(t14_lp_sum_meas_mtfp));
+
             static int16_t t14_lp_sum[4][LP_HIDDEN_DIM];
             static int16_t t14_lp_sum_snap60[4][LP_HIDDEN_DIM];
             /* MTFP-space accumulators */
@@ -249,8 +269,16 @@ int run_test_14(void) {
                     int8_t lp_now[LP_HIDDEN_DIM];
                     memcpy(lp_now, ulp_addr(&ulp_lp_hidden),
                            LP_HIDDEN_DIM);
+                    /* MECHANISM accumulator — classifier-indexed (see R8 note) */
                     for (int j = 0; j < LP_HIDDEN_DIM; j++)
                         t14_lp_sum[pred][j] += lp_now[j];
+                    /* MEASUREMENT accumulator — ground-truth-indexed */
+                    {
+                        int bin = (gt < NUM_TEMPLATES) ? DIV_BIN((int)gt, pred) : pred;
+                        for (int j = 0; j < LP_HIDDEN_DIM; j++)
+                            t14_lp_sum_meas[bin][j] += lp_now[j];
+                        t14_n_meas[bin]++;
+                    }
 
                     /* MTFP encoding: read raw LP dots, encode as 80 trits */
                     int32_t t14_dots_snap[LP_HIDDEN_DIM];
@@ -260,6 +288,11 @@ int run_test_14(void) {
                     encode_lp_mtfp(t14_dots_snap, lp_mtfp);
                     for (int j = 0; j < LP_MTFP_DIM; j++)
                         t14_lp_sum_mtfp[pred][j] += lp_mtfp[j];
+                    if (gt < NUM_TEMPLATES) {
+                        int binm = DIV_BIN((int)gt, pred);
+                        for (int j = 0; j < LP_MTFP_DIM; j++)
+                            t14_lp_sum_meas_mtfp[binm][j] += lp_mtfp[j];
+                    }
 
                     t14_n[pred]++;
 
@@ -357,21 +390,27 @@ int run_test_14(void) {
             t14_bias_active_loops[cond] = bias_active_count;
             t14_total_loops[cond] = loop_count - loop_snap_start;
 
-            /* Compute LP means (full run + 60s snapshot) */
+            /* Compute LP means (full run + 60s snapshot).
+             * R8: the REPORTED divergence comes from the ground-truth-binned
+             * measurement accumulator, not from the classifier-binned one that
+             * drives the bias mechanism. The 60s confound-control snapshot
+             * still derives from the mechanism accumulator — it exists to check
+             * representational maturity within a condition, not to be compared
+             * across patterns. */
             for (int p = 0; p < 4; p++) {
                 for (int j = 0; j < LP_HIDDEN_DIM; j++) {
-                    t14_lp_mean[cond][p][j] = (t14_n[p] > 0)
-                        ? tsign(t14_lp_sum[p][j]) : T_ZERO;
+                    t14_lp_mean[cond][p][j] = (t14_n_meas[p] > 0)
+                        ? tsign(t14_lp_sum_meas[p][j]) : T_ZERO;
                     t14_lp_mean_60s[cond][p][j] =
                         (t14_n_snap60[p] > 0)
                         ? tsign(t14_lp_sum_snap60[p][j]) : T_ZERO;
                 }
                 /* MTFP means */
                 for (int j = 0; j < LP_MTFP_DIM; j++) {
-                    t14_lp_mean_mtfp[cond][p][j] = (t14_n[p] > 0)
-                        ? tsign(t14_lp_sum_mtfp[p][j]) : T_ZERO;
+                    t14_lp_mean_mtfp[cond][p][j] = (t14_n_meas[p] > 0)
+                        ? tsign(t14_lp_sum_meas_mtfp[p][j]) : T_ZERO;
                 }
-                t14_lp_n[cond][p] = t14_n[p];
+                t14_lp_n[cond][p] = t14_n_meas[p];
                 t14_lp_n_60s[cond][p] = t14_n_snap60[p];
             }
             t14_max_bias[cond] = max_bias_seen;
